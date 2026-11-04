@@ -144,7 +144,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         match = re.fullmatch(r"/api/careers/(\d+)/commission/retroactive-report-jobs/([a-f0-9]{32})", path)
         if match:
             from .commission import get_retroactive_commission_report_job
-            self._json(get_retroactive_commission_report_job(int(match.group(1)), match.group(2)))
+            self._json(get_retroactive_commission_report_job(self.state.database, int(match.group(1)), match.group(2)))
             return
         if path == "/api/careers":
             with self.state.database.connect() as conn:
@@ -571,9 +571,11 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             player_ea_id = as_int(payload.get("player_ea_id") or payload.get("playerEaId"))
             model = str(payload.get("model") or "").strip() or None
             force_refresh = input_bool(payload.get("force_refresh") or payload.get("forceRefresh"), "Force new Ollama analysis", default=False)
+            clarifications = payload.get("clarifications")
             from .commission import get_commission_report
             with self.state.database.connect() as conn:
-                self._json(get_commission_report(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id, model, force_refresh))
+                self._json(get_commission_report(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id,
+                                                  model, force_refresh, clarifications=clarifications))
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/commission/report-jobs", path)
@@ -587,11 +589,13 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             player_ea_id = as_int(payload.get("player_ea_id") or payload.get("playerEaId"))
             model = str(payload.get("model") or "").strip() or None
             force_refresh = input_bool(payload.get("force_refresh") or payload.get("forceRefresh"), "Force new Ollama analysis", default=False)
+            clarifications = payload.get("clarifications")
             from .commission import get_commission_report, start_commission_report_job
 
             def work() -> dict[str, Any]:
                 with self.state.database.connect() as conn:
-                    return get_commission_report(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id, model, force_refresh)
+                    return get_commission_report(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id,
+                                                 model, force_refresh, clarifications=clarifications)
 
             self._json(start_commission_report_job(career_id, work))
             return
@@ -599,7 +603,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         match = re.fullmatch(r"/api/careers/(\d+)/commission/retroactive-report-jobs", path)
         if match:
             career_id = int(match.group(1))
-            from .commission import (ollama_models, run_retroactive_commission_reports,
+            from .commission import (REPORT_VERSION, _find_resumable_replay, ollama_models,
                                      start_retroactive_commission_reports)
             from .settings import application_language
             selected_model = os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
@@ -610,12 +614,24 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             with self.state.database.connect() as conn:
                 if not conn.execute("SELECT 1 FROM careers WHERE id=?", (career_id,)).fetchone():
                     raise ValueError("Carreira não encontrada.")
-            backup_path = self.state.database.create_backup(label="pre_commission_retroactive_reports")
-            def work(job_id: str) -> None:
-                run_retroactive_commission_reports(self.state.database, career_id, job_id, selected_language)
-            started = start_retroactive_commission_reports(career_id, work, {
-                "backup_path": str(backup_path), "language": selected_language, "model": selected_model})
-            self._json(started | {"backup_created": not bool(started.get("deduplicated"))})
+                season = as_int(payload.get("season_index") or payload.get("seasonIndex"))
+                if season is None:
+                    latest = conn.execute("SELECT season_index FROM snapshots WHERE career_id=? ORDER BY import_sequence DESC,id DESC LIMIT 1",
+                                          (career_id,)).fetchone()
+                    season = int(latest["season_index"]) if latest else None
+                if season is None:
+                    raise ValueError("A season with imported snapshots is required.")
+                resumable = _find_resumable_replay(conn, career_id, season, selected_model)
+            backup_path = str(resumable.get("backup_path") or "") if resumable else ""
+            backup_created = False
+            if not backup_path:
+                backup_path = str(self.state.database.create_backup(label="pre_commission_retroactive_reports"))
+                backup_created = True
+            started = start_retroactive_commission_reports(
+                self.state.database, career_id, season, selected_model, selected_language, backup_path)
+            self._json(started | {"season_index": season, "model": selected_model,
+                                  "report_version": REPORT_VERSION, "backup_path": backup_path,
+                                  "backup_created": backup_created})
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/commission/backfill", path)

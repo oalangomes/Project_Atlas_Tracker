@@ -427,12 +427,16 @@ def _match_events(players: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int | None = None,
-                   as_of_import_sequence: int | None = None) -> dict[str, Any] | None:
+                   as_of_import_sequence: int | None = None,
+                   season_index: int | None = None) -> dict[str, Any] | None:
     clauses = ["mse.fixture_id=?", "mse.superseded_by_export_id IS NULL"]
     params: list[Any] = [fixture_id]
     if career_id is not None:
         clauses.append("mse.career_id=?")
         params.append(int(career_id))
+    if season_index is not None:
+        clauses.append("source_snapshot.season_index=?")
+        params.append(int(season_index))
     if as_of_import_sequence is not None:
         clauses.append("source_snapshot.import_sequence<=?")
         params.append(int(as_of_import_sequence))
