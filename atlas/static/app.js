@@ -2668,8 +2668,17 @@ function bindContent() {
                 if (!result.available) {
                     output.innerHTML = `<p>${esc(result.message || 'Ollama report unavailable.')}</p>`;
                 }
-                else
+                else {
                     output.innerHTML = commissionReportMarkup(result, payload);
+                    if (mode === "player" && target === "player-p1-integrated") {
+                        const root = button.closest(".player-p1-ai");
+                        root?.querySelector(".player-p1-warnings")?.remove();
+                        const lang = atlasLanguage();
+                        const messages = [result.review_required ? (lang === "pt-BR" ? "Algumas conclusões exigem revisão" : lang === "es-ES" ? "Algunas conclusiones requieren revisión" : "Some findings require review") : null, result.report?.summary?.model_generated === false ? (lang === "pt-BR" ? "Resumo de fallback determinístico" : lang === "es-ES" ? "Resumen determinístico de apoyo" : "Deterministic fallback summary") : null].filter(Boolean);
+                        if (messages.length)
+                            output.insertAdjacentHTML("afterbegin", `<div class="player-p1-warnings">${messages.map(msg => `<p>${esc(msg)}</p>`).join("")}</div>`);
+                    }
+                }
             }
         }
         catch (error) {
@@ -2678,8 +2687,21 @@ function bindContent() {
         }
         finally {
             button.disabled = false;
-            button.textContent = oldLabel;
-            button.dataset.forceRefresh = '0';
+            const p1Ready = mode === "player" && target === "player-p1-integrated" && !!output?.querySelector(".commission-report-head");
+            if (p1Ready) {
+                const badge = button.closest(".player-p1-ai")?.querySelector(".card-header .status-badge");
+                if (badge) {
+                    badge.textContent = "ready";
+                    badge.classList.remove("amber");
+                    badge.classList.add("good");
+                }
+                button.textContent = atlasLanguage() === "pt-BR" ? "Atualizar análise" : atlasLanguage() === "es-ES" ? "Actualizar análisis" : "Refresh analysis";
+                button.dataset.forceRefresh = "1";
+            }
+            else {
+                button.textContent = oldLabel;
+                button.dataset.forceRefresh = '0';
+            }
         }
     });
     const retroButton = $('[data-retroactive-reports]', content);
