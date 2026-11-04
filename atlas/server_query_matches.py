@@ -87,7 +87,8 @@ class MatchQueryMixin:
                 (snap["career_id"], row["fixture_key"]),
             ).fetchall()
             reconstructed = reconstruct_match_stats(conn, snapshot_id).get(str(row["fixture_key"] or ""), {})
-            detailed = detailed_match(conn, fixture_id)
+            detailed = detailed_match(conn, fixture_id, career_id=int(snap["career_id"]),
+                                      as_of_import_sequence=int(snap["import_sequence"]))
         season_start = self._season_start(snap)
         match_item = dict(row)
         self._enrich_fixtures([match_item], season_start, snapshot_id)

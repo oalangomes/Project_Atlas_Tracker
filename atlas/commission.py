@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sqlite3
 from datetime import date
 import urllib.error
@@ -19,7 +20,7 @@ MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
-REPORT_VERSION = 4
+REPORT_VERSION = 5
 _REPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="atlas-ollama-report")
 _REPORT_JOB_LOCK = Lock()
 _REPORT_JOBS: dict[str, dict[str, Any]] = {}
@@ -32,6 +33,28 @@ STAT_FIELDS = (
     "dribbles_completed", "crosses_attempted", "crosses_delivered", "key_passes",
     "possession_won", "possession_lost", "saves", "shots_against", "goals_conceded",
     "npk_expected_goals", "expected_assists", "game_rating", "man_of_the_match",
+)
+
+REPORT_TEAM_FIELDS = (
+    "expected_goals_derived", "npk_expected_goals", "penalty_attempts_derived", "expected_assists",
+    "shots", "shots_on_target", "xg_per_shot", "passes", "passes_completed", "pass_accuracy_pct_derived",
+    "passes_under_pressure", "pressure_pass_accuracy_pct", "key_passes",
+    "tracker_completed_through_passes_including_lobbed", "dribbles", "dribbles_completed",
+    "dribble_success_pct_derived", "crosses_attempted", "crosses_delivered", "cross_success_pct_derived",
+    "possession_won", "possession_lost", "tackles", "interceptions", "blocks", "clearances",
+    "defense_duels_attempted", "defense_duels_won", "defense_duel_success_pct_derived",
+    "aerial_duels_attempted", "aerial_duels_won", "aerial_duel_success_pct_derived",
+    "fouls_committed", "saves", "shots_against", "saving_shots_on_target", "goals_conceded",
+)
+REPORT_PLAYER_FIELDS = (
+    "minutes_played", "game_rating", "goals_derived", "npk_goals", "assists", "npk_expected_goals",
+    "expected_assists", "xg_plus_xa_per90", "xg_per_shot", "npk_finishing_delta", "shots",
+    "shots_on_target", "key_passes", "passes", "passes_completed", "pass_accuracy_pct_derived",
+    "passes_under_pressure", "pressure_pass_accuracy_pct", "tracker_completed_through_passes_including_lobbed",
+    "dribbles_completed", "possession_won", "possession_lost", "possession_balance", "tackles",
+    "interceptions", "blocks", "clearances", "defense_duels_attempted", "defense_duels_won",
+    "defense_duel_success_pct_derived", "aerial_duels_attempted", "aerial_duels_won",
+    "aerial_duel_success_pct_derived", "fouls_committed", "saves", "shots_against", "goals_conceded",
 )
 
 
@@ -67,6 +90,154 @@ def _float(value: Any) -> float | None:
         return None if value is None else float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _compact_metrics(stats: dict[str, Any], fields: tuple[str, ...]) -> dict[str, Any]:
+    return {key: stats[key] for key in fields if key in stats and stats[key] is not None}
+
+
+def _mean_metric_rows(rows: list[dict[str, Any]], fields: tuple[str, ...]) -> dict[str, Any]:
+    means: dict[str, Any] = {}
+    for field in fields:
+        values = [_float((row.get("stats") or {}).get(field)) for row in rows]
+        values = [value for value in values if value is not None]
+        if values:
+            means[field] = round(sum(values) / len(values), 3)
+    return {"matches": len(rows), "metric_match_counts": {
+        field: sum(_float((row.get("stats") or {}).get(field)) is not None for row in rows)
+        for field in means
+    }, "metrics_per_match": means}
+
+
+def _prior_match_context(conn: Any, career_id: int, snapshot: Any, fixture_id: int,
+                         managed_team_id: int, match_date: str) -> dict[str, Any]:
+    """Build pre-match references from complete exports visible in this career snapshot only."""
+    from .match_stats import detailed_match
+
+    rows = conn.execute(
+        """SELECT DISTINCT fo.fixture_id,fo.date,fo.home_team_name,fo.away_team_name,
+                  fo.home_score,fo.away_score,f.home_team_ea_id,f.away_team_ea_id,
+                  e.id export_id,e.snapshot_id export_snapshot_id
+             FROM fixture_observations fo
+             JOIN fixtures f ON f.id=fo.fixture_id
+             JOIN match_stat_exports e ON e.fixture_id=f.id AND e.career_id=?
+                  AND e.linkage_status='linked' AND e.export_status='complete_participant_export'
+                  AND e.superseded_by_export_id IS NULL
+             JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
+             WHERE fo.snapshot_id=? AND fo.managed_team_involved=1 AND fo.is_completed=1
+               AND fo.fixture_id<>? AND fo.date<?
+               AND (f.home_team_ea_id=? OR f.away_team_ea_id=?)
+               AND source_snapshot.career_id=? AND source_snapshot.import_sequence<=?
+             ORDER BY fo.date DESC,fo.fixture_id DESC""",
+        (career_id, int(snapshot["id"]), fixture_id, match_date, managed_team_id, managed_team_id,
+         career_id, int(snapshot["import_sequence"])),
+    ).fetchall()
+    history: list[dict[str, Any]] = []
+    for row in rows:
+        detailed = detailed_match(conn, int(row["fixture_id"]), career_id=career_id,
+                                  as_of_import_sequence=int(snapshot["import_sequence"]))
+        if not detailed or int(detailed.get("exportId") or -1) != int(row["export_id"]):
+            continue
+        own = next((team for team in detailed.get("teams", []) if int(team.get("teamEaId") or -1) == managed_team_id), None)
+        opponent = next((team for team in detailed.get("teams", []) if team is not own), None)
+        if not own or not opponent:
+            continue
+        home = int(row["home_team_ea_id"] or -1) == managed_team_id
+        history.append({
+            "fixture_id": int(row["fixture_id"]), "date": row["date"],
+            "opponent": row["away_team_name"] if home else row["home_team_name"],
+            "venue": "home" if home else "away",
+            "score": [row["home_score"], row["away_score"]],
+            "team_stats": _compact_metrics(own.get("stats") or {}, REPORT_TEAM_FIELDS),
+            "opponent_stats": _compact_metrics(opponent.get("stats") or {}, REPORT_TEAM_FIELDS),
+        })
+    recent = history[:5]
+    metric_fields = ("expected_goals_derived", "npk_expected_goals", "shots", "shots_on_target",
+                     "expected_assists", "passes", "pass_accuracy_pct_derived", "key_passes",
+                     "tracker_completed_through_passes_including_lobbed", "dribbles_completed",
+                     "possession_won", "possession_lost", "tackles", "interceptions", "blocks", "clearances")
+    own_rows = [{"stats": row["team_stats"]} for row in history]
+    against_rows = [{"stats": row["opponent_stats"]} for row in history]
+    splits: dict[str, Any] = {}
+    for venue in ("home", "away"):
+        split = [row for row in history if row["venue"] == venue]
+        if split:
+            splits[venue] = {"for": _mean_metric_rows([{"stats": row["team_stats"]} for row in split], metric_fields),
+                             "against": _mean_metric_rows([{"stats": row["opponent_stats"]} for row in split], metric_fields)}
+    return {
+        "lookback_matches": len(history),
+        "recent_five": [{"fixture_id": row["fixture_id"], "date": row["date"], "opponent": row["opponent"],
+                          "venue": row["venue"], "score": row["score"]} for row in recent],
+        "season_to_date_reference": {"for": _mean_metric_rows(own_rows, metric_fields),
+                                     "against": _mean_metric_rows(against_rows, metric_fields)},
+        "last_five_reference": {"for": _mean_metric_rows([{"stats": row["team_stats"]} for row in recent], metric_fields),
+                                "against": _mean_metric_rows([{"stats": row["opponent_stats"]} for row in recent], metric_fields)},
+        "venue_splits": splits,
+        "source_note": "Only completed linked exports dated before this fixture, from this career and available by the selected snapshot; missing metrics remain absent.",
+    }
+
+
+def _prior_player_context(conn: Any, career_id: int, snapshot: Any, fixture_id: int,
+                          managed_team_id: int, match_date: str,
+                          player_ids: list[int]) -> list[dict[str, Any]]:
+    """Summarize each selected player's last five valid pre-match MatchStats rows."""
+    if not player_ids:
+        return []
+    from .match_stats import aggregate_detailed_stats
+
+    placeholders = ",".join("?" for _ in player_ids)
+    rows = conn.execute(
+        f"""SELECT d.player_ea_id,d.minutes_played,d.stats_json,fo.date,fo.fixture_id,
+                   p.actual_position,p.actual_position_source,ps.display_name,ps.primary_position
+              FROM match_stat_exports e
+              JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
+              JOIN fixtures f ON f.id=e.fixture_id
+              JOIN fixture_observations fo ON fo.snapshot_id=? AND fo.fixture_id=e.fixture_id
+                   AND fo.is_completed=1 AND fo.date<?
+              JOIN match_player_detailed_stats d ON d.export_id=e.id
+              LEFT JOIN player_match_performances p ON p.snapshot_id=? AND p.fixture_key=f.fixture_key
+                   AND p.player_ea_id=d.player_ea_id
+              LEFT JOIN player_states ps ON ps.snapshot_id=e.snapshot_id AND ps.ea_player_id=d.player_ea_id
+             WHERE e.career_id=? AND e.fixture_id<>? AND e.linkage_status='linked'
+               AND e.export_status='complete_participant_export' AND e.superseded_by_export_id IS NULL
+               AND source_snapshot.career_id=? AND source_snapshot.import_sequence<=?
+               AND (e.team0_ea_id=? OR e.team1_ea_id=?)
+               AND d.team_index=CASE WHEN e.team0_ea_id=? THEN 0 ELSE 1 END
+               AND d.player_ea_id IN ({placeholders})
+             ORDER BY fo.date DESC,e.fixture_id DESC""",
+        (int(snapshot["id"]), match_date, int(snapshot["id"]), career_id, fixture_id,
+         career_id, int(snapshot["import_sequence"]), managed_team_id, managed_team_id,
+         managed_team_id, *player_ids),
+    ).fetchall()
+    grouped: dict[int, list[Any]] = defaultdict(list)
+    for row in rows:
+        player_id = int(row["player_ea_id"])
+        if len(grouped[player_id]) >= 5:
+            continue
+        stats = json.loads(row["stats_json"] or "{}")
+        minutes = int(row["minutes_played"] or stats.get("minutes_played") or 0)
+        if minutes < 15 and not any(_float(stats.get(key)) and float(stats.get(key) or 0) > 0
+                                    for key in ("goals_derived", "npk_goals", "own_goals", "pk_goals", "assists")):
+            continue
+        grouped[player_id].append({"date": row["date"], "fixture_id": int(row["fixture_id"]),
+                                   "minutes": minutes, "stats": stats,
+                                   "position": row["actual_position"] if row["actual_position_source"] == "career_playermatchratinghistory_position" else None,
+                                   "registered_position": row["primary_position"], "name": row["display_name"]})
+    result = []
+    for player_id, appearances in grouped.items():
+        stats = aggregate_detailed_stats([item["stats"] for item in appearances])
+        position_minutes: dict[str, int] = defaultdict(int)
+        for appearance in appearances:
+            if appearance["position"]:
+                position_minutes[str(appearance["position"]).upper()] += appearance["minutes"]
+        result.append({"player_ea_id": player_id, "name": appearances[0]["name"],
+                       "registered_position": appearances[0]["registered_position"],
+                       "observed_position_minutes": dict(sorted(position_minutes.items())),
+                       "valid_appearances": len(appearances), "minutes": stats.get("minutes_played"),
+                       "rating": stats.get("average_rating"),
+                       "stats": _compact_metrics(stats, REPORT_PLAYER_FIELDS),
+                       "match_dates": [item["date"] for item in appearances]})
+    return sorted(result, key=lambda item: str(item.get("name") or "").casefold())
 
 
 def _sum_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -645,58 +816,75 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                     """SELECT DISTINCT f.id,fo.managed_team_result
                          FROM fixture_observations fo JOIN fixtures f ON f.id=fo.fixture_id
                         WHERE fo.snapshot_id=? AND fo.managed_team_involved=1 AND fo.is_completed=1 AND f.id<>?
+                          AND fo.date<?
                           AND (f.home_team_ea_id=? OR f.away_team_ea_id=?)""",
-                    (int(prior_snapshot["id"]), int(fixture_id), opponent_id, opponent_id),
+                    (int(prior_snapshot["id"]), int(fixture_id), str(row["date"]), opponent_id, opponent_id),
                 ).fetchall()
             fact("opponent_history", "Earlier recorded meetings with this opponent", {
                 "opponent_ea_id": opponent_id, "previous_meetings": len(history_rows),
                 "previous_wins": sum(1 for item in history_rows if str(item["managed_team_result"] or "").upper() == "W"),
             }, "completed Atlas fixtures in the latest snapshot available at the selected career date")
+            if row["date"]:
+                fact("pre_match_team_context", "Team performance before this fixture",
+                     _prior_match_context(conn, career_id, snapshot, fixture_id, team_id, str(row["date"])),
+                     "career-scoped linked MatchStats dated strictly before the selected fixture")
         if mode in {"match", "match_player"}:
             export = conn.execute(
-                """SELECT e.id FROM match_stat_exports e WHERE e.fixture_id=? AND e.career_id=?
+                """SELECT e.id FROM match_stat_exports e JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
+                     WHERE e.fixture_id=? AND e.career_id=? AND source_snapshot.import_sequence<=?
                      AND e.linkage_status='linked' AND e.export_status='complete_participant_export'
                      AND e.superseded_by_export_id IS NULL ORDER BY e.id DESC LIMIT 1""",
-                (fixture_id, career_id),
+                (fixture_id, career_id, int(snapshot["import_sequence"])),
             ).fetchone()
             if export:
-                teams = conn.execute(
-                    "SELECT team_index,team_ea_id,stats_json FROM match_team_detailed_stats WHERE export_id=? ORDER BY team_index",
-                    (export["id"],),
-                ).fetchall()
-                team_stats = []
-                for team in teams:
-                    stats = json.loads(team["stats_json"] or "{}")
-                    keys = ("npk_expected_goals", "expected_assists", "shots", "shots_on_target", "passes",
-                            "pass_accuracy_pct_derived", "possession_won", "possession_lost", "tackles",
-                            "interceptions", "saves", "goals_conceded")
-                    team_stats.append({key: stats.get(key) for key in keys if stats.get(key) is not None} | {"team_index": int(team["team_index"])})
+                from .match_stats import detailed_match
+                detailed = detailed_match(conn, int(fixture_id), career_id=career_id,
+                                          as_of_import_sequence=int(snapshot["import_sequence"]))
+                if not detailed or int(detailed.get("exportId") or -1) != int(export["id"]):
+                    raise ValueError("The selected MatchStats export changed while the report context was being assembled.")
+                teams = detailed.get("teams") or []
+                team_stats = [{"team_index": int(team["teamIndex"]), "team_ea_id": team.get("teamEaId"),
+                               "stats": _compact_metrics(team.get("stats") or {}, REPORT_TEAM_FIELDS)} for team in teams]
                 fact("matchstats", "Linked FC26 match statistics", team_stats, "complete linked MatchStats export")
-                players = conn.execute(
-                    """SELECT d.player_ea_id,d.team_index,d.minutes_played,d.game_rating,d.stats_json,p.display_name,p.primary_position
-                         FROM match_player_detailed_stats d LEFT JOIN player_states p
-                           ON p.snapshot_id=? AND p.ea_player_id=d.player_ea_id
-                         WHERE d.export_id=? ORDER BY d.game_rating DESC,d.minutes_played DESC LIMIT 44""",
-                    (snapshot_id, export["id"]),
+                observed_rows = conn.execute(
+                    """SELECT player_ea_id,actual_position,actual_position_source FROM player_match_performances
+                         WHERE snapshot_id=? AND fixture_key=? AND actual_position_source='career_playermatchratinghistory_position'""",
+                    (snapshot_id, row["fixture_key"]),
                 ).fetchall()
+                observed_positions = {int(item["player_ea_id"]): item["actual_position"] for item in observed_rows
+                                      if item["actual_position"]}
                 player_facts = []
-                for item in players:
-                    stats = json.loads(item["stats_json"] or "{}")
-                    keys = ("npk_goals", "assists", "npk_expected_goals", "expected_assists", "shots",
-                            "shots_on_target", "key_passes", "tackles", "interceptions", "saves", "goals_conceded")
-                    player_facts.append({"player_ea_id": int(item["player_ea_id"]), "name": item["display_name"],
-                                         "position": item["primary_position"], "minutes": item["minutes_played"],
-                                         "rating": item["game_rating"], "stats": {key: stats.get(key) for key in keys if stats.get(key) is not None}})
-                fact("match_players", "Player match performances", player_facts, "complete linked MatchStats export")
+                for item in detailed.get("players") or []:
+                    player_id = int(item["playerEaId"])
+                    stats = item.get("stats") or {}
+                    player_facts.append({"player_ea_id": player_id, "name": item.get("displayName"),
+                                         "registered_position": item.get("primaryPosition"),
+                                         "observed_position": observed_positions.get(player_id),
+                                         "observed_position_source": "career_playermatchratinghistory_position" if player_id in observed_positions else None,
+                                         "team_ea_id": item.get("teamEaId"), "team_index": item.get("teamIndex"),
+                                         "minutes": stats.get("minutes_played"), "rating": stats.get("game_rating"),
+                                         "stats": _compact_metrics(stats, REPORT_PLAYER_FIELDS)})
+                fact("match_players", "Player match performances and position evidence", player_facts,
+                     "complete linked MatchStats export; observed positions only from career_playermatchratinghistory_position")
+                managed_players = [item for item in player_facts if int(item.get("team_ea_id") or -1) == team_id]
+                context_players = ([item for item in managed_players if int(item["player_ea_id"]) == int(player_ea_id)]
+                                   if mode == "match_player" and player_ea_id is not None else managed_players)
+                if row["date"] and context_players:
+                    prior_players = _prior_player_context(
+                        conn, career_id, snapshot, fixture_id, team_id, str(row["date"]),
+                        [int(item["player_ea_id"]) for item in context_players],
+                    )
+                    fact("pre_match_player_context", "Player performance before this fixture", prior_players,
+                         "last five valid linked MatchStats appearances before the selected match; position minutes require trusted observed-position provenance")
                 if mode == "match_player":
                     if player_ea_id is None:
                         raise ValueError("Select a player from the current match.")
                     participant = next((item for item in player_facts if int(item["player_ea_id"]) == int(player_ea_id)), None)
                     if not participant:
                         raise ValueError("Selected player has no linked performance in this match.")
-                    player_team = next((team for team in teams if int(team["team_ea_id"] or -1) == team_id), None)
-                    participant_row = next((item for item in players if int(item["player_ea_id"]) == int(player_ea_id)), None)
-                    if not player_team or not participant_row or int(participant_row["team_index"]) != int(player_team["team_index"]):
+                    player_team = next((team for team in teams if int(team.get("teamEaId") or -1) == team_id), None)
+                    participant_row = next((item for item in detailed.get("players") or [] if int(item["playerEaId"]) == int(player_ea_id)), None)
+                    if not player_team or not participant_row or int(participant_row["teamIndex"]) != int(player_team["teamIndex"]):
                         raise ValueError("Selected player did not appear for the managed club in this match.")
                     fact("selected_match_player", "Selected player in this match", participant, "complete linked MatchStats participant row")
                     scope = f"fixture:{fixture_id}:player:{player_ea_id}"
@@ -797,6 +985,24 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
         player_fields = {key: player.get(key) for key in ("player_ea_id", "display_name", "position", "minutes", "appearances",
                           "season_rating", "recent_rating", "recent_appearances", "sample", "moment", "recommendation", "metrics")}
         fact("player_summary", "Current career performance", player_fields, "Atlas deterministic commission metrics")
+        registered_group = _position_group(player.get("position"))
+        peers = [item for item in deterministic.get("players", [])
+                 if int(item.get("player_ea_id") or -1) != int(player_ea_id)
+                 and item.get("position") and _position_group(item.get("position")) == registered_group]
+        peer_rows = [{"player_ea_id": int(item["player_ea_id"]), "name": item.get("display_name"),
+                      "registered_position": item.get("position"), "sample": item.get("sample"),
+                      "appearances": item.get("appearances"), "minutes": item.get("minutes"),
+                      "season_rating": item.get("season_rating"), "recent_rating": item.get("recent_rating"),
+                      "metrics": {key: (item.get("metrics") or {}).get(key) for key in (
+                          "goals_per90", "assists_per90", "xg_per90", "xa_per90", "npk_goals",
+                          "assists", "shots", "key_passes", "tackles", "interceptions", "possession_won",
+                          "possession_lost", "passes", "pass_accuracy_pct")
+                                  if (item.get("metrics") or {}).get(key) is not None}}
+                     for item in peers[:8]]
+        fact("player_position_peers", "Same registered position-group peers in this squad", {
+            "group": registered_group, "peer_count": len(peers), "players": peer_rows,
+            "comparison_note": "Season MatchStats rows are partial and must be compared with minutes, appearance count and sample labels; registered position does not prove tactical function.",
+        }, "existing Atlas Technical Commission career metrics and registered player positions")
         player_state = conn.execute(
             "SELECT * FROM player_states WHERE snapshot_id=? AND ea_player_id=?", (snapshot_id, player_ea_id)
         ).fetchone()
@@ -833,20 +1039,22 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                       fo.competition_name,fo.home_team_name,fo.away_team_name,fo.home_score,fo.away_score
                  FROM player_match_performances p LEFT JOIN fixtures f ON f.fixture_key=p.fixture_key
                  LEFT JOIN fixture_observations fo ON fo.snapshot_id=p.snapshot_id AND fo.fixture_id=f.id
-                 WHERE p.snapshot_id=? AND p.player_ea_id=?
+                 WHERE p.snapshot_id=? AND p.player_ea_id=? AND p.date<=?
                  ORDER BY p.date DESC,p.fixture_key DESC LIMIT 10""",
-            (snapshot_id, player_ea_id),
+            (snapshot_id, player_ea_id, snapshot["career_date"]),
         ).fetchall()
         fact("player_recent_matches", "Last recorded player appearances", [dict(item) for item in rows], "player match rating history")
         from .match_stats import detailed_player_matches
-        detailed_rows = detailed_player_matches(conn, career_id, int(player_ea_id), season_indices=[int(snapshot["season_index"])])[:10]
+        detailed_rows = detailed_player_matches(conn, career_id, int(player_ea_id),
+                                                 season_indices=[int(snapshot["season_index"])],
+                                                 as_of_import_sequence=int(snapshot["import_sequence"]))
         compact_matches = [{"date": item.get("date"), "competition": item.get("competitionName"),
                             "home": item.get("homeTeamName"), "away": item.get("awayTeamName"),
                             "score": [item.get("homeScore"), item.get("awayScore")],
                             "stats": {key: item["stats"].get(key) for key in ("npk_goals", "assists", "npk_expected_goals", "expected_assists",
                                        "shots", "key_passes", "tackles", "interceptions", "game_rating")
                                       if item["stats"].get(key) is not None}}
-                           for item in detailed_rows]
+                           for item in [row for row in detailed_rows if str(row.get("date") or "") <= str(snapshot["career_date"] or "")][:10]]
         if compact_matches:
             fact("player_matchstats", "Player detail from linked MatchStats", compact_matches, "complete linked MatchStats exports; partial season coverage")
         else:
@@ -994,60 +1202,114 @@ def _deterministic_report_summary(context: dict[str, Any]) -> dict[str, Any] | N
     return None
 
 
-def _evidence_confidence(context: dict[str, Any], mode: str) -> float:
-    facts = _report_fact_map(context)
-    if mode == "team_identity":
-        coverage = (facts.get("team_statistical_profile") or {}).get("coverage_pct")
-        return max(0.0, min(100.0, float(coverage))) if coverage is not None else 0.0
-    if mode == "player":
-        sample = (facts.get("player_summary") or {}).get("sample") or {}
-        return 95.0 if sample.get("reliable") else 90.0 if sample.get("usable") else 75.0
-    if mode == "match_player" and "match_player_stats_missing" in facts:
-        return 75.0
-    if mode == "match" and "matchstats_missing" in facts:
-        return 75.0
-    return 100.0
-
-
 def _claim_has_structural_conflict(context: dict[str, Any], mode: str, text: str) -> bool:
+    """Reject only claims that contradict a known source boundary or explicit fixture fact."""
     folded = text.casefold()
     facts = _report_fact_map(context)
+    absent = facts.get("matchstats_missing") or facts.get("match_player_stats_missing")
+    if absent and any(term in folded for term in ("xg", "expected goals", "gols esperados", "goles esperados", "shots", "finalizações", "tiros", "passes", "tackles", "desarmes", "interceptions", "interceptações")):
+        return True
+    unsupported_metric_claims = (
+        ("possession share", ("possession share", "possession percentage", "posse de bola", "porcentagem de posse", "posesión del balón")),
+        ("pressing", ("high press", "pressing intensity", "pressão alta", "intensidade de pressão", "presión alta")),
+        ("line height", ("defensive line height", "line height", "altura da linha", "linha defensiva alta", "altura de la línea")),
+        ("injury or availability", ("injury", "injured", "lesão", "lesionado", "suspensão", "suspended", "availability", "disponibilidade", "disponible", "condição física", "physical condition")),
+        ("starting XI", ("starting xi", "starting eleven", "titularidade", "titular", "equipe inicial", "alineación titular")),
+    )
+    source_boundary_disclaimer = ("não registra", "não temos dados", "não há dados", "não permite confirmar",
+                                  "não é possível confirmar", "não comprova", "not recorded", "no data for",
+                                  "cannot confirm", "cannot establish", "does not establish", "not available",
+                                  "no se registra", "no permite confirmar", "no hay datos")
+    is_disclaimer = any(phrase in folded for phrase in source_boundary_disclaimer)
+    for _, phrases in unsupported_metric_claims:
+        if any(phrase in folded for phrase in phrases):
+            # Pressure-pass metrics support discussion of passes under pressure,
+            # but not a team press; a hypothesis may state its limitation without
+            # claiming the missing metric was observed.
+            if is_disclaimer or any(phrase in folded for phrase in ("pode indicar", "pode ter", "hipótese", "hypothesis", "podría", "could", "may have")):
+                continue
+            return True
     match = facts.get("match") or {}
-    absent_terms = ("posse de bola", "possession", "posesión", "pressão alta", "high press", "presión alta",
-                    "titular", "starting xi", "starting eleven", "alineación titular", "lesão", "injury",
-                    "injured", "suspensão", "suspended", "availability", "disponibilidade", "disponible")
-    if any(term in folded for term in absent_terms) and mode in {"match", "match_player", "player", "next_match", "team_identity"}:
-        return True
-    # A scoreline alone establishes the result, not territorial or statistical
-    # dominance. Atlas currently has no validated dominance metric to support it.
-    dominance_terms = ("dominated", "dominó", "dominou", "dominó el partido", "dominó el encuentro",
-                       "controlled the match", "controlled proceedings", "controló el partido",
-                       "controló el encuentro", "controlou a partida", "controlou o jogo")
-    if mode in {"match", "match_player"} and any(term in folded for term in dominance_terms):
-        return True
-    unsupported_judgements = ("solid defence", "solid defense", "defesa sólida", "defesa solida",
-                              "defensa sólida", "defensa solida", "weak defence", "weak defense",
-                              "defesa frágil", "defensa débil", "clinical finishing", "finalização clínica",
-                              "definición clínica", "excellent defending", "excelente defesa", "gran defensa")
-    if mode in {"match", "match_player"} and (
-        any(term in folded for term in unsupported_judgements)
-        or ("defensa" in folded and "sólid" in folded)
-        or ("defesa" in folded and "sólid" in folded)
-        or ("defence" in folded and "solid" in folded)
-        or ("defense" in folded and "solid" in folded)
-    ):
-        return True
-    if mode in {"match", "match_player"}:
-        side = match.get("managed_team_side")
-        home_words = ("home team", "at home", "mandante", "equipe da casa", "time da casa", "local")
-        away_words = ("away team", "away side", "visiting team", "visitante", "equipe visitante", "fora de casa", "visitante")
-        if side == "home" and any(term in folded for term in away_words):
+    if mode in {"match", "match_player"} and match:
+        managed_score, opponent_score = match.get("managed_score"), match.get("opponent_score")
+        managed_name = str(context.get("managed_team") or "").casefold()
+        opponent_name = str(match.get("away") if match.get("managed_team_side") == "home" else match.get("home") or "").casefold()
+        win_terms = (" venceu ", " vitória ", " ganhou ", " won ", " victory ", " beat ", " venció ", " ganó ")
+        loss_terms = (" perdeu ", " derrota ", " foi derrotad", " lost ", " defeat ", " beaten ", " perdió ", " derrota ante ")
+        padded = f" {folded} "
+        if managed_score is not None and opponent_score is not None and managed_name and managed_name in folded:
+            if int(managed_score) > int(opponent_score) and any(term in padded for term in loss_terms):
+                return True
+            if int(managed_score) < int(opponent_score) and any(term in padded for term in win_terms):
+                return True
+        if managed_score is not None and opponent_score is not None and opponent_name and opponent_name in folded:
+            if int(managed_score) > int(opponent_score) and any(term in padded for term in win_terms):
+                return True
+            if int(managed_score) < int(opponent_score) and any(term in padded for term in loss_terms):
+                return True
+    return False
+
+
+def _report_item_numeric_conflict(context: dict[str, Any], item: dict[str, Any]) -> bool:
+    """Require numeric claims to be present in the cited fact values, allowing ordinary rounding."""
+    cited = set(item.get("fact_refs") or [])
+    allowed: list[float] = []
+    excluded_keys = {"fixture_id", "player_ea_id", "team_ea_id", "team_index", "export_id", "snapshot_id", "external_export_id"}
+
+    def collect(value: Any, key: str = "") -> None:
+        if key in excluded_keys or isinstance(value, bool):
+            return
+        if isinstance(value, (int, float)):
+            allowed.append(float(value))
+        elif isinstance(value, dict):
+            for child_key, child in value.items():
+                collect(child, str(child_key))
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                collect(child)
+
+    for fact in context.get("facts", []):
+        if fact.get("id") in cited:
+            collect(fact.get("value"))
+    for raw in re.findall(r"(?<![\w])\d+(?:[.,]\d+)?", str(item.get("text") or "")):
+        token = raw.replace(",", ".")
+        try:
+            number = float(token)
+        except ValueError:
             return True
-        if side == "away" and any(term in folded for term in home_words):
-            return True
-        if any(term in folded for term in ("histórica", "histórico", "historic", "histórica", "first ever", "primeiro triunfo", "primer triunfo")):
+        precision = len(token.partition(".")[2]) if "." in token else 0
+        tolerance = 0.5 * (10 ** -precision) + 1e-7
+        if not any(abs(number - candidate) <= tolerance for candidate in allowed):
             return True
     return False
+
+
+def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, Any], valid_ids: set[str]) -> bool:
+    if not isinstance(item.get("text"), str) or not item["text"].strip():
+        return False
+    refs = item.get("fact_refs")
+    if not isinstance(refs, list) or not refs or not set(refs).issubset(valid_ids):
+        return False
+    kind = item.get("kind")
+    if kind not in {"fact", "inference", "hypothesis"}:
+        return False
+    if kind == "hypothesis" and (not isinstance(item.get("limitations"), str) or len(item["limitations"].strip()) < 12):
+        return False
+    return not _claim_has_structural_conflict(context, mode, item["text"]) and not _report_item_numeric_conflict(context, item)
+
+
+def _report_coverage(context: dict[str, Any]) -> dict[str, Any]:
+    facts = _report_fact_map(context)
+    match_players = facts.get("match_players") or []
+    history = facts.get("pre_match_team_context") or {}
+    return {
+        "detailed_match_statistics": "linked" if "matchstats" in facts else "unavailable",
+        "players_with_detailed_rows": len(match_players),
+        "previous_linked_matches": int(history.get("lookback_matches") or 0),
+        "previous_five_matches": len(history.get("recent_five") or []),
+        "observed_positions": sum(bool(item.get("observed_position")) for item in match_players),
+        "limitations": [item["value"] for item in context.get("facts", []) if item.get("id") in {"matchstats_missing", "match_player_stats_missing"}],
+    }
 
 
 def _ensure_report_cache(conn: Any) -> None:
@@ -1133,35 +1395,35 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
     language_name = {"pt-BR": "Brazilian Portuguese", "en-GB": "British English", "es-ES": "Spanish"}.get(language, "Brazilian Portuguese")
     tasks = {
         "pt-BR": {
-            "next_match": "Prepare a próxima partida com calendário, minutos e posições exportadas. Escolha apenas formação de allowed_formations; não infira lesões, disponibilidade, escalação ou estilo rival.",
-            "player": "Analise aptidões comparáveis, amostra, minutos e MatchStats. Não declare hierarquia, titularidade, causa ou comparação ausente dos fatos.",
-            "match_player": "Analise somente o jogador selecionado nesta partida, usando avaliação, posição, minutos e estatísticas individuais. Não recomende titularidade.",
-            "team_identity": "Descreva padrões calculados nas métricas agregadas e compare perfis de adversário já calculados. Associação observada não prova causa; não crie estilo tático sem métricas.",
-            "match": "Analise resultado e indicadores registrados. Confira mando pelos campos home e away e mantenha a mesma ordem no placar. Destaques devem corresponder aos dados do jogador.",
+            "next_match": "Prepare a próxima partida com calendário, amostra de minutos e posições observadas. Sugira somente esquemas de allowed_formations. Separe adequação de elenco de escalação/disponibilidade.",
+            "player": "Cruze radar e perfis de função já calculados com produção, eficiência por 90, recorte recente e pares da mesma posição no elenco. Compare amostras equivalentes; não infira hierarquia nem titularidade.",
+            "match_player": "Compare o desempenho desta atuação com as últimas cinco atuações válidas anteriores do jogador e com atletas da mesma posição registrados nesta partida, quando houver dados. Considere contribuição ofensiva e defensiva, não só nota e gols.",
+            "team_identity": "Interprete tendências e recortes casa/fora calculados pelo Atlas. Descreva associações mensuradas, sem convertê-las em causas ou instruções táticas.",
+            "match": "Contextualize resultado versus desempenho; compare criação/concessão, volume/qualidade, circulação, progressão e ações defensivas atuais com médias anteriores e últimas cinco partidas válidas. Compare atletas com a mesma posição observada quando registrada. Identifique desvio, padrão, impacto e acompanhamento útil, sem atribuir causa não observada.",
         },
         "en-GB": {
-            "next_match": "Prepare for the next fixture using the calendar, recorded minutes and exported positions. Choose only a shape in allowed_formations; do not infer injuries, availability, a confirmed line-up or opponent style.",
-            "player": "Review comparable registered attributes, sample, minutes and MatchStats. Do not claim hierarchy, starting status, causation or comparisons absent from the facts.",
-            "match_player": "Review only the selected player's contribution in this fixture using the available rating, position, minutes and individual statistics. Do not recommend starting status.",
-            "team_identity": "Describe patterns calculated from aggregate metrics and compare the opponent profiles already calculated. Association does not prove causation; do not invent tactical style without metrics.",
-            "match": "Analyse the result and recorded indicators. Check home and away from those exact fields and keep the score in the same order. Player highlights must match that player's records.",
+            "next_match": "Prepare the next fixture using the calendar, recorded minutes and observed positions. Recommend only shapes in allowed_formations. Separate squad fit from confirmed selection or availability.",
+            "player": "Combine Atlas role and attribute profiles with production, per-90 efficiency, recent form and same-position squad peers. Compare samples fairly; do not infer hierarchy or starting status.",
+            "match_player": "Compare this appearance with the player's previous five valid appearances and with players recorded in the same position in this fixture where data exists. Consider attacking and defensive contribution, not only rating and goals.",
+            "team_identity": "Interpret Atlas-calculated trends and home/away splits. Describe measured associations without turning them into causes or tactical instructions.",
+            "match": "Contextualise result versus performance; compare chance creation/concession, volume/quality, circulation, progression and defensive actions with prior averages and the last five valid fixtures. Compare players at the same observed position when recorded. Identify deviations, patterns, impact and useful follow-up without assigning unobserved causes.",
         },
         "es-ES": {
-            "next_match": "Prepara el próximo partido usando calendario, minutos y posiciones exportadas. Elige solo una formación de allowed_formations; no infieras lesiones, disponibilidad, alineación ni estilo rival.",
-            "player": "Analiza atributos comparables, muestra, minutos y MatchStats. No afirmes jerarquía, titularidad, causalidad ni comparaciones ausentes de los hechos.",
-            "match_player": "Analiza solo al jugador seleccionado en este partido con nota, posición, minutos y estadísticas individuales. No recomiendes titularidad.",
-            "team_identity": "Describe patrones calculados en métricas agregadas y compara perfiles rivales ya calculados. Asociación no demuestra causalidad; no inventes estilo táctico sin métricas.",
-            "match": "Analiza el resultado y los indicadores registrados. Comprueba local y visitante en esos campos y conserva el orden del marcador. Los destacados deben coincidir con los datos del jugador.",
+            "next_match": "Prepara el próximo partido con calendario, minutos y posiciones observadas. Recomienda solo esquemas de allowed_formations. Separa la compatibilidad de plantilla de una alineación o disponibilidad confirmada.",
+            "player": "Cruza perfiles de función y atributos de Atlas con producción, eficiencia por 90, rendimiento reciente y compañeros de la misma posición. Compara muestras equivalentes; no infieras jerarquía ni titularidad.",
+            "match_player": "Compara esta actuación con las cinco actuaciones válidas anteriores del jugador y con jugadores registrados en la misma posición en este partido cuando haya datos. Considera aportes ofensivos y defensivos, no solo nota y goles.",
+            "team_identity": "Interpreta tendencias y divisiones local/visitante calculadas por Atlas. Describe asociaciones medidas sin convertirlas en causas o instrucciones tácticas.",
+            "match": "Contextualiza resultado frente a rendimiento; compara creación/concesión, volumen/calidad, circulación, progresión y acciones defensivas con promedios previos y los últimos cinco partidos válidos. Compara jugadores en la misma posición observada cuando esté registrada. Identifica desviaciones, patrones, impacto y seguimiento útil sin atribuir causas no observadas.",
         },
     }
     language_tasks = tasks.get(language, tasks["pt-BR"])
     task = language_tasks.get(mode, language_tasks["match"])
-    system = (f"You are Atlas's evidence-bound technical commission analyst. Write every text field only in {language_name}. "
-              "Return ONLY valid JSON with exactly these keys: summary ({text, fact_refs}), observations, recommendations, strengths, development_areas, training_suggestions, formation. "
-              "Every claim must cite supplied fact IDs. Reconcile team side, player identity, score order, units and sample before writing. "
-              "Never convert missing values to zero. Do not infer possession, pressure, tactical instructions, causation, injury, availability, starting XI, hierarchy or historical significance. "
-              "Use the Atlas sample label verbatim. Translate internal metric keys into plain football language (npk_goals means non-penalty goals; never print raw field keys). A scoreline alone proves the result, not dominance or control of play. Return no more than three short claims across all lists. Keep each item to one checkable claim. Omit a claim if evidence is incomplete or contradictory; do not fill every list. "
-              "Use strengths/development/training lists only for player modes. For team identity, describe measured associations without causal language. " + task)
+    system = (f"You are Atlas's technical commission analyst. Write every text field only in {language_name}. "
+              "Return ONLY valid JSON with exactly these keys: summary ({text, kind, fact_refs, limitations}), observations, recommendations, strengths, development_areas, training_suggestions, formation. "
+              "Every conclusion must cite supplied fact IDs and use kind=fact, inference, or hypothesis. For hypothesis, give a concise limitations field that states what the data cannot establish. Label direct records as facts; label comparisons/interpretations as inferences; label possible explanations as hypotheses. "
+              "Use the full useful evidence in the context: current match vs pre-match season-to-date and last-five references, opponent chances, player impact, rate/context metrics, sample counts, and position provenance. Do not recalculate raw statistics or claim a trend from fewer than three comparable observations. Keep missing values absent, never zero. "
+              "Do not invent possession share, pressing, line height, events/minutes, starting status, injuries, fitness, hierarchy, or function beyond the supplied sources. A statistical advantage may support an interpretation such as more chances or higher xG; it does not prove territorial control or a tactical cause. Do not suppress a useful, clearly labelled hypothesis solely because it is not proven. "
+              "Translate metric keys into football language (npk_goals means non-penalty goals; never print raw field keys). Preserve the Atlas sample labels. Avoid repeating the same point across sections. Return every material, distinct finding supported by available evidence; do not fill categories artificially and do not impose a three-claim limit. Use strengths/development/training lists only for player modes. Do not rate your own analysis quality. " + task)
     allowed_shapes = context.get("allowed_formations") or []
     formation_schema = {"type": "null"}
     if mode == "next_match" and allowed_shapes:
@@ -1170,42 +1432,30 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                                            "reason": {"type": "string", "maxLength": 500},
                                            "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
                             "required": ["shape", "reason", "fact_refs"]}
+    claim_schema = {"type": "object", "additionalProperties": False,
+                    "properties": {"text": {"type": "string", "maxLength": 700},
+                                   "kind": {"type": "string", "enum": ["fact", "inference", "hypothesis"]},
+                                   "limitations": {"type": "string", "maxLength": 500},
+                                   "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
+                    "required": ["text", "kind", "limitations", "fact_refs"]}
     response_schema = {"type": "object", "additionalProperties": False,
                        "properties": {"summary": {"type": "object", "additionalProperties": False,
-                                                   "properties": {"text": {"type": "string", "maxLength": 700},
+                                                   "properties": {"text": {"type": "string", "maxLength": 900},
+                                                                  "kind": {"type": "string", "enum": ["fact", "inference", "hypothesis"]},
+                                                                  "limitations": {"type": "string", "maxLength": 500},
                                                                   "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-                                                   "required": ["text", "fact_refs"]},
-                                      "observations": {"type": "array", "maxItems": 3,
-                                                       "items": {"type": "object", "additionalProperties": False,
-                                                                 "properties": {"text": {"type": "string", "maxLength": 500},
-                                                                                "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-                                                                 "required": ["text", "fact_refs"]}},
-                                      "recommendations": {"type": "array", "maxItems": 3,
-                                                          "items": {"type": "object", "additionalProperties": False,
-                                                                    "properties": {"text": {"type": "string", "maxLength": 500},
-                                                                                   "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-                                                                    "required": ["text", "fact_refs"]}},
-                                      "strengths": {"type": "array", "maxItems": 6,
-                                                    "items": {"type": "object", "additionalProperties": False,
-                                                              "properties": {"text": {"type": "string", "maxLength": 500},
-                                                                             "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-                                                              "required": ["text", "fact_refs"]}},
-                                      "development_areas": {"type": "array", "maxItems": 6,
-                                                            "items": {"type": "object", "additionalProperties": False,
-                                                                      "properties": {"text": {"type": "string", "maxLength": 500},
-                                                                                     "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-                                                                      "required": ["text", "fact_refs"]}},
-                                      "training_suggestions": {"type": "array", "maxItems": 6,
-                                                               "items": {"type": "object", "additionalProperties": False,
-                                                                         "properties": {"text": {"type": "string", "maxLength": 500},
-                                                                                        "fact_refs": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
-                                                                         "required": ["text", "fact_refs"]}},
+                                                   "required": ["text", "kind", "limitations", "fact_refs"]},
+                                      "observations": {"type": "array", "items": claim_schema},
+                                      "recommendations": {"type": "array", "items": claim_schema},
+                                      "strengths": {"type": "array", "items": claim_schema},
+                                      "development_areas": {"type": "array", "items": claim_schema},
+                                      "training_suggestions": {"type": "array", "items": claim_schema},
                                       "formation": formation_schema},
                        "required": ["summary", "observations", "recommendations", "strengths", "development_areas", "training_suggestions", "formation"]}
     body = {"model": selected, "stream": False, "format": response_schema, "think": False,
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": json.dumps(context, ensure_ascii=False, sort_keys=True)}],
-            "keep_alive": "10m", "options": {"temperature": 0.0, "num_predict": 1000}}
+            "keep_alive": "10m", "options": {"temperature": 0.2, "num_predict": 2600}}
     base = os.environ.get("ATLAS_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     req = urllib.request.Request(base + "/api/chat", data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -1217,49 +1467,46 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         if not isinstance(report, dict):
             raise ValueError("schema inválido")
         valid_ids = set(fact_ids)
-        default_refs = {"match": ["match", "matchstats", "match_players"],
-                        "match_player": ["match", "matchstats", "match_players", "selected_match_player"],
-                        "player": ["player_summary", "player_recent_matches", "player_matchstats"],
+        default_refs = {"match": ["match", "matchstats", "match_players", "pre_match_team_context"],
+                        "match_player": ["match", "matchstats", "match_players", "selected_match_player", "pre_match_player_context"],
+                        "player": ["player_summary", "player_position_peers", "player_recent_matches", "player_matchstats"],
                         "team_identity": ["team_statistical_profile", "opponent_profiles"],
                         "next_match": ["match", "squad", "formation_options", "previous_fixture", "following_fixture"]}
         safe_default_refs = [item for item in default_refs.get(mode, []) if item in valid_ids]
-
+        deterministic_summary = _deterministic_report_summary(context)
         summary = report.get("summary")
-        if isinstance(summary, str):
-            summary = {"text": summary, "fact_refs": safe_default_refs}
-        if not isinstance(summary, dict):
-            summary = {"text": "Análise gerada a partir do contexto selecionado no Atlas.", "fact_refs": safe_default_refs}
-        summary_text = summary.get("text") if isinstance(summary.get("text"), str) else "Análise gerada a partir dos dados registrados no Atlas."
-        summary_refs = summary.get("fact_refs")
-        if not isinstance(summary_refs, list) or not summary_refs or not set(summary_refs).issubset(valid_ids):
-            summary_refs = safe_default_refs
-        report["summary"] = {"text": summary_text[:700], "fact_refs": summary_refs}
+        summary_valid = isinstance(summary, dict) and _validate_report_item(context, mode, summary, valid_ids)
+        if summary_valid:
+            report["summary"] = {"text": summary["text"][:900], "kind": summary["kind"],
+                                  "limitations": str(summary.get("limitations") or "")[:500],
+                                  "fact_refs": summary["fact_refs"]}
+        elif deterministic_summary:
+            report["summary"] = {"text": deterministic_summary["text"], "kind": "fact", "limitations": "",
+                                  "fact_refs": deterministic_summary["fact_refs"]}
+        else:
+            report["summary"] = {"text": "Análise limitada aos fatos e métricas disponíveis neste recorte.",
+                                  "kind": "fact", "limitations": "", "fact_refs": safe_default_refs}
+        report["summary"]["model_generated"] = bool(summary_valid)
+        accepted_claims = 1 if summary_valid else 0
+        rejected_claims = 0 if summary_valid else 1
         for key in ("observations", "recommendations", "strengths", "development_areas", "training_suggestions"):
             values = report.get(key) if isinstance(report.get(key), list) else []
             cleaned = []
-            for item in values[:8]:
-                if not isinstance(item, dict) or not isinstance(item.get("text"), str):
+            for item in values:
+                if not isinstance(item, dict) or not _validate_report_item(context, mode, item, valid_ids):
+                    rejected_claims += 1
                     continue
-                refs = item.get("fact_refs")
-                if not isinstance(refs, list) or not refs or not set(refs).issubset(valid_ids):
-                    continue
-                cleaned.append({"text": item["text"][:500], "fact_refs": refs})
+                cleaned.append({"text": item["text"][:700], "kind": item["kind"],
+                                "limitations": str(item.get("limitations") or "")[:500],
+                                "fact_refs": item["fact_refs"]})
             report[key] = cleaned
+            accepted_claims += len(cleaned)
         if mode not in {"player", "match_player"}:
             for key in ("strengths", "development_areas", "training_suggestions"):
                 report[key] = []
-        if mode == "team_identity":
-            # A citation to the broad team profile alone cannot make an absent
-            # metric present. Drop text that claims unavailable tactical data.
-            unavailable_terms = ("posse", "possessão", "pressão", "linha defensiva", "altura da linha", "formação")
-            for key in ("observations", "recommendations"):
-                report[key] = [item for item in report[key]
-                               if not any(term in item["text"].casefold() for term in unavailable_terms)]
-            if any(term in report["summary"]["text"].casefold() for term in unavailable_terms):
-                report["summary"] = {
-                    "text": "Leitura limitada às métricas de equipe registradas e aos resultados por perfil de finalizações dos adversários.",
-                    "fact_refs": safe_default_refs,
-                }
+        deterministic_note = _commission_note(context)
+        if deterministic_note:
+            report["commission_note"] = deterministic_note
         formation = report.get("formation")
         report["formation"] = formation
         if mode != "next_match":
@@ -1275,92 +1522,14 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                     reason = "Esquema compatível com as posições registradas; o Atlas não confirma condição física ou disponibilidade."
                 report["formation"] = {"shape": formation["shape"], "reason": reason[:500],
                                        "fact_refs": [item for item in ("formation_options", "squad") if item in valid_ids]}
-        if report["formation"] is None and mode == "next_match":
-            report["recommendations"] = [item for item in report["recommendations"]
-                                         if not any(term in item["text"].casefold() for term in ("disponibilidade", "disponível", "lesão", "suspensão", "fisicamente", "fadiga", "cansaço"))]
-        if mode == "next_match":
-            blocked = ("disponibilidade", "disponível", "lesão", "suspensão", "fisicamente", "fadiga", "cansaço", "carga equilibrada", "boa condição")
-            if any(term in report["summary"]["text"].casefold() for term in blocked):
-                report["summary"]["text"] = "Preparação baseada no calendário e na carga de minutos registrada para o elenco. O Atlas não registra condição física, lesões ou suspensões."
-                report["summary"]["fact_refs"] = [item for item in ("match", "squad", "previous_fixture", "following_fixture") if item in valid_ids]
-        elif mode == "player":
-            blocked = ("disponibilidade", "disponível", "lesão", "suspensão", "fisicamente", "fadiga", "confiabilidade baixa", "baixa confiabilidade")
-            if any(term in report["summary"]["text"].casefold() for term in blocked):
-                report["summary"]["text"] = "Relatório baseado nas avaliações, minutos, amostra e MatchStats ligados a este jogador no recorte selecionado."
-                report["summary"]["fact_refs"] = [item for item in ("player_summary", "player_recent_matches", "player_matchstats") if item in valid_ids]
-        deterministic_summary = _deterministic_report_summary(context)
-        if deterministic_summary:
-            report["summary"] = deterministic_summary
-        deterministic_note = _commission_note(context)
-        if deterministic_note:
-            report["commission_note"] = deterministic_note
-
-        claim_rows: list[dict[str, Any]] = []
-        structurally_rejected = 0
-        for key in ("summary", "observations", "recommendations", "strengths", "development_areas", "training_suggestions"):
-            if key == "summary" and deterministic_summary:
-                continue
-            values = report.get(key) if key == "summary" else report.get(key, [])
-            values = [values] if key == "summary" else values
-            for index, item in enumerate(values or []):
-                if _claim_has_structural_conflict(context, mode, str(item.get("text") or "")):
-                    structurally_rejected += 1
-                    continue
-                claim_rows.append({"claim_id": f"{key}:{index}", "text": item["text"], "fact_refs": item["fact_refs"]})
-        if isinstance(report.get("formation"), dict):
-            claim_rows.append({"claim_id": "formation:0", "text": str(report["formation"].get("reason") or ""),
-                               "fact_refs": report["formation"].get("fact_refs") or []})
-        verification_schema = {"type": "object", "additionalProperties": False,
-                               "properties": {"supported_claim_ids": {"type": "array", "items": {"type": "string"}},
-                                              "unsupported_claim_ids": {"type": "array", "items": {"type": "string"}}},
-                               "required": ["supported_claim_ids", "unsupported_claim_ids"]}
-        supported_ids: set[str] = set()
-        if claim_rows:
-            verify_body = {"model": selected, "stream": False, "format": verification_schema, "think": False,
-                           "options": {"temperature": 0, "num_predict": 500},
-                           "messages": [
-                               {"role": "system", "content": f"You are a strict fact checker. The report is written in {language_name}; do not rewrite it. For each claim ID, mark it supported only when its full meaning, subject, direction, number, unit and scope follow directly from the supplied facts. A valid citation ID alone is insufficient. Reject inference, contradictory home/away, unsupported historical claims, tactics, lineup and availability. Return only the requested JSON."},
-                               {"role": "user", "content": json.dumps({"facts": context["facts"], "claims": claim_rows}, ensure_ascii=False, sort_keys=True)}]}
-            verify_req = urllib.request.Request(base + "/api/chat", data=json.dumps(verify_body, ensure_ascii=False).encode("utf-8"),
-                                                headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(verify_req, timeout=timeout) as response:
-                checked = json.loads(response.read().decode("utf-8"))
-            checked_json = json.loads(checked.get("message", {}).get("content", "{}"))
-            if not isinstance(checked_json.get("supported_claim_ids"), list):
-                raise ValueError("verificador de coerência inválido")
-            supported_ids = set(str(item) for item in checked_json["supported_claim_ids"])
-            supported_ids.intersection_update(item["claim_id"] for item in claim_rows)
-        total_claims = len(claim_rows) + structurally_rejected
-        coherent_pct = round(100 * len(supported_ids) / total_claims, 1) if total_claims else 100.0
-        for key in ("observations", "recommendations", "strengths", "development_areas", "training_suggestions"):
-            report[key] = [item for index, item in enumerate(report.get(key) or []) if f"{key}:{index}" in supported_ids]
-        if report.get("formation") is not None and "formation:0" not in supported_ids:
-            report["formation"] = None
-        if not deterministic_summary and "summary:0" not in supported_ids:
-            fallback_summary = {"pt-BR": "N/D — o resumo gerado não atingiu a confiança mínima de evidência.",
-                                "en-GB": "N/A — the generated summary did not meet the evidence confidence threshold.",
-                                "es-ES": "N/D — el resumen generado no alcanzó el umbral de confianza de evidencia."}.get(language, "N/D")
-            report["summary"] = {"text": fallback_summary, "fact_refs": safe_default_refs}
-        evidence_pct = _evidence_confidence(context, mode)
-        # Only verifier-approved free text remains visible. Confidence therefore
-        # reflects the evidence coverage of the published report; draft acceptance
-        # is kept separately for tuning the prompt.
-        final_coherence_pct = 100.0 if (deterministic_summary or "summary:0" in supported_ids or not claim_rows) else coherent_pct
-        confidence_pct = round(min(final_coherence_pct, evidence_pct), 1)
-        quality_score = round(confidence_pct / 10, 1)
-        review_required = confidence_pct < 90.0
-        if review_required:
-            for key in ("observations", "recommendations", "strengths", "development_areas", "training_suggestions"):
-                report[key] = []
-            report["formation"] = None
+        accepted_claims += int(report.get("formation") is not None)
+        validation = {"method": "source-reference, evidence-scope, and objective-contradiction checks",
+                      "accepted_claims": accepted_claims, "rejected_claims": rejected_claims,
+                      "interpretation_quality": "not independently scored"}
         result = {"available": True, "fallback": False, "cached": False, "model": selected,
                   "mode": mode, "scope_key": scope, "report": report, "fact_catalog": context["facts"],
-                  "quality_score": quality_score, "confidence_pct": confidence_pct,
-                  "coherent_claims_pct": final_coherence_pct, "draft_claim_acceptance_pct": coherent_pct,
-                  "evidence_coverage_pct": evidence_pct,
-                  "verified_claims": len(supported_ids), "review_required": review_required,
-                  "rejected_claims": total_claims - len(supported_ids),
-                  "minimum_quality_score": 8.5, "minimum_confidence_pct": 90}
+                  "coverage": _report_coverage(context), "validation": validation,
+                  "review_required": rejected_claims > 0}
         conn.execute("""INSERT INTO technical_commission_report_cache(career_id,snapshot_id,mode,scope_key,model,source_hash,payload_json)
             VALUES(?,?,?,?,?,?,?) ON CONFLICT(career_id,snapshot_id,mode,scope_key,model) DO UPDATE SET
             source_hash=excluded.source_hash,payload_json=excluded.payload_json,generated_at=CURRENT_TIMESTAMP""",

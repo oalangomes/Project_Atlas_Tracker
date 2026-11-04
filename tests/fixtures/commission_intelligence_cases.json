@@ -1,0 +1,170 @@
+{
+  "fixture_type": "synthetic_validator_cases_not_live_model_outputs",
+  "cases": [
+    {
+      "id": "win_poor_underlying_stats",
+      "scenario": "Vitória com indicadores de criação inferiores ao adversário",
+      "facts": [
+        "match",
+        "matchstats"
+      ],
+      "kind": "inference",
+      "text": "A vitória no placar veio apesar de menor xG registrado; o resultado e o volume de chances contam histórias diferentes.",
+      "limitations": "Uma partida não demonstra um padrão persistente.",
+      "supported_numbers": [
+        1.2,
+        2.4
+      ]
+    },
+    {
+      "id": "loss_more_creation",
+      "scenario": "Derrota com xG superior",
+      "facts": [
+        "match",
+        "matchstats"
+      ],
+      "kind": "inference",
+      "text": "A equipe perdeu, embora tenha registrado maior xG; o placar foi pior que a produção de chances registrada.",
+      "limitations": "xG não prova que cada chance era inevitável ou que o resultado deveria ser diferente.",
+      "supported_numbers": [
+        0.8,
+        1.7
+      ]
+    },
+    {
+      "id": "high_xg_low_conversion",
+      "scenario": "xG alto e gols baixos",
+      "facts": [
+        "matchstats"
+      ],
+      "kind": "inference",
+      "text": "Os gols ficaram abaixo do NPK-xG nesta partida, um sinal de baixa conversão no recorte.",
+      "limitations": "Não estabelece um problema recorrente de finalização.",
+      "supported_numbers": [
+        1,
+        2.6
+      ]
+    },
+    {
+      "id": "defense_many_dangerous_chances",
+      "scenario": "Poucos gols sofridos, mas xG contra elevado",
+      "facts": [
+        "matchstats"
+      ],
+      "kind": "inference",
+      "text": "O placar defensivo favorável coexistiu com alto xG concedido, então o resultado não resume a exposição a chances.",
+      "limitations": "A métrica não localiza as chances nem identifica sua causa.",
+      "supported_numbers": [
+        0,
+        2.2
+      ]
+    },
+    {
+      "id": "high_rating_low_contribution",
+      "scenario": "Nota alta e contribuição estatística modesta",
+      "facts": [
+        "player_summary",
+        "player_matchstats"
+      ],
+      "kind": "inference",
+      "text": "A nota do atleta foi alta, enquanto seus registros de criação e finalização permaneceram modestos.",
+      "limitations": "As métricas listadas não capturam todas as tarefas do jogador.",
+      "supported_numbers": [
+        8.1,
+        0.2
+      ]
+    },
+    {
+      "id": "defensive_contribution_low_attack",
+      "scenario": "Baixo volume ofensivo e contribuição defensiva registrada",
+      "facts": [
+        "player_matchstats"
+      ],
+      "kind": "inference",
+      "text": "O baixo volume ofensivo veio acompanhado de recuperações e desarmes registrados.",
+      "limitations": "Essas contagens não demonstram qualidade geral da atuação.",
+      "supported_numbers": [
+        0,
+        7
+      ]
+    },
+    {
+      "id": "same_position_peer_difference",
+      "scenario": "Dois atletas registrados na mesma posição com resultados diferentes",
+      "facts": [
+        "player_position_peers"
+      ],
+      "kind": "inference",
+      "text": "Entre os atletas do mesmo grupo de posição registrado, um apresentou maior contribuição por 90, com amostras de tamanho distinto.",
+      "limitations": "Grupo nominal semelhante não prova função tática equivalente.",
+      "supported_numbers": [
+        90,
+        0.48
+      ]
+    },
+    {
+      "id": "recent_change_three_plus",
+      "scenario": "Mudança em pelo menos três jogos anteriores",
+      "facts": [
+        "pre_match_team_context"
+      ],
+      "kind": "inference",
+      "text": "Nos últimos cinco jogos detalhados, o xG a favor médio ficou acima da referência da temporada.",
+      "limitations": "A associação não demonstra o motivo da mudança.",
+      "supported_numbers": [
+        5,
+        2.1
+      ]
+    },
+    {
+      "id": "observed_position_differs",
+      "scenario": "Posição observada difere da cadastrada",
+      "facts": [
+        "match_players"
+      ],
+      "kind": "fact",
+      "text": "O registro desta atuação indica posição observada RM; a posição cadastrada no elenco é CM.",
+      "limitations": "A captura de posição não descreve função ou movimentação.",
+      "supported_numbers": []
+    },
+    {
+      "id": "small_partial_sample",
+      "scenario": "Amostra pequena e métricas ausentes",
+      "facts": [
+        "matchstats_missing",
+        "pre_match_team_context"
+      ],
+      "kind": "fact",
+      "text": "Há apenas duas partidas comparáveis com estatísticas detalhadas; esta referência é limitada e xA está indisponível.",
+      "limitations": "Não há evidência suficiente para declarar tendência de xA.",
+      "supported_numbers": [
+        2
+      ]
+    },
+    {
+      "id": "source_disagreement",
+      "scenario": "Divergência entre fontes",
+      "facts": [
+        "match",
+        "match_player_stats_missing",
+        "player_summary"
+      ],
+      "kind": "fact",
+      "text": "O registro de minutos vem do histórico de atuação; métricas detalhadas individuais para esta partida não estão ligadas.",
+      "limitations": "As fontes não podem ser reconciliadas neste recorte.",
+      "supported_numbers": []
+    },
+    {
+      "id": "plausible_unconfirmed_hypothesis",
+      "scenario": "Hipótese plausível explicitamente não confirmada",
+      "facts": [
+        "matchstats",
+        "pre_match_team_context"
+      ],
+      "kind": "hypothesis",
+      "text": "A queda de passes-chave pode ter reduzido algumas alternativas de criação.",
+      "limitations": "É uma hipótese: o Atlas não registra coordenadas nem a sequência das ações para confirmar a causa.",
+      "supported_numbers": []
+    }
+  ]
+}

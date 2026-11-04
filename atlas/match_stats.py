@@ -426,9 +426,19 @@ def _match_events(players: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(events, key=lambda item: (priority.get(str(item.get("type")), 20), str(item.get("displayName") or "")))
 
 
-def detailed_match(conn: sqlite3.Connection, fixture_id: int) -> dict[str, Any] | None:
+def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int | None = None,
+                   as_of_import_sequence: int | None = None) -> dict[str, Any] | None:
+    clauses = ["mse.fixture_id=?", "mse.superseded_by_export_id IS NULL"]
+    params: list[Any] = [fixture_id]
+    if career_id is not None:
+        clauses.append("mse.career_id=?")
+        params.append(int(career_id))
+    if as_of_import_sequence is not None:
+        clauses.append("source_snapshot.import_sequence<=?")
+        params.append(int(as_of_import_sequence))
     export = conn.execute(
-        "SELECT * FROM match_stat_exports WHERE fixture_id=? AND superseded_by_export_id IS NULL ORDER BY id DESC LIMIT 1", (fixture_id,)
+        "SELECT mse.* FROM match_stat_exports mse LEFT JOIN snapshots source_snapshot ON source_snapshot.id=mse.snapshot_id WHERE "
+        + " AND ".join(clauses) + " ORDER BY mse.id DESC LIMIT 1", tuple(params)
     ).fetchone()
     if not export:
         return None
@@ -482,6 +492,7 @@ def detailed_match(conn: sqlite3.Connection, fixture_id: int) -> dict[str, Any] 
 
 def detailed_player_matches(
     conn: sqlite3.Connection, career_id: int, player_id: int, *, season_indices: list[int] | None = None,
+    as_of_import_sequence: int | None = None,
 ) -> list[dict[str, Any]]:
     params: list[Any] = [career_id, player_id]
     season_filter = ""
@@ -489,6 +500,9 @@ def detailed_player_matches(
         placeholders = ",".join("?" for _ in season_indices)
         season_filter = f" AND s.season_index IN ({placeholders})"
         params.extend(int(v) for v in season_indices)
+    if as_of_import_sequence is not None:
+        season_filter += " AND s.import_sequence<=?"
+        params.append(int(as_of_import_sequence))
     rows = conn.execute(
         f"""SELECT mse.id export_id,mse.fixture_id,mse.snapshot_id,mse.linkage_confidence,
                    mpds.team_index,mpds.stats_json,s.season_index,s.career_date,

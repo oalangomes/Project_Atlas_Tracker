@@ -1,41 +1,44 @@
-# Comissão Técnica no Atlas — primeiro incremento
+# Comissão Técnica e inteligência de partidas no Atlas
 
-Este painel é uma extensão do Atlas existente. A leitura é calculada por carreira e snapshot, gravada em cache derivado com versão/hash das fontes e refeita quando o conteúdo de origem muda. O save do EA FC permanece somente leitura.
+A Comissão Técnica é uma camada do Project Atlas Tracker existente. Ela usa a carreira e o snapshot selecionados, preserva os cálculos estatísticos canônicos e não escreve no save EA FC. MatchStats, histórico, posição cadastrada e posição observada mantêm a proveniência própria.
 
-## Matriz de cobertura
+## Cobertura entre módulos do Atlas
 
-| Dependência esportiva | Evidência no Atlas | Tratamento deste incremento |
-|---|---|---|
-| Identidade, clube e posição cadastral | `player_states` do snapshot | Extraído; carreira e clube conferidos pelo `career_id` e `managed_team_ea_id` |
-| Partida, data e adversário | `player_match_performances` e `fixture_observations` | Atuações importadas no snapshot selecionado; chave do jogo preservada |
-| Minutos e nota por atuação | `player_match_performances` | Extraídos; base para notas de temporada e momento recente |
-| Últimas cinco atuações válidas | Minutos e nota individuais | Derivado como média ponderada por minutos nas até cinco atuações recentes com 15+ minutos |
-| Corte de amostra | Minutos totais e atuações válidas | Mesmo contrato Hub: utilizável com 300+ min e 3+ atuações; confiável com 450+ min e 5+ atuações |
-| Cameo de 1–14 min | Minutos e nota existem, mas eventos individuais não são completos | Mantido na minutagem; não pesa no recorte recente. O Atlas não consegue aplicar a exceção Hub de gol/assistência sem evidência individual |
-| Hierarquia de elenco | `roster_states` registra elenco/slot observado, sem hierarquia estrutural confiável | N/D; não inferida de titularidades observadas ou minutos |
-| Gols, assistências, NPK-xG, xA, chutes, passes, desarmes, interceptações e ações | `match_player_detailed_stats.stats_json` em exportações completas ligadas ao fixture e à carreira | Extraídos por jogador, somente nas partidas exportadas; a cobertura aparece como jogos exportados / jogos concluídos e não é apresentada como temporada completa |
-| Posição principal e comparação | `player_states.primary_position` | Coortes separadas por posição cadastrada; cada grupo mostra jogos, minutos e selo de amostra |
-| Função/subgrupo observado | `player_match_performances.actual_position` com provenance `career_playermatchratinghistory_position` | Comparação apenas quando a posição foi registrada por atuação; registros de última escalação são excluídos |
-| Clean sheet por exposição individual | Resultado coletivo por fixture e minutos individuais | Não incluído na leitura individual inicial |
-| Métricas de goleiro/defesa | Exportações detalhadas ligadas em parte das partidas | Ações presentes no `stats_json` (por exemplo, saves, goals conceded, tackles, interceptions, blocks e clearances) são somadas apenas no recorte exportado; nenhuma taxa ausente é estimada |
-| Base 5x5 | Estado jovem/tournament probe separado do futebol profissional | Fora do cálculo profissional; nenhuma estatística 5x5 inferida |
+| Módulo | Dados e cálculos canônicos | Apresentação preservada | Evolução desta entrega | Lacuna atual |
+|---|---|---|---|---|
+| Match Center | Fixtures, placar, MatchStats, eventos exportados, rating/minutos | Cabeçalho, comparação estatística, eventos e tabela de atuações diretamente visíveis | Diagnóstico contextual aparece junto das estatísticas; relatório salvo acessível na partida | Eventos não têm minuto confiável; não há coordenadas espaciais |
+| Estatísticas detalhadas de partidas | `atlas/match_stats.py`: xG de equipe derivado quando penalidades permitem, NPK-xG, xA, chutes, passe, duelos, defesa, goleiro e taxas | Indicadores de equipe e métricas individuais completas permanecem acessíveis | Leituras de relatório selecionam a exportação da carreira e do snapshot, com corte temporal | Cobertura incompleta; campos ausentes continuam N/D |
+| Analysis / Match Intelligence | Agregados, divisões casa/fora/competição, séries por jogo e médias móveis já existentes | Gráficos, líderes e tabela jogo a jogo permanecem como base | Comissão recebe referências pré-partida e pode contextualizar a partida contra temporada e últimas cinco exportações anteriores | Não há cronologia de xG por evento nem métricas táticas não exportadas |
+| Player Analysis | Radar, atributos, perfis de função, percentis, OVR/POT, histórico individual e estatísticas detalhadas | Análise determinística e comparações de clube/liga são preservadas | Relatório individual acrescenta peer group do elenco, amostra, minutos, forma e contribuição MatchStats | Comparações por posição observada ainda dependem de captura com proveniência confiável |
+| Comparações de elenco, posição e grupo | `server_query_entities.py` e `atlas/commission.py` | Comparações cadastrais continuam nas telas existentes; tabelas detalhadas não viram o painel principal | Relatório contextual pode mencionar concorrentes de grupo nominal, com minutos e amostra | Grupo posicional nominal não comprova função tática equivalente |
+| Evolução individual | Rating/minutos por atuação, MatchStats ligados e histórico OVR/POT | Abas de partidas e desenvolvimento mantidas | O relatório de partida individual compara a atuação com até cinco aparições MatchStats anteriores | Sem granularidade por período em campo ou função |
+| Technical Commission | Política de amostra e notas ponderadas da Comissão; tendências coletivas existentes | Painel coletivo e ferramentas de elenco permanecem integrados ao Atlas | Diagnóstico determinístico separado de interpretação Ollama e comparação histórica | Qualidade esportiva ainda requer avaliação humana contra partidas reais |
+| Relatórios Ollama | Contexto serializado com fatos e IDs, MatchStats canônico, jogador e referências históricas anteriores | A análise fica na partida, perfil do jogador ou Comissão Técnica | Relatório JSON tipado em fato/inferência/hipótese, fontes citadas, limitações, cache por carreira/snapshot/versão/fatos; sem verificador baseado em segunda chamada ao mesmo modelo | Ollama está opcional e offline no ambiente desta execução; não foi possível medir saída real do modelo |
 
-## Regras de decisão
+## Fontes e limites das afirmações
 
-- Hierarquia, momento e recomendação permanecem em campos distintos.
-- A nota recente é a média ponderada por minutos das cinco atuações válidas mais recentes do jogador, e não das cinco partidas mais recentes do clube.
-- Uma amostra abaixo dos cortes é exibida como sinal e sugere ampliar a observação. Ela não altera hierarquia, elenco ou escalação.
-- Com amostra utilizável, a variação recente de pelo menos 0,3 ponto indica alta/queda; a recomendação permanece de acompanhamento porque falta hierarquia formal e comparação confiável por função.
-- Campos ausentes aparecem como N/D. O painel não grava no save e não transforma resultados de equipe em eventos individuais.
+- **Extraído:** valores presentes em snapshot, fixture, exportação MatchStats completa ligada, histórico de rating/minutos ou atributo cadastrado.
+- **Derivado:** taxas e médias produzidas pelos cálculos de `atlas/match_stats.py`, contexto pré-partida agregado e métricas da Comissão Técnica. O contexto de partida exclui datas iguais/posteriores ao jogo analisado e exports posteriores ao snapshot selecionado.
+- **Indisponível:** posse percentual, pressão coletiva, altura de linha, evento com minuto, coordenadas, disponibilidade física, hierarquia formal e funções táticas quando não há fonte específica. Nenhum valor ausente é tratado como zero.
+- A posição observada é aceita somente quando `actual_position_source` é `career_playermatchratinghistory_position`. Ela não confirma titularidade, função ou movimentação.
+- Dados profissionais e futebol jovem 5x5 permanecem separados. O save EA FC segue somente leitura e nenhuma mudança de exportador Lua foi necessária.
 
-## Persistência e IA local
+## Política de amostra e comparação temporal
 
-O cache `technical_commission_cache` é derivado, separado do dado bruto, versionado e idempotente por carreira/snapshot. O resumo esportivo é recalculado por carreira, temporada e snapshot solicitado; o backfill é repetível. A tabela `technical_commission_ai_cache` guarda somente respostas estruturadas que passaram pela validação, com hash das evidências.
+- Os cortes do Hub continuam: utilizável com pelo menos 300 minutos e 3 atuações válidas; confiável com 450 minutos e 5 atuações. São rótulos de amostra, não regras universais para relevância esportiva.
+- Forma individual mantém até cinco atuações válidas, ponderadas por minutos.
+- Referência coletiva pré-partida contém médias da temporada até a data e médias das últimas cinco partidas detalhadas elegíveis, além de divisão casa/fora quando há amostra. Cada métrica leva a própria contagem de jogos não ausentes.
+- Referência individual usa até cinco atuações MatchStats anteriores elegíveis; posição observada só entra com proveniência confiável. Não se atribuem ações de uma partida a posições por intervalo.
+- Contextos são filtrados por `career_id`, time gerenciado e `import_sequence` selecionado. Plymouth Argyle e Sheffield United não são cruzados.
 
-Ollama é opcional e local. `ATLAS_OLLAMA_URL` pode trocar o endereço (padrão `http://127.0.0.1:11434`) e `ATLAS_OLLAMA_MODEL` fixa um modelo; sem isso, o Atlas escolhe o primeiro modelo local disponível. `GET /api/ollama/models` verifica o serviço. O botão da tela envia fatos somente-leitura, usa timeout e schema JSON; o modelo escolhe sinais enumerados e os textos finais são montados pelo Atlas a partir de campos verificados. Respostas inválidas/offline mantêm o relatório determinístico. A IA não preenche N/D nem grava dados brutos ou no save.
+## Relatórios estruturados
 
-## Validação Hub
+Cada resumo e conclusão tem `kind`: `fact`, `inference` ou `hypothesis`. Hipóteses exigem campo `limitations`. Todas citam IDs de fatos presentes no contexto. A validação local verifica JSON, IDs de fontes citadas, números contidos nos valores dessas fontes, limites de fonte e contradições objetivas conhecidas; ela não mede qualidade esportiva nem usa o mesmo LLM como único avaliador. Os itens válidos não são descartados por palavras genéricas como “domínio” ou “defesa sólida”; interpretações continuam rotuladas e devem estar apoiadas nas evidências citadas.
 
-O painel preserva os cortes e a ponderação do Hub para atuações. No workspace ativo ARGILA / Plymouth Argyle (snapshot 48, 25/10/2025), há 32 jogadores, 318 atuações no histórico e 31 jogadores com MatchStats. Os exports cobrem 19 de 21 jogos concluídos (90,5%) e 308 linhas do Plymouth. Gols e assistências abaixo refletem somente esse recorte; a função por atuação é limitada aos registros com proveniência confiável. Os resultados do Sheffield Hub ainda não são equivalência ponta a ponta, pois são de outra carreira e composição.
+A interface não mostra score de confiança ou nota de qualidade inventada a partir da quantidade de evidências aceitas. Cobertura, itens filtrados e ausência de avaliação independente ficam em detalhes. O cache usa versão de contrato (atual v5), carreira, snapshot, modo, modelo e hash das fontes.
 
-O workspace Plymouth foi confirmado como carreira ativa; não foi misturado com Sheffield United. A carreira e os arquivos de save permanecem somente leitura. O módulo jovem 5x5 continua separado do futebol profissional.
+O Ollama é opcional. Sem serviço local, as estatísticas, gráficos e comparações do Atlas continuam disponíveis. Relatórios existentes podem ser lidos do cache; uma chamada falha não grava uma análise nova.
+
+## Avaliação reproduzível e alcance da evidência
+
+`tests/fixtures/commission_intelligence_cases.json` contém doze casos sintéticos de contrato, incluindo contradição entre placar e desempenho, conversão, defesa, comparação individual, posições, amostra pequena, divergência de fonte e hipótese não comprovada. Esses cenários testam classificação e validação de evidência, não são resultados de modelo nem substituem avaliação de conteúdo gerado ao vivo. Como Ollama estava offline durante esta execução, não é correto declarar ganho medido de qualidade do modelo ou apresentar exemplos de saída real antes/depois.

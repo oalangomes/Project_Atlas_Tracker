@@ -3,12 +3,13 @@ import sqlite3
 import io
 import json
 import time
+from pathlib import Path
 from unittest.mock import patch
 
 from atlas.commission import (analyze_players, assess_sample, get_commission, get_commission_report,
                               get_cached_commission_report, get_commission_report_job, ollama_analysis,
                               queue_auto_reports_for_imported_snapshots, start_commission_report_job,
-                              _commission_note, _claim_has_structural_conflict)
+                              _commission_note, _claim_has_structural_conflict, _validate_report_item, _prior_match_context)
 
 
 class CommissionMetricTests(unittest.TestCase):
@@ -28,14 +29,35 @@ class CommissionMetricTests(unittest.TestCase):
         context["facts"][1]["value"]["previous_wins"] = 1
         self.assertNotIn("history", _commission_note(context)["text"].casefold())
 
-    def test_scoreline_does_not_support_claim_of_match_dominance(self):
-        context = {"mode": "match", "facts": [{"id": "match", "value": {
+    def test_report_validation_allows_labelled_inference_but_rejects_source_conflicts(self):
+        context = {"mode": "match", "managed_team": "Plymouth Argyle", "facts": [{"id": "match", "value": {
             "completed": True, "managed_team_side": "home", "managed_score": 4,
             "opponent_score": 0, "home": "Plymouth Argyle", "away": "Everton"}}]}
-        self.assertTrue(_claim_has_structural_conflict(context, "match", "The home team dominated the match."))
-        self.assertTrue(_claim_has_structural_conflict(context, "match", "El equipo local dominó el partido."))
-        self.assertTrue(_claim_has_structural_conflict(context, "match", "La defensa local fue sólida."))
-        self.assertFalse(_claim_has_structural_conflict(context, "match", "The team won the match 4–0."))
+        self.assertFalse(_claim_has_structural_conflict(context, "match", "Plymouth Argyle won 4–0."))
+        self.assertTrue(_claim_has_structural_conflict(context, "match", "Plymouth Argyle lost 0–4."))
+        self.assertFalse(_claim_has_structural_conflict(context, "match", "The scoreline alone does not establish territorial dominance."))
+
+    def test_report_validation_rejects_numbers_absent_from_cited_facts(self):
+        context = {"mode": "match", "facts": [{"id": "matchstats", "value": {"npk_expected_goals": 2.4}}]}
+        valid_ids = {"matchstats"}
+        supported = {"text": "The team registered 2.4 NPK-xG.", "kind": "fact", "limitations": "", "fact_refs": ["matchstats"]}
+        invented = {"text": "The team registered 9.8 NPK-xG.", "kind": "fact", "limitations": "", "fact_refs": ["matchstats"]}
+        self.assertTrue(_validate_report_item(context, "match", supported, valid_ids))
+        self.assertFalse(_validate_report_item(context, "match", invented, valid_ids))
+
+    def test_twelve_reproducible_intelligence_scenarios_keep_labelled_supported_claims(self):
+        fixture = json.loads((Path(__file__).parent / "fixtures" / "commission_intelligence_cases.json").read_text(encoding="utf-8"))
+        self.assertEqual(fixture["fixture_type"], "synthetic_validator_cases_not_live_model_outputs")
+        self.assertEqual(len(fixture["cases"]), 12)
+        for case in fixture["cases"]:
+            with self.subTest(case=case["id"]):
+                context = {"mode": "match", "facts": [{"id": fact_id, "value": {"synthetic_supported_values": case.get("supported_numbers", [])}} for fact_id in case["facts"]]}
+                claim = {"text": case["text"], "kind": case["kind"], "limitations": case["limitations"], "fact_refs": case["facts"]}
+                self.assertTrue(_validate_report_item(context, "match", claim, set(case["facts"])))
+        hypothesis = next(case for case in fixture["cases"] if case["kind"] == "hypothesis")
+        context = {"mode": "match", "facts": [{"id": fact_id, "value": {"synthetic_supported_values": hypothesis.get("supported_numbers", [])}} for fact_id in hypothesis["facts"]]}
+        claim = {"text": hypothesis["text"], "kind": "hypothesis", "limitations": "", "fact_refs": hypothesis["facts"]}
+        self.assertFalse(_validate_report_item(context, "match", claim, set(hypothesis["facts"])))
 
     def test_hub_sample_thresholds_are_preserved(self):
         self.assertFalse(assess_sample(299, 3)["usable"])
@@ -171,54 +193,102 @@ class CommissionMetricTests(unittest.TestCase):
             CREATE TABLE fixture_observations(snapshot_id INTEGER,fixture_id INTEGER,fixture_key TEXT,
                 is_completed INTEGER,managed_team_involved INTEGER,date TEXT,competition_name TEXT,
                 home_team_name TEXT,away_team_name TEXT,home_score INTEGER,away_score INTEGER,managed_team_result TEXT);
-            CREATE TABLE match_stat_exports(id INTEGER,fixture_id INTEGER,career_id INTEGER,
-                linkage_status TEXT,export_status TEXT,superseded_by_export_id INTEGER);
+            CREATE TABLE match_stat_exports(id INTEGER,fixture_id INTEGER,career_id INTEGER,snapshot_id INTEGER,
+                external_export_id TEXT,linkage_confidence REAL,linkage_status TEXT,export_status TEXT,superseded_by_export_id INTEGER);
             CREATE TABLE match_team_detailed_stats(export_id INTEGER,team_index INTEGER,team_ea_id INTEGER,stats_json TEXT);
             CREATE TABLE match_player_detailed_stats(export_id INTEGER,player_ea_id INTEGER,team_index INTEGER,
                 minutes_played INTEGER,game_rating REAL,stats_json TEXT);
-            CREATE TABLE player_states(snapshot_id INTEGER,ea_player_id INTEGER,display_name TEXT,primary_position TEXT);
+            CREATE TABLE player_states(snapshot_id INTEGER,ea_player_id INTEGER,display_name TEXT,primary_position TEXT,team_ea_id INTEGER);
+            CREATE TABLE player_match_performances(snapshot_id INTEGER,player_ea_id INTEGER,fixture_key TEXT,
+                date TEXT,rating REAL,minutes_played INTEGER,actual_position TEXT,actual_position_source TEXT,raw_json TEXT);
             INSERT INTO careers VALUES(1);
             INSERT INTO snapshots VALUES(48,1,1929,1,'2025-10-25','Plymouth Argyle',48);
             INSERT INTO fixtures VALUES(1408,'fixture-1408',100,1929,3);
             INSERT INTO fixture_observations VALUES(48,1408,'fixture-1408',1,1,'2025-10-25',
-                'League One','Exeter City','Plymouth Argyle',1,4,'W');
-            INSERT INTO match_stat_exports VALUES(1,1408,1,'linked','complete_participant_export',NULL);
-            INSERT INTO match_team_detailed_stats VALUES(1,0,100,'{"npk_expected_goals":0.4,"goals_conceded":4}');
-            INSERT INTO match_team_detailed_stats VALUES(1,1,1929,'{"npk_expected_goals":3.1,"goals_conceded":1}');
+                'League One','Plymouth Argyle','Everton',4,0,'W');
+            INSERT INTO match_stat_exports VALUES(1,1408,1,48,'export-1',1.0,'linked','complete_participant_export',NULL);
+            INSERT INTO match_team_detailed_stats VALUES(1,0,100,'{"npk_expected_goals":0.4,"goals_conceded":4,"shots":5}');
+            INSERT INTO match_team_detailed_stats VALUES(1,1,1929,'{"npk_expected_goals":3.1,"goals_conceded":0,"shots":20}');
         """)
-        content = {"summary": {"text": "Plymouth is the away side and lost 4-1.", "fact_refs": ["match"]},
-                   "observations": [{"text": "Plymouth Argyle marcou quatro gols; Exeter City marcou um.", "fact_refs": ["match"]}],
-                   "recommendations": [], "formation": {"shape": "4-3-3", "reason": "unused", "fact_refs": ["match"]}}
+        content = {
+            "summary": {"text": "Plymouth scored four from 3.1 recorded NPK-xG; the score alone does not establish territorial dominance.",
+                        "kind": "inference", "limitations": "No spatial or possession data is exported.",
+                        "fact_refs": ["match", "matchstats"]},
+            "observations": [{"text": "The result was 4–0, while recorded NPK-xG was 3.1 for Plymouth.",
+                              "kind": "fact", "limitations": "", "fact_refs": ["match", "matchstats"]}],
+            "recommendations": [{"text": "Review finishing decisions across the next few matches before changing the attacking approach.",
+                                 "kind": "hypothesis", "limitations": "One match cannot establish a persistent finishing pattern.",
+                                 "fact_refs": ["matchstats"]}],
+            "strengths": [], "development_areas": [], "training_suggestions": [], "formation": None}
         response = io.BytesIO(json.dumps({"message": {"content": json.dumps(content)}}).encode())
         response.__enter__ = lambda: response
         response.__exit__ = lambda *args: None
-        verified = io.BytesIO(json.dumps({"message": {"content": json.dumps({"supported_claim_ids": ["observations:0"], "unsupported_claim_ids": []})}}).encode())
-        verified.__enter__ = lambda: verified
-        verified.__exit__ = lambda *args: None
         with patch("atlas.commission.ollama_models", return_value={"available": True, "models": ["local"]}), \
-             patch("atlas.commission.urllib.request.urlopen", side_effect=[response, verified]) as call:
+             patch("atlas.commission.urllib.request.urlopen", return_value=response) as call:
             first = get_commission_report(conn, 1, 48, "match", fixture_id=1408, model="local")
             second = get_commission_report(conn, 1, 48, "match", fixture_id=1408, model="local")
         self.assertTrue(first["available"])
-        self.assertEqual(first["report"]["summary"]["fact_refs"], ["match"])
-        self.assertEqual(first["report"]["summary"]["text"], "Plymouth Argyle venceu Exeter City por 4–1 na League One.")
-        self.assertIn("primeiro triunfo registrado", first["report"]["commission_note"]["text"])
-        self.assertGreaterEqual(first["confidence_pct"], 90)
-        self.assertEqual(first["quality_score"], 10.0)
+        self.assertEqual(first["report"]["summary"]["fact_refs"], ["match", "matchstats"])
+        self.assertIn("does not establish territorial dominance", first["report"]["summary"]["text"])
+        self.assertEqual(first["report"]["observations"][0]["kind"], "fact")
+        self.assertEqual(first["report"]["recommendations"][0]["kind"], "hypothesis")
+        self.assertEqual(first["report"]["recommendations"][0]["limitations"], "One match cannot establish a persistent finishing pattern.")
+        self.assertEqual(first["validation"]["interpretation_quality"], "not independently scored")
+        self.assertNotIn("quality_score", first)
+        self.assertNotIn("confidence_pct", first)
         self.assertIsNone(first["report"]["formation"])
         self.assertTrue(second["cached"])
-        self.assertEqual(call.call_count, 2)
+        self.assertEqual(call.call_count, 1)
         conn.execute("INSERT INTO snapshots VALUES(49,1,1929,1,'2025-10-26','Plymouth Argyle',49)")
-        conn.execute("INSERT INTO fixture_observations VALUES(49,1408,'fixture-1408',1,1,'2025-10-25','League One','Exeter City','Plymouth Argyle',1,4,'W')")
+        conn.execute("INSERT INTO fixture_observations VALUES(49,1408,'fixture-1408',1,1,'2025-10-25','League One','Plymouth Argyle','Everton',4,0,'W')")
         saved = get_cached_commission_report(conn, 1, 49, "match", fixture_id=1408, model="local")
         self.assertEqual(saved["state"], "ready")
         self.assertTrue(saved["cached"])
         with patch("atlas.commission.ollama_models", side_effect=AssertionError("cache read must not call Ollama")):
             reused = get_commission_report(conn, 1, 49, "match", fixture_id=1408, model="local")
         self.assertTrue(reused["cached"])
-        self.assertEqual(call.call_count, 2)
+        self.assertEqual(call.call_count, 1)
         with self.assertRaises(ValueError):
             get_commission_report(conn, 2, 48, "match", fixture_id=1408, model="local")
+        conn.close()
+
+    def test_pre_match_context_excludes_same_day_future_and_other_career_exports(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.executescript("""
+            CREATE TABLE snapshots(id INTEGER PRIMARY KEY,career_id INTEGER,import_sequence INTEGER);
+            CREATE TABLE fixtures(id INTEGER PRIMARY KEY,home_team_ea_id INTEGER,away_team_ea_id INTEGER);
+            CREATE TABLE fixture_observations(snapshot_id INTEGER,fixture_id INTEGER,managed_team_involved INTEGER,
+                is_completed INTEGER,date TEXT,home_team_name TEXT,away_team_name TEXT,home_score INTEGER,away_score INTEGER);
+            CREATE TABLE match_stat_exports(id INTEGER PRIMARY KEY,fixture_id INTEGER,career_id INTEGER,snapshot_id INTEGER,
+                linkage_status TEXT,export_status TEXT,superseded_by_export_id INTEGER,team0_ea_id INTEGER,team1_ea_id INTEGER,
+                external_export_id TEXT,linkage_confidence REAL);
+            CREATE TABLE match_team_detailed_stats(export_id INTEGER,team_index INTEGER,team_ea_id INTEGER,stats_json TEXT);
+            CREATE TABLE match_player_detailed_stats(export_id INTEGER,player_ea_id INTEGER,team_index INTEGER,
+                minutes_played INTEGER,game_rating REAL,stats_json TEXT);
+            INSERT INTO snapshots VALUES(100,1,10),(101,1,11),(200,2,10);
+        """)
+        # Same career and earlier date, but only this export predates the selected snapshot.
+        rows = [
+            (1, 1, 1, 100, '2025-10-01', 40, 50, 2),
+            (2, 2, 1, 100, '2025-10-11', 40, 50, 99),
+            (3, 3, 1, 100, '2025-10-10', 40, 50, 99),
+            (4, 4, 1, 200, '2025-10-02', 40, 50, 99),
+            (5, 5, 1, 101, '2025-10-03', 40, 50, 99),
+        ]
+        for export_id, fixture_id, career_id, snapshot_id, match_date, opponent_id, team_id, xg in rows:
+            conn.execute("INSERT INTO fixtures VALUES(?,?,?)", (fixture_id, opponent_id, team_id))
+            conn.execute("INSERT INTO fixture_observations VALUES(100,?,1,1,?,'Opponent','Managed',1,0)", (fixture_id, match_date))
+            conn.execute("INSERT INTO match_stat_exports VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                         (export_id, fixture_id, career_id, snapshot_id, 'linked', 'complete_participant_export', None,
+                          opponent_id, team_id, f'exp-{export_id}', 1.0))
+            conn.execute("INSERT INTO match_team_detailed_stats VALUES(?,?,?,?)", (export_id, 0, opponent_id, json.dumps({"npk_expected_goals": 0.2})))
+            conn.execute("INSERT INTO match_team_detailed_stats VALUES(?,?,?,?)", (export_id, 1, team_id, json.dumps({"npk_expected_goals": xg, "shots": 8})))
+        result = _prior_match_context(conn, 1, conn.execute("SELECT * FROM snapshots WHERE id=100").fetchone(),
+                                      999, 50, '2025-10-10')
+        self.assertEqual(result["lookback_matches"], 1)
+        self.assertEqual(result["recent_five"][0]["fixture_id"], 1)
+        self.assertEqual(result["season_to_date_reference"]["for"]["metrics_per_match"]["npk_expected_goals"], 2.0)
         conn.close()
 
     def test_dynamic_report_job_runs_without_blocking_the_request(self):
