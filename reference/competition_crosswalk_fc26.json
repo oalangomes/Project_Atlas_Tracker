@@ -1,0 +1,467 @@
+{
+  "format": "project-atlas-competition-crosswalk-1",
+  "source": "CompIDs und Namen.xlsx",
+  "count": 92,
+  "items": [
+    {
+      "object_id": 455,
+      "competition_id": 1,
+      "name": "3F Superliga"
+    },
+    {
+      "object_id": 426,
+      "competition_id": 4,
+      "name": "1A Pro League"
+    },
+    {
+      "object_id": 1119,
+      "competition_id": 10,
+      "name": "Eredivisie"
+    },
+    {
+      "object_id": 776,
+      "competition_id": 13,
+      "name": "Premier League"
+    },
+    {
+      "object_id": 779,
+      "competition_id": 14,
+      "name": "skybet Championship"
+    },
+    {
+      "object_id": 874,
+      "competition_id": 16,
+      "name": "Ligue 1 McDonald's"
+    },
+    {
+      "object_id": 877,
+      "competition_id": 17,
+      "name": "Ligue 2 BKT"
+    },
+    {
+      "object_id": 971,
+      "competition_id": 19,
+      "name": "Bundesliga"
+    },
+    {
+      "object_id": 974,
+      "competition_id": 20,
+      "name": "2. Bundesliga"
+    },
+    {
+      "object_id": 977,
+      "competition_id": 21,
+      "name": "Relegation Bundesliga"
+    },
+    {
+      "object_id": 985,
+      "competition_id": 22,
+      "name": "Relegation 2. Bundesliga"
+    },
+    {
+      "object_id": 1076,
+      "competition_id": 31,
+      "name": "Serie A Enilive"
+    },
+    {
+      "object_id": 1079,
+      "competition_id": 32,
+      "name": "Serie BKT"
+    },
+    {
+      "object_id": 1082,
+      "competition_id": 33,
+      "name": "Serie BKT Playoffs"
+    },
+    {
+      "object_id": 1533,
+      "competition_id": 39,
+      "name": "MLS"
+    },
+    {
+      "object_id": 1145,
+      "competition_id": 41,
+      "name": "Eliteserien"
+    },
+    {
+      "object_id": 1275,
+      "competition_id": 50,
+      "name": "Scottish Prem"
+    },
+    {
+      "object_id": 1390,
+      "competition_id": 53,
+      "name": "LALIGA EA SPORTS"
+    },
+    {
+      "object_id": 1393,
+      "competition_id": 54,
+      "name": "LALIGA HYPERMOTION"
+    },
+    {
+      "object_id": 1426,
+      "competition_id": 56,
+      "name": "Allsvenskan"
+    },
+    {
+      "object_id": 782,
+      "competition_id": 60,
+      "name": "skybet League One"
+    },
+    {
+      "object_id": 785,
+      "competition_id": 61,
+      "name": "skybet League Two"
+    },
+    {
+      "object_id": 1010,
+      "competition_id": 65,
+      "name": "SSE Airtricity PD"
+    },
+    {
+      "object_id": 1177,
+      "competition_id": 66,
+      "name": "PKO BP Ekstraklasa"
+    },
+    {
+      "object_id": 1480,
+      "competition_id": 68,
+      "name": "Trendyol Süper Lig"
+    },
+    {
+      "object_id": 391,
+      "competition_id": 80,
+      "name": "Ö. Bundesliga"
+    },
+    {
+      "object_id": 397,
+      "competition_id": 81,
+      "name": "Ö. Bundesliga Play-offs"
+    },
+    {
+      "object_id": 1638,
+      "competition_id": 83,
+      "name": "K League 1"
+    },
+    {
+      "object_id": 1778,
+      "competition_id": 152,
+      "name": "Torneo Apertura"
+    },
+    {
+      "object_id": 1801,
+      "competition_id": 153,
+      "name": "Torneo Clausura"
+    },
+    {
+      "object_id": 1448,
+      "competition_id": 189,
+      "name": "Brack Super League"
+    },
+    {
+      "object_id": 469,
+      "competition_id": 201,
+      "name": "Emirates FA Cup"
+    },
+    {
+      "object_id": 585,
+      "competition_id": 202,
+      "name": "Carabao Cup"
+    },
+    {
+      "object_id": 704,
+      "competition_id": 203,
+      "name": "Vertu Trophy"
+    },
+    {
+      "object_id": 819,
+      "competition_id": 204,
+      "name": "Coupe de France"
+    },
+    {
+      "object_id": 905,
+      "competition_id": 206,
+      "name": "DFB-Pokal"
+    },
+    {
+      "object_id": 900,
+      "competition_id": 207,
+      "name": "Franz Beckenbauer Supercup"
+    },
+    {
+      "object_id": 1290,
+      "competition_id": 208,
+      "name": "Copa de España"
+    },
+    {
+      "object_id": 1022,
+      "competition_id": 210,
+      "name": "Coppa Italia"
+    },
+    {
+      "object_id": 1014,
+      "competition_id": 211,
+      "name": "EA SPORTS FC Supercup"
+    },
+    {
+      "object_id": 373,
+      "competition_id": 212,
+      "name": "ÖFB-Cup"
+    },
+    {
+      "object_id": 404,
+      "competition_id": 213,
+      "name": "Croky Cup"
+    },
+    {
+      "object_id": 432,
+      "competition_id": 214,
+      "name": "Pro League Play-Off"
+    },
+    {
+      "object_id": 437,
+      "competition_id": 215,
+      "name": "Pokalen"
+    },
+    {
+      "object_id": 461,
+      "competition_id": 216,
+      "name": "Superliga Playoffs"
+    },
+    {
+      "object_id": 1123,
+      "competition_id": 217,
+      "name": "NM"
+    },
+    {
+      "object_id": 1181,
+      "competition_id": 218,
+      "name": "Taça Portuguesa"
+    },
+    {
+      "object_id": 1247,
+      "competition_id": 219,
+      "name": "Scottish Cup"
+    },
+    {
+      "object_id": 1408,
+      "competition_id": 220,
+      "name": "Sveriges Cup"
+    },
+    {
+      "object_id": 1430,
+      "competition_id": 221,
+      "name": "Schweizer Pokal"
+    },
+    {
+      "object_id": 91,
+      "competition_id": 223,
+      "name": "UEFA Champions League"
+    },
+    {
+      "object_id": 190,
+      "competition_id": 224,
+      "name": "UEFA Europa League"
+    },
+    {
+      "object_id": 1282,
+      "competition_id": 225,
+      "name": "Supercopa"
+    },
+    {
+      "object_id": 269,
+      "competition_id": 226,
+      "name": "UECL"
+    },
+    {
+      "object_id": 343,
+      "competition_id": 227,
+      "name": "UWCL"
+    },
+    {
+      "object_id": 466,
+      "competition_id": 228,
+      "name": "FA Community Shield"
+    },
+    {
+      "object_id": 88,
+      "competition_id": 232,
+      "name": "UEFA Super Cup"
+    },
+    {
+      "object_id": 816,
+      "competition_id": 233,
+      "name": "Trophée Champ."
+    },
+    {
+      "object_id": 1497,
+      "competition_id": 234,
+      "name": "U.S. Open Cup"
+    },
+    {
+      "object_id": 1455,
+      "competition_id": 268,
+      "name": "Türkiye Kupası"
+    },
+    {
+      "object_id": 1206,
+      "competition_id": 308,
+      "name": "Liga Portugal"
+    },
+    {
+      "object_id": 1094,
+      "competition_id": 314,
+      "name": "Oranje Beker"
+    },
+    {
+      "object_id": 1234,
+      "competition_id": 330,
+      "name": "SUPERLIGA"
+    },
+    {
+      "object_id": 1645,
+      "competition_id": 350,
+      "name": "ROSHN Saudi League"
+    },
+    {
+      "object_id": 1606,
+      "competition_id": 351,
+      "name": "A-League"
+    },
+    {
+      "object_id": 1396,
+      "competition_id": 354,
+      "name": "P. de Ascenso"
+    },
+    {
+      "object_id": 796,
+      "competition_id": 360,
+      "name": "League One Play-Offs"
+    },
+    {
+      "object_id": 804,
+      "competition_id": 361,
+      "name": "League Two Play-Offs"
+    },
+    {
+      "object_id": 994,
+      "competition_id": 365,
+      "name": "SD Men’s FAI Cup"
+    },
+    {
+      "object_id": 1149,
+      "competition_id": 366,
+      "name": "Puchar Kraju"
+    },
+    {
+      "object_id": 788,
+      "competition_id": 414,
+      "name": "Champ Play-Offs"
+    },
+    {
+      "object_id": 880,
+      "competition_id": 451,
+      "name": "Barrages Ligue 1"
+    },
+    {
+      "object_id": 1830,
+      "competition_id": 900,
+      "name": "International Friendly"
+    },
+    {
+      "object_id": 1833,
+      "competition_id": 901,
+      "name": "International Friendly"
+    },
+    {
+      "object_id": 54,
+      "competition_id": 980,
+      "name": "UEFA EURO"
+    },
+    {
+      "object_id": 75,
+      "competition_id": 981,
+      "name": "EM-Qualifikation"
+    },
+    {
+      "object_id": 1,
+      "competition_id": 990,
+      "name": "FIFA Weltmeisterschaft"
+    },
+    {
+      "object_id": 1656,
+      "competition_id": 1003,
+      "name": "Libertadores"
+    },
+    {
+      "object_id": 1210,
+      "competition_id": 1004,
+      "name": "Cupa Națională"
+    },
+    {
+      "object_id": 1715,
+      "competition_id": 1014,
+      "name": "Sudamericana"
+    },
+    {
+      "object_id": 1653,
+      "competition_id": 1015,
+      "name": "Recopa"
+    },
+    {
+      "object_id": 1622,
+      "competition_id": 2012,
+      "name": "CSL"
+    },
+    {
+      "object_id": 982,
+      "competition_id": 2076,
+      "name": "3. Liga"
+    },
+    {
+      "object_id": 1836,
+      "competition_id": 2136,
+      "name": "Women's Intl. Cup"
+    },
+    {
+      "object_id": 1626,
+      "competition_id": 2149,
+      "name": "ISL"
+    },
+    {
+      "object_id": 990,
+      "competition_id": 2215,
+      "name": "GPFBL"
+    },
+    {
+      "object_id": 812,
+      "competition_id": 2216,
+      "name": "Barclays WSL"
+    },
+    {
+      "object_id": 889,
+      "competition_id": 2218,
+      "name": "Arkema PL"
+    },
+    {
+      "object_id": 1566,
+      "competition_id": 2221,
+      "name": "NWSL"
+    },
+    {
+      "object_id": 1404,
+      "competition_id": 2222,
+      "name": "Liga F Moeve"
+    },
+    {
+      "object_id": 1584,
+      "competition_id": 3005,
+      "name": "Asia Contl Cup"
+    },
+    {
+      "object_id": 1240,
+      "competition_id": 5060,
+      "name": "SUPERLIGA Play-offs"
+    }
+  ]
+}

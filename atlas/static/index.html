@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Project Atlas Tracker</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div id="globalLoadingBar" class="global-loading-bar" aria-hidden="true"><i></i></div>
+  <div id="app" class="app-shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <button class="brand" data-route="overview" aria-label="Open overview">
+        <span class="brand-mark"><i></i><i></i><i></i></span>
+        <span class="brand-copy"><strong>PROJECT ATLAS</strong><small>TRACKER</small></span>
+      </button>
+
+      <nav id="mainNav" class="nav">
+        <p class="nav-section">Career</p>
+        <button data-route="overview" class="nav-item active"><span data-icon="dashboard"></span><span data-nav-key="navOverview">Overview</span></button>
+        <button data-route="chronology" class="nav-item"><span data-icon="timeline"></span><span data-nav-key="navChronology">Career timeline</span></button>
+        <button data-route="manual-data" class="nav-item"><span data-icon="edit"></span><span data-nav-key="navManual">Historical data</span></button>
+
+        <p class="nav-section">Matches</p>
+        <button data-route="match-center" class="nav-item"><span data-icon="match"></span><span data-nav-key="navMatches">Match Center</span></button>
+        <button data-route="schedule" class="nav-item"><span data-icon="calendar"></span><span data-nav-key="navSchedule">Schedule</span></button>
+        <button data-route="results" class="nav-item"><span data-icon="result"></span><span data-nav-key="navResults">Results</span></button>
+        <button data-route="competitions" class="nav-item"><span data-icon="trophy"></span><span data-nav-key="navCompetitions">Competitions</span></button>
+
+        <p class="nav-section">Squad</p>
+        <button data-route="squad" class="nav-item"><span data-icon="users"></span><span data-nav-key="navSquad">Squad</span></button>
+        <button data-route="contracts" class="nav-item"><span data-icon="contract"></span><span data-nav-key="navContracts">Contracts</span></button>
+        <button data-route="transfers" class="nav-item"><span data-icon="transfer"></span><span data-nav-key="navTransfers">Transfer history</span></button>
+        <button data-route="loans" class="nav-item"><span data-icon="transfer"></span><span data-nav-key="navLoans">Loans</span></button>
+        <button data-route="youth" class="nav-item"><span data-icon="users"></span><span data-nav-key="navYouth">FC26 youth</span></button>
+
+        <p class="nav-section">Analysis</p>
+        <button data-route="commission" class="nav-item"><span data-icon="result"></span><span data-nav-key="navCommission">Technical commission</span></button>
+        <button data-route="analysis" class="nav-item"><span data-icon="dashboard"></span><span data-nav-key="navAnalysis">Analysis</span></button>
+        <button data-route="records" class="nav-item"><span data-icon="trophy"></span><span data-nav-key="navRecords">Records</span></button>
+        <button data-route="season-report" class="nav-item"><span data-icon="result"></span><span data-nav-key="navSeasonReport">Season report</span></button>
+        <button data-route="compare" class="nav-item"><span data-icon="compare"></span><span data-nav-key="navCompare">Snapshot comparison</span></button>
+        <button data-route="snapshots" class="nav-item"><span data-icon="timeline"></span><span data-nav-key="navSnapshots">Snapshots</span></button>
+
+        <p class="nav-section">System</p>
+        <button data-route="imports" class="nav-item"><span data-icon="download"></span><span data-nav-key="navImports">Imports</span><b id="readyBadge" class="nav-badge hidden">0</b></button>
+        <button data-route="media" class="nav-item"><span data-icon="media"></span><span data-nav-key="navMedia">Media library</span></button>
+        <button data-route="setup" class="nav-item"><span data-icon="settings"></span><span data-nav-key="navSetup">Setup</span></button>
+      </nav>
+
+      <div class="sidebar-context">
+        <div class="club-mini-mark" id="sidebarClubMark">AT</div>
+        <div class="sidebar-context-copy"><strong id="sidebarClubName">No career</strong><small id="sidebarSnapshotText">Choose a snapshot</small></div>
+      </div>
+      <footer class="sidebar-footer">
+        <div class="system-line"><span class="pulse"></span><span id="watcherText">Watcher active</span></div>
+        <small id="versionText">v1.2.3</small>
+      </footer>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button id="backButton" class="icon-button" title="Back" aria-label="Back"><span data-icon="back"></span></button>
+          <button id="forwardButton" class="icon-button" title="Forward" aria-label="Forward"><span data-icon="forward"></span></button>
+          <button id="workspaceBadge" class="workspace-badge workspace-main" type="button" title="Manage Tracker workspace">MAIN</button>
+          <div class="career-picker shell-select-wrap">
+            <div id="careerMark" class="topbar-mark">AT</div>
+            <select id="careerSelect" class="shell-select" aria-label="Career"></select>
+          </div>
+        </div>
+        <div class="topbar-center">
+          <button id="globalSearch" class="search-trigger"><span data-icon="search"></span><span>Search players, clubs, competitions or IDs…</span><kbd>Ctrl K</kbd></button>
+        </div>
+        <div class="topbar-actions">
+          <label class="shell-select-wrap snapshot-picker"><span data-icon="history"></span><select id="snapshotSelect" class="shell-select" aria-label="Snapshot"></select></label>
+          <button id="scanButton" class="icon-button scan-button" title="Scan snapshots"><span data-icon="refresh"></span></button>
+          <button id="windowMenu" class="avatar-button" title="System status"><span id="managerInitials">AT</span></button>
+        </div>
+      </header>
+
+      <div class="breadcrumb-bar">
+        <div id="breadcrumbs" class="breadcrumbs"></div>
+        <div id="pageStatus" class="page-status"></div>
+      </div>
+      <section id="content" class="content" aria-live="polite"></section>
+    </main>
+  </div>
+
+  <div id="searchPalette" class="palette-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="command-palette">
+      <div class="palette-input-wrap"><span data-icon="search"></span><input id="searchInput" autocomplete="off" placeholder="Enter a name or EA ID…"><kbd>Esc</kbd></div>
+      <div id="searchResults" class="palette-results"></div>
+      <div class="palette-footer"><span>↑↓ select</span><span>Enter open</span><span>Esc close</span></div>
+    </div>
+  </div>
+
+  <div id="statusPopover" class="status-popover hidden"></div>
+  <div id="toast" class="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

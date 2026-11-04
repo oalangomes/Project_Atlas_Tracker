@@ -1,0 +1,53 @@
+region_id,region_name,parent_region_id,region_kind,match_priority,sponsor_selectable
+GLOBAL,Global,,global,0,1
+EUROPE,Europe,GLOBAL,continent,10,1
+AMERICAS,Americas,GLOBAL,continent,10,1
+AFRICA,Africa,GLOBAL,continent,10,1
+ASIA,Asia,GLOBAL,continent,10,1
+OCEANIA_ROOT,Oceania,GLOBAL,continent,10,1
+SPECIAL,Special / non-country EA records,,special,0,0
+EUROPE_WEST,Western Europe,EUROPE,geographic_subregion,20,1
+EUROPE_NORTH,Northern Europe,EUROPE,geographic_subregion,20,1
+EUROPE_SOUTH,Southern Europe,EUROPE,geographic_subregion,20,1
+EUROPE_CENTRAL_EAST,Central and Eastern Europe,EUROPE,geographic_subregion,20,1
+SOUTH_AMERICA,South America,AMERICAS,geographic_subregion,20,1
+NORTH_AMERICA,North America,AMERICAS,geographic_subregion,20,1
+CENTRAL_AMERICA,Central America,AMERICAS,geographic_subregion,20,1
+CARIBBEAN,Caribbean,AMERICAS,geographic_subregion,20,1
+AFRICA_NORTH,North Africa,AFRICA,geographic_subregion,20,1
+AFRICA_WEST,West Africa,AFRICA,geographic_subregion,20,1
+AFRICA_CENTRAL,Central Africa,AFRICA,geographic_subregion,20,1
+AFRICA_EAST,East Africa,AFRICA,geographic_subregion,20,1
+AFRICA_SOUTH,Southern Africa,AFRICA,geographic_subregion,20,1
+ASIA_WEST,West Asia,ASIA,geographic_subregion,20,1
+ASIA_CENTRAL,Central Asia,ASIA,geographic_subregion,20,1
+ASIA_SOUTH,South Asia,ASIA,geographic_subregion,20,1
+ASIA_EAST,East Asia,ASIA,geographic_subregion,20,1
+ASIA_SOUTHEAST,Southeast Asia,ASIA,geographic_subregion,20,1
+OCEANIA,Pacific and Oceania,OCEANIA_ROOT,geographic_subregion,20,1
+EMEA,"Europe, Middle East and Africa",GLOBAL,business_macroregion,18,1
+APAC,Asia-Pacific,GLOBAL,business_macroregion,18,1
+AMERICAS_MARKET,Americas market,GLOBAL,business_macroregion,18,1
+DACH,DACH,EUROPE,commercial_cluster,35,1
+UK_IRELAND,United Kingdom and Ireland,EUROPE,commercial_cluster,35,1
+BENELUX,Benelux,EUROPE,commercial_cluster,35,1
+NORDICS,Nordics,EUROPE,commercial_cluster,35,1
+BALTICS,Baltics,EUROPE,commercial_cluster,35,1
+IBERIA,Iberia,EUROPE,commercial_cluster,35,1
+BALKANS,Balkans,EUROPE,commercial_cluster,35,1
+CENTRAL_EUROPE,Central Europe,EUROPE,commercial_cluster,35,1
+EASTERN_EUROPE,Eastern Europe,EUROPE,commercial_cluster,35,1
+CAUCASUS,Caucasus,GLOBAL,commercial_cluster,35,1
+GULF,Gulf states,GLOBAL,commercial_cluster,35,1
+LEVANT,Levant,GLOBAL,commercial_cluster,35,1
+MAGHREB,Maghreb,AFRICA,commercial_cluster,35,1
+MENA,Middle East and North Africa,GLOBAL,commercial_cluster,30,1
+SUB_SAHARAN_AFRICA,Sub-Saharan Africa,AFRICA,commercial_cluster,30,1
+NORTH_AMERICA_MARKET,"United States, Canada and Mexico",AMERICAS,commercial_cluster,35,1
+LATIN_AMERICA,Latin America,AMERICAS,commercial_cluster,30,1
+SOUTHERN_CONE,Southern Cone,AMERICAS,commercial_cluster,35,1
+ANDEAN,Andean market,AMERICAS,commercial_cluster,35,1
+GREATER_CHINA,Greater China,ASIA,commercial_cluster,35,1
+JAPAN_KOREA,Japan and Korea,ASIA,commercial_cluster,35,1
+ASEAN,ASEAN / Southeast Asian market,ASIA,commercial_cluster,35,1
+AUSTRALIA_NEW_ZEALAND,Australia and New Zealand,OCEANIA_ROOT,commercial_cluster,35,1

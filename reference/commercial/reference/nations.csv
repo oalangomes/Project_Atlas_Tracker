@@ -1,0 +1,219 @@
+nation_id,nation_name,nation_slug,sponsor_eligible,is_special,primary_region_id
+1,Albania,albania,1,0,EUROPE_SOUTH
+2,Andorra,andorra,1,0,EUROPE_SOUTH
+3,Armenia,armenia,1,0,ASIA_WEST
+4,Austria,austria,1,0,EUROPE_WEST
+5,Azerbaijan,azerbaijan,1,0,ASIA_WEST
+6,Belarus,belarus,1,0,EUROPE_CENTRAL_EAST
+7,Belgium,belgium,1,0,EUROPE_WEST
+8,Bosnia and Herzegovina,bosnia-and-herzegovina,1,0,EUROPE_SOUTH
+9,Bulgaria,bulgaria,1,0,EUROPE_CENTRAL_EAST
+10,Croatia,croatia,1,0,EUROPE_SOUTH
+11,Cyprus,cyprus,1,0,EUROPE_SOUTH
+12,Czech Republic,czech-republic,1,0,EUROPE_CENTRAL_EAST
+13,Denmark,denmark,1,0,EUROPE_NORTH
+14,England,england,1,0,EUROPE_NORTH
+15,Montenegro,montenegro,1,0,EUROPE_SOUTH
+16,Faroe Islands,faroe-islands,1,0,EUROPE_NORTH
+17,Finland,finland,1,0,EUROPE_NORTH
+18,France,france,1,0,EUROPE_WEST
+19,North Macedonia,north-macedonia,1,0,EUROPE_SOUTH
+20,Georgia,georgia,1,0,ASIA_WEST
+21,Germany,germany,1,0,EUROPE_WEST
+22,Greece,greece,1,0,EUROPE_SOUTH
+23,Hungary,hungary,1,0,EUROPE_CENTRAL_EAST
+24,Iceland,iceland,1,0,EUROPE_NORTH
+25,Republic of Ireland,republic-of-ireland,1,0,EUROPE_NORTH
+26,Israel,israel,1,0,ASIA_WEST
+27,Italy,italy,1,0,EUROPE_SOUTH
+28,Latvia,latvia,1,0,EUROPE_NORTH
+29,Liechtenstein,liechtenstein,1,0,EUROPE_WEST
+30,Lithuania,lithuania,1,0,EUROPE_NORTH
+31,Luxembourg,luxembourg,1,0,EUROPE_WEST
+32,Malta,malta,1,0,EUROPE_SOUTH
+33,Moldova,moldova,1,0,EUROPE_CENTRAL_EAST
+34,Holland,holland,1,0,EUROPE_WEST
+35,Northern Ireland,northern-ireland,1,0,EUROPE_NORTH
+36,Norway,norway,1,0,EUROPE_NORTH
+37,Poland,poland,1,0,EUROPE_CENTRAL_EAST
+38,Portugal,portugal,1,0,EUROPE_SOUTH
+39,Romania,romania,1,0,EUROPE_CENTRAL_EAST
+40,Russia,russia,1,0,EUROPE_CENTRAL_EAST
+41,San Marino,san-marino,1,0,EUROPE_SOUTH
+42,Scotland,scotland,1,0,EUROPE_NORTH
+43,Slovakia,slovakia,1,0,EUROPE_CENTRAL_EAST
+44,Slovenia,slovenia,1,0,EUROPE_SOUTH
+45,Spain,spain,1,0,EUROPE_SOUTH
+46,Sweden,sweden,1,0,EUROPE_NORTH
+47,Switzerland,switzerland,1,0,EUROPE_WEST
+48,Turkey,turkey,1,0,ASIA_WEST
+49,Ukraine,ukraine,1,0,EUROPE_CENTRAL_EAST
+50,Wales,wales,1,0,EUROPE_NORTH
+51,Serbia,serbia,1,0,EUROPE_CENTRAL_EAST
+52,Argentina,argentina,1,0,SOUTH_AMERICA
+53,Bolivia,bolivia,1,0,SOUTH_AMERICA
+54,Brazil,brazil,1,0,SOUTH_AMERICA
+55,Chile,chile,1,0,SOUTH_AMERICA
+56,Colombia,colombia,1,0,SOUTH_AMERICA
+57,Ecuador,ecuador,1,0,SOUTH_AMERICA
+58,Paraguay,paraguay,1,0,SOUTH_AMERICA
+59,Peru,peru,1,0,SOUTH_AMERICA
+60,Uruguay,uruguay,1,0,SOUTH_AMERICA
+61,Venezuela,venezuela,1,0,SOUTH_AMERICA
+62,Anguilla,anguilla,1,0,CARIBBEAN
+63,Antigua and Barbuda,antigua-and-barbuda,1,0,CARIBBEAN
+64,Aruba,aruba,1,0,CARIBBEAN
+65,Bahamas,bahamas,1,0,CARIBBEAN
+66,Barbados,barbados,1,0,CARIBBEAN
+67,Belize,belize,1,0,CENTRAL_AMERICA
+68,Bermuda,bermuda,1,0,NORTH_AMERICA
+69,British Virgin Islands,british-virgin-islands,1,0,CARIBBEAN
+70,Canada,canada,1,0,NORTH_AMERICA
+71,Cayman Islands,cayman-islands,1,0,CARIBBEAN
+72,Costa Rica,costa-rica,1,0,CENTRAL_AMERICA
+73,Cuba,cuba,1,0,CARIBBEAN
+74,Dominica,dominica,1,0,CARIBBEAN
+75,International,international,0,1,SPECIAL
+76,El Salvador,el-salvador,1,0,CENTRAL_AMERICA
+77,Grenada,grenada,1,0,CARIBBEAN
+78,Guatemala,guatemala,1,0,CENTRAL_AMERICA
+79,Guyana,guyana,1,0,SOUTH_AMERICA
+80,Haiti,haiti,1,0,CARIBBEAN
+81,Honduras,honduras,1,0,CENTRAL_AMERICA
+82,Jamaica,jamaica,1,0,CARIBBEAN
+83,Mexico,mexico,1,0,CENTRAL_AMERICA
+84,Montserrat,montserrat,1,0,CARIBBEAN
+85,Curaçao,curacao,1,0,CARIBBEAN
+86,Nicaragua,nicaragua,1,0,CENTRAL_AMERICA
+87,Panama,panama,1,0,CENTRAL_AMERICA
+88,Puerto Rico,puerto-rico,1,0,CARIBBEAN
+89,St. Kitts and Nevis,st-kitts-and-nevis,1,0,CARIBBEAN
+90,St. Lucia,st-lucia,1,0,CARIBBEAN
+91,St. Vincent and the Grenadines,st-vincent-and-the-grenadines,1,0,CARIBBEAN
+92,Suriname,suriname,1,0,SOUTH_AMERICA
+93,Trinidad and Tobago,trinidad-and-tobago,1,0,CARIBBEAN
+94,Turks and Caicos Islands,turks-and-caicos-islands,1,0,CARIBBEAN
+95,United States,united-states,1,0,NORTH_AMERICA
+96,US Virgin Islands,us-virgin-islands,1,0,CARIBBEAN
+97,Algeria,algeria,1,0,AFRICA_NORTH
+98,Angola,angola,1,0,AFRICA_CENTRAL
+99,Benin,benin,1,0,AFRICA_WEST
+100,Botswana,botswana,1,0,AFRICA_SOUTH
+101,Burkina Faso,burkina-faso,1,0,AFRICA_WEST
+102,Burundi,burundi,1,0,AFRICA_EAST
+103,Cameroon,cameroon,1,0,AFRICA_CENTRAL
+104,Cape Verde Islands,cape-verde-islands,1,0,AFRICA_WEST
+105,Central African Republic,central-african-republic,1,0,AFRICA_CENTRAL
+106,Chad,chad,1,0,AFRICA_CENTRAL
+107,Congo,congo,1,0,AFRICA_CENTRAL
+108,Côte d'Ivoire,cote-d-ivoire,1,0,AFRICA_WEST
+109,Djibouti,djibouti,1,0,AFRICA_EAST
+110,Congo DR,congo-dr,1,0,AFRICA_CENTRAL
+111,Egypt,egypt,1,0,AFRICA_NORTH
+112,Equatorial Guinea,equatorial-guinea,1,0,AFRICA_CENTRAL
+113,Eritrea,eritrea,1,0,AFRICA_EAST
+114,Ethiopia,ethiopia,1,0,AFRICA_EAST
+115,Gabon,gabon,1,0,AFRICA_CENTRAL
+116,Gambia,gambia,1,0,AFRICA_WEST
+117,Ghana,ghana,1,0,AFRICA_WEST
+118,Guinea,guinea,1,0,AFRICA_WEST
+119,Guinea-Bissau,guinea-bissau,1,0,AFRICA_WEST
+120,Kenya,kenya,1,0,AFRICA_EAST
+121,Lesotho,lesotho,1,0,AFRICA_SOUTH
+122,Liberia,liberia,1,0,AFRICA_WEST
+123,Libya,libya,1,0,AFRICA_NORTH
+124,Madagascar,madagascar,1,0,AFRICA_EAST
+125,Malawi,malawi,1,0,AFRICA_EAST
+126,Mali,mali,1,0,AFRICA_WEST
+127,Mauritania,mauritania,1,0,AFRICA_WEST
+128,Mauritius,mauritius,1,0,AFRICA_EAST
+129,Morocco,morocco,1,0,AFRICA_NORTH
+130,Mozambique,mozambique,1,0,AFRICA_EAST
+131,Namibia,namibia,1,0,AFRICA_SOUTH
+132,Niger,niger,1,0,AFRICA_WEST
+133,Nigeria,nigeria,1,0,AFRICA_WEST
+134,Rwanda,rwanda,1,0,AFRICA_EAST
+135,São Tomé e Príncipe,sao-tome-e-principe,1,0,AFRICA_CENTRAL
+136,Senegal,senegal,1,0,AFRICA_WEST
+137,Seychelles,seychelles,1,0,AFRICA_EAST
+138,Sierra Leone,sierra-leone,1,0,AFRICA_WEST
+139,Somalia,somalia,1,0,AFRICA_EAST
+140,South Africa,south-africa,1,0,AFRICA_SOUTH
+141,Sudan,sudan,1,0,AFRICA_NORTH
+142,Eswatini,eswatini,1,0,AFRICA_SOUTH
+143,Tanzania,tanzania,1,0,AFRICA_EAST
+144,Togo,togo,1,0,AFRICA_WEST
+145,Tunisia,tunisia,1,0,AFRICA_NORTH
+146,Uganda,uganda,1,0,AFRICA_EAST
+147,Zambia,zambia,1,0,AFRICA_EAST
+148,Zimbabwe,zimbabwe,1,0,AFRICA_EAST
+149,Afghanistan,afghanistan,1,0,ASIA_SOUTH
+150,Bahrain,bahrain,1,0,ASIA_WEST
+151,Bangladesh,bangladesh,1,0,ASIA_SOUTH
+152,Bhutan,bhutan,1,0,ASIA_SOUTH
+153,Brunei Darussalam,brunei-darussalam,1,0,ASIA_SOUTHEAST
+154,Cambodia,cambodia,1,0,ASIA_SOUTHEAST
+155,China PR,china-pr,1,0,ASIA_EAST
+157,Guam,guam,1,0,OCEANIA
+158,Hong Kong,hong-kong,1,0,ASIA_EAST
+159,India,india,1,0,ASIA_SOUTH
+160,Indonesia,indonesia,1,0,ASIA_SOUTHEAST
+161,Iran,iran,1,0,ASIA_SOUTH
+162,Iraq,iraq,1,0,ASIA_WEST
+163,Japan,japan,1,0,ASIA_EAST
+164,Jordan,jordan,1,0,ASIA_WEST
+165,Kazakhstan,kazakhstan,1,0,ASIA_CENTRAL
+166,Korea DPR,korea-dpr,1,0,ASIA_EAST
+167,Korea Republic,korea-republic,1,0,ASIA_EAST
+168,Kuwait,kuwait,1,0,ASIA_WEST
+169,Kyrgyzstan,kyrgyzstan,1,0,ASIA_CENTRAL
+170,Laos,laos,1,0,ASIA_SOUTHEAST
+171,Lebanon,lebanon,1,0,ASIA_WEST
+172,Macau,macau,1,0,ASIA_EAST
+173,Malaysia,malaysia,1,0,ASIA_SOUTHEAST
+174,Maldives,maldives,1,0,ASIA_SOUTH
+175,Mongolia,mongolia,1,0,ASIA_EAST
+176,Myanmar,myanmar,1,0,ASIA_SOUTHEAST
+177,Nepal,nepal,1,0,ASIA_SOUTH
+178,Oman,oman,1,0,ASIA_WEST
+179,Pakistan,pakistan,1,0,ASIA_SOUTH
+180,Palestine,palestine,1,0,ASIA_WEST
+181,Philippines,philippines,1,0,ASIA_SOUTHEAST
+182,Qatar,qatar,1,0,ASIA_WEST
+183,Saudi Arabia,saudi-arabia,1,0,ASIA_WEST
+184,Singapore,singapore,1,0,ASIA_SOUTHEAST
+185,Sri Lanka,sri-lanka,1,0,ASIA_SOUTH
+186,Syria,syria,1,0,ASIA_WEST
+187,Tajikistan,tajikistan,1,0,ASIA_CENTRAL
+188,Thailand,thailand,1,0,ASIA_SOUTHEAST
+189,Turkmenistan,turkmenistan,1,0,ASIA_CENTRAL
+190,United Arab Emirates,united-arab-emirates,1,0,ASIA_WEST
+191,Uzbekistan,uzbekistan,1,0,ASIA_CENTRAL
+192,Vietnam,vietnam,1,0,ASIA_SOUTHEAST
+193,Yemen,yemen,1,0,ASIA_WEST
+194,American Samoa,american-samoa,1,0,OCEANIA
+195,Australia,australia,1,0,OCEANIA
+196,Cook Islands,cook-islands,1,0,OCEANIA
+197,Fiji,fiji,1,0,OCEANIA
+198,New Zealand,new-zealand,1,0,OCEANIA
+199,Papua New Guinea,papua-new-guinea,1,0,OCEANIA
+200,Samoa,samoa,1,0,OCEANIA
+201,Solomon Islands,solomon-islands,1,0,OCEANIA
+202,Tahiti,tahiti,1,0,OCEANIA
+203,Tonga,tonga,1,0,OCEANIA
+204,Vanuatu,vanuatu,1,0,OCEANIA
+205,Gibraltar,gibraltar,1,0,EUROPE_SOUTH
+206,Greenland,greenland,1,0,NORTH_AMERICA
+207,Dominican Republic,dominican-republic,1,0,CARIBBEAN
+208,Estonia,estonia,1,0,EUROPE_NORTH
+209,Created Players Country,created-players-country,0,1,SPECIAL
+210,Free Agents Country,free-agents-country,0,1,SPECIAL
+211,Rest of World,rest-of-world,0,1,SPECIAL
+212,Timor-Leste,timor-leste,1,0,ASIA_SOUTHEAST
+213,Chinese Taipei,chinese-taipei,1,0,ASIA_EAST
+214,Comoros,comoros,1,0,AFRICA_EAST
+215,New Caledonia,new-caledonia,1,0,OCEANIA
+218,South Sudan,south-sudan,1,0,AFRICA_EAST
+219,Kosovo,kosovo,1,0,EUROPE_SOUTH
+222,International Women,international-women,0,1,SPECIAL
+225,CONMEBOL,conmebol,0,1,SPECIAL

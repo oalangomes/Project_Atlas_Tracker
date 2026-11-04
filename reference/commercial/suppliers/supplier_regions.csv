@@ -1,0 +1,69 @@
+﻿supplier_id,supplier_name,region_id,presence,expansion_interest,note
+900001,Nike,GLOBAL,100,40,Worldwide availability; paid deals remain selective.
+900002,Adidas,GLOBAL,100,35,Worldwide teamwear and elite partnerships.
+900002,Adidas,EUROPE,100,20,European home market.
+900003,Puma,GLOBAL,95,55,Worldwide teamwear.
+900003,Puma,EUROPE,100,45,Very strong European football footprint.
+900004,Macron,EUROPE,100,55,Core professional and teamwear market.
+900004,Macron,EMEA,75,55,Broader growth market.
+900004,Macron,GLOBAL,45,45,Selected markets outside Europe.
+900005,Hummel,NORDICS,100,40,Home and heritage market.
+900005,Hummel,EUROPE,90,45,Broad European presence.
+900005,Hummel,GLOBAL,45,35,Selected international availability.
+900006,Joma,IBERIA,100,35,Home market.
+900006,Joma,EUROPE,85,50,Broad European presence.
+900006,Joma,LATIN_AMERICA,60,55,Natural language and market fit.
+900006,Joma,MENA,55,60,Active federation/club potential.
+900006,Joma,GLOBAL,40,45,Selected international reach.
+900007,Castore,UK_IRELAND,100,35,Core football market.
+900007,Castore,EUROPE,85,65,Active expansion market.
+900007,Castore,GLOBAL,30,50,Selective non-European activity.
+900008,Kappa,EUROPE_SOUTH,100,35,Italian and Southern European core.
+900008,Kappa,EUROPE,90,45,Broad European availability.
+900008,Kappa,GLOBAL,55,40,Selected global reach.
+900009,Umbro,UK_IRELAND,100,35,Historic home market.
+900009,Umbro,GLOBAL,70,45,Longstanding international football identity.
+900009,Umbro,LATIN_AMERICA,65,45,Strong historical and current fit.
+900009,Umbro,AFRICA,60,45,Relevant international football market.
+900010,Mizuno,JAPAN_KOREA,100,35,Home-region strength.
+900010,Mizuno,APAC,90,45,Strong regional fit.
+900010,Mizuno,EUROPE,85,65,Current professional growth market.
+900010,Mizuno,GLOBAL,70,45,International distribution.
+900011,New Balance,NORTH_AMERICA_MARKET,100,40,Home market.
+900011,New Balance,EUROPE,90,65,Selective professional football focus.
+900011,New Balance,GLOBAL,75,55,Global brand and team-sports program.
+900012,Kelme,IBERIA,100,35,Home market.
+900012,Kelme,APAC,85,70,Strong federation and competition growth.
+900012,Kelme,EUROPE,70,50,Selected club presence.
+900012,Kelme,MENA,60,55,Relevant federation and club market.
+900012,Kelme,GLOBAL,45,45,Selected global availability.
+900013,Craft,NORDICS,100,35,Home and strongest natural market.
+900013,Craft,EUROPE,70,50,Broad teamwear access.
+900013,Craft,DACH,60,45,Relevant nearby market.
+900013,Craft,GLOBAL,25,30,Limited broader reach.
+900014,Capelli,NORTH_AMERICA_MARKET,100,60,Strong grassroots and academy ecosystem.
+900014,Capelli,EUROPE,75,65,Active expansion and club partnerships.
+900014,Capelli,GLOBAL,55,55,International team-sports positioning.
+900015,JAKO,DACH,100,35,Core market.
+900015,JAKO,CENTRAL_EUROPE,90,50,Strong neighboring footprint.
+900015,JAKO,EUROPE,75,50,Broad European accessibility.
+900015,JAKO,GLOBAL,45,45,"Large international team count, lower premium penetration."
+900016,Reebok,UK_IRELAND,90,80,Current European club-football anchor.
+900016,Reebok,AMERICAS_MARKET,80,75,Brand home and comeback potential.
+900016,Reebok,EUROPE,55,80,Rare but plausible comeback market.
+900016,Reebok,GLOBAL,50,65,"Global brand, low current football frequency."
+900017,Erreà,EUROPE_SOUTH,100,35,Italian core.
+900017,Erreà,EUROPE,85,50,Broad European teamwear.
+900017,Erreà,UK_IRELAND,70,50,Current club activity.
+900017,Erreà,GLOBAL,45,40,Selected broader markets.
+900018,uhlsport,DACH,100,35,Core teamwear market.
+900018,uhlsport,EUROPE,70,45,Broad club availability.
+900018,uhlsport,GLOBAL,40,35,Selected international distribution.
+900019,Erima,DACH,100,35,Core market.
+900019,Erima,BENELUX,75,45,Strong neighboring market.
+900019,Erima,EUROPE,65,45,Broader team-sports distribution.
+900021,Lotto,EUROPE_SOUTH,100,40,Italian/Southern European core.
+900021,Lotto,EUROPE,70,45,Selected European presence.
+900021,Lotto,LATIN_AMERICA,55,45,Historical football fit.
+900021,Lotto,GLOBAL,40,35,Limited broader activity.
+900022,Saller,DACH,100,25,Hard regional focus for this simulation.

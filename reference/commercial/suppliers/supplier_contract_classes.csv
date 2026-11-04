@@ -1,0 +1,6 @@
+﻿class_id,name,club_level_min,club_level_max,description,relative_value_min,relative_value_max,cash_character
+1,Teamwear,1,5,"Club purchases equipment, receives discounts or mostly non-cash value. No meaningful guaranteed payment.",-0.1,0.05,Club cost / discount / equipment value
+2,Niedrig,6,9,Small paid partnership plus equipment. Common for smaller professional clubs or large regional clubs.,0.2,0.45,Small annual guaranteed payment
+3,Mittel,10,13,Solid paid partnership for attractive lower-league clubs or established professional clubs.,0.5,0.85,Meaningful annual payment
+4,Hoch,14,17,Large national or international deal for commercially strong clubs.,0.9,1.25,High guaranteed payment
+5,Premium,18,20,Global top partnership for the largest football brands; nonlinear jump in value.,1.35,2.0,Very high premium payment

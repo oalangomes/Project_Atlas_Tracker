@@ -1,0 +1,27 @@
+﻿supplier_id,supplier_name,nation_id,nation_name,presence,expansion_interest,note
+900002,Adidas,21,Germany,100,15,Home-market anchor.
+900003,Puma,21,Germany,100,30,Home-market anchor.
+900004,Macron,27,Italy,100,30,Home-market anchor.
+900005,Hummel,13,Denmark,100,25,Home-market anchor.
+900006,Joma,45,Spain,100,30,Home-market anchor.
+900007,Castore,14,England,100,35,Home and strongest football market.
+900008,Kappa,27,Italy,100,30,Home-market anchor.
+900009,Umbro,14,England,100,25,Historic home market.
+900010,Mizuno,163,Japan,100,25,Home-market anchor.
+900011,New Balance,95,United States,100,30,Home-market anchor.
+900012,Kelme,45,Spain,100,25,Home-market anchor.
+900013,Craft,46,Sweden,100,25,Home-market anchor.
+900014,Capelli,95,United States,100,45,Home and strongest ecosystem.
+900015,JAKO,21,Germany,100,20,Home and core football market.
+900015,JAKO,4,Austria,85,35,Strong DACH market.
+900015,JAKO,47,Switzerland,80,35,Strong DACH market.
+900016,Reebok,14,England,90,80,Current European club-football anchor.
+900016,Reebok,95,United States,75,70,Home market and comeback potential.
+900017,Erreà,27,Italy,100,25,Home-market anchor.
+900018,uhlsport,21,Germany,100,20,Home and core teamwear market.
+900019,Erima,21,Germany,100,20,Home and core teamwear market.
+900020,EA7,27,Italy,100,0,Exclusive top-club-only market.
+900021,Lotto,27,Italy,100,30,Home-market anchor.
+900022,Saller,21,Germany,100,20,Primary market.
+900022,Saller,4,Austria,75,25,DACH availability.
+900022,Saller,47,Switzerland,65,25,DACH availability.

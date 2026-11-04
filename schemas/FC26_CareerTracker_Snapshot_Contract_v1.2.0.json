@@ -1,0 +1,386 @@
+{
+  "schemaVersion": "1.2.0",
+  "encoding": "UTF-8 with BOM",
+  "delimiter": ",",
+  "lineEndings": "CRLF",
+  "nullRepresentation": "empty CSV field",
+  "readyMarker": "READY",
+  "authoritativeManifest": "manifest.json",
+  "hardRequiredFiles": [
+    "career_metadata.csv",
+    "players.csv",
+    "teams.csv",
+    "rosters.csv"
+  ],
+  "expectedFeatureFiles": [
+    "fixtures.csv",
+    "managed_team_matches.csv",
+    "season_stats.csv",
+    "match_ratings.csv",
+    "managed_team_match_players.csv"
+  ],
+  "optionalFiles": [
+    "leagues.csv",
+    "team_leagues.csv",
+    "competitions.csv",
+    "loans.csv",
+    "previous_teams.csv",
+    "presigned_transfers.csv",
+    "contracts.csv",
+    "youth_players.csv",
+    "player_growth.csv",
+    "player_awards.csv",
+    "competition_progress.csv",
+    "last_match_players.csv",
+    "unresolved_player_names.csv",
+    "manifest.csv",
+    "export_log.txt"
+  ],
+  "importOrdering": [
+    "ordering.seasonIndex",
+    "ordering.careerDateSort",
+    "ordering.managedCompletedFixtureCount",
+    "ordering.globalCompletedFixtureCount",
+    "ordering.exportedAtUtc",
+    "ordering.snapshotId"
+  ],
+  "files": {
+    "career_metadata.csv": {
+      "key": [
+        "key"
+      ],
+      "requiredColumns": [
+        "key",
+        "value"
+      ],
+      "mode": "key_value"
+    },
+    "players.csv": {
+      "key": [
+        "player_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "display_name",
+        "team_id",
+        "overall",
+        "potential",
+        "primary_position_id",
+        "primary_position",
+        "player_join_team_date_raw",
+        "player_join_team_date"
+      ],
+      "snapshotState": true,
+      "namePolicy": "display_name must never be replaced by player_id in the UI"
+    },
+    "teams.csv": {
+      "key": [
+        "team_id"
+      ],
+      "requiredColumns": [
+        "team_id",
+        "team_name",
+        "league_id",
+        "domestic_prestige",
+        "international_prestige",
+        "profitability",
+        "club_worth"
+      ],
+      "snapshotState": true,
+      "profitability": {
+        "source": "teams.profitability",
+        "type": "integer",
+        "expectedRange": "1-10 for normal clubs; preserve raw value if outside range",
+        "scope": "all exported teams",
+        "semanticNote": "EA club profitability profile used as direct wage-multiplier index; not a calculated season profit"
+      }
+    },
+    "leagues.csv": {
+      "key": [
+        "league_id"
+      ],
+      "requiredColumns": [
+        "league_id",
+        "league_name"
+      ]
+    },
+    "team_leagues.csv": {
+      "key": [
+        "team_id"
+      ],
+      "requiredColumns": [
+        "team_id",
+        "league_id",
+        "previous_league_id"
+      ],
+      "snapshotState": true
+    },
+    "competitions.csv": {
+      "key": [
+        "competition_object_id"
+      ],
+      "requiredColumns": [
+        "competition_object_id",
+        "competition_name"
+      ]
+    },
+    "rosters.csv": {
+      "key": [
+        "team_id",
+        "player_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "team_id",
+        "jersey_number",
+        "teamsheet_slot_raw",
+        "teamsheet_slot_label",
+        "primary_position_id",
+        "primary_position"
+      ],
+      "snapshotState": true,
+      "semanticWarning": "teamsheet_slot_raw is the saved Hub line-up slot, not a guaranteed actual match position"
+    },
+    "loans.csv": {
+      "key": [
+        "player_id",
+        "parent_team_id",
+        "loan_team_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "parent_team_id",
+        "loan_team_id",
+        "loan_end_raw",
+        "loan_end_date"
+      ],
+      "snapshotState": true
+    },
+    "contracts.csv": {
+      "key": [
+        "player_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "team_id"
+      ],
+      "snapshotState": true,
+      "scope": "managed club, academy and own outgoing loans; not a global world contract table"
+    },
+    "youth_players.csv": {
+      "key": [
+        "player_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "display_name"
+      ],
+      "snapshotState": true
+    },
+    "player_growth.csv": {
+      "key": [
+        "player_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "display_name",
+        "overall"
+      ],
+      "snapshotState": true,
+      "scope": "managed-career environment, not all world players"
+    },
+    "player_awards.csv": {
+      "key": [
+        "artificial_key"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "season",
+        "award_type_id",
+        "count"
+      ],
+      "eventLike": true
+    },
+    "competition_progress.csv": {
+      "key": [
+        "artificial_key"
+      ],
+      "requiredColumns": [
+        "team_id",
+        "season",
+        "competition_object_id",
+        "stage_id"
+      ],
+      "snapshotState": true
+    },
+    "fixtures.csv": {
+      "key": [
+        "fixture_key"
+      ],
+      "requiredColumns": [
+        "fixture_key",
+        "competition_object_id",
+        "home_team_id",
+        "away_team_id",
+        "date_raw",
+        "date",
+        "is_completed"
+      ],
+      "model": "fixture entity plus snapshot-specific fixture observation"
+    },
+    "managed_team_matches.csv": {
+      "key": [
+        "fixture_key"
+      ],
+      "requiredColumns": [
+        "managed_team_id",
+        "fixture_key",
+        "date_raw",
+        "opponent_team_id",
+        "is_completed"
+      ]
+    },
+    "season_stats.csv": {
+      "key": [
+        "player_id",
+        "competition_object_id",
+        "represented_team_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "represented_team_id",
+        "current_club_id",
+        "competition_object_id",
+        "appearances",
+        "goals",
+        "assists"
+      ],
+      "snapshotState": true,
+      "semanticWarning": "represented_team_id is the statistics team; current_club_id is the player's current career club"
+    },
+    "match_ratings.csv": {
+      "key": [
+        "artificial_key"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "date_raw",
+        "rating",
+        "minutes_played",
+        "rating_position_raw"
+      ],
+      "eventLike": true,
+      "semanticWarning": "rating_position_raw can reflect the saved Hub line-up slot; values 28/29 are not actual match positions"
+    },
+    "managed_team_match_players.csv": {
+      "key": [
+        "rating_artificial_key"
+      ],
+      "requiredColumns": [
+        "join_status",
+        "player_id",
+        "date_raw",
+        "rating",
+        "minutes_played",
+        "rating_position_raw",
+        "actual_position_source"
+      ],
+      "eventLike": true,
+      "joinPolicy": "only joined_by_date is a confirmed fixture link",
+      "actualPositionScope": "latest managed-team match only"
+    },
+    "last_match_players.csv": {
+      "key": [
+        "artificial_key"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "team_id",
+        "is_managed_team",
+        "actual_position_id",
+        "actual_position"
+      ],
+      "scope": "retained last-match state for many teams"
+    },
+    "unresolved_player_names.csv": {
+      "key": [
+        "player_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "reason"
+      ],
+      "validationPolicy": "must be empty for normal automatic import"
+    },
+    "previous_teams.csv": {
+      "key": [
+        "player_id"
+      ],
+      "requiredColumns": [
+        "player_id",
+        "previous_team_id",
+        "current_team_id",
+        "player_join_team_date_raw",
+        "player_join_team_date"
+      ],
+      "snapshotState": true,
+      "semanticWarning": "One retained previous club per player; not a complete history without snapshots."
+    },
+    "presigned_transfers.csv": {
+      "key": [
+        "transfer_key"
+      ],
+      "requiredColumns": [
+        "transfer_key",
+        "player_id",
+        "from_team_id",
+        "to_team_id",
+        "signed_date_raw",
+        "signed_date",
+        "completion_date_raw",
+        "completion_date",
+        "offered_fee",
+        "is_loan_buy"
+      ],
+      "snapshotState": true,
+      "lifecyclePolicy": "Persist each observation. A row disappearing from a later snapshot must not delete the historical agreement.",
+      "scope": "Global AI and user-club agreed/presigned transfers currently retained by career_presignedcontract."
+    }
+  },
+  "futureOptionalFiles": {
+    "player_match_detailed_stats.csv": {
+      "capability": "detailedPlayerMatchStats",
+      "initiallyAvailable": false
+    },
+    "team_match_detailed_stats.csv": {
+      "capability": "detailedTeamMatchStats",
+      "initiallyAvailable": false
+    },
+    "match_events.csv": {
+      "capability": "matchEvents",
+      "initiallyAvailable": false
+    }
+  },
+  "transferDerivation": {
+    "authoritativeRawSources": [
+      "rosters.csv",
+      "players.csv",
+      "loans.csv",
+      "previous_teams.csv",
+      "presigned_transfers.csv"
+    ],
+    "rules": [
+      "A roster/current-team change without an active loan is a permanent-transfer candidate.",
+      "A new active loan is a loan-start candidate; disappearance plus return to parent club is a loan-end candidate.",
+      "previous_teams.csv and player_join_team_date confirm the latest completed move but do not form a complete history alone.",
+      "presigned_transfers.csv supplies agreement dates, planned completion dates and financial terms when observed.",
+      "Derived events must be recomputed from the predecessor of any chronologically inserted snapshot.",
+      "Raw snapshot observations are immutable; user corrections are overlays, never source mutation."
+    ],
+    "backwardCompatibility": "Schema 1.0.0 snapshots remain importable; the new files/columns are absent and transfer confidence is reduced."
+  },
+  "compatibility": {
+    "olderSchemas": "Import schema 1.0.0 and 1.1.0 without profitability. Do not invent a silent default.",
+    "historicalFallback": "A later known team profitability may be used for older snapshots only as inferred data and must be marked inferred, never observed."
+  }
+}

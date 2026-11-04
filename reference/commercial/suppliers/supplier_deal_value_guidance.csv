@@ -1,0 +1,6 @@
+﻿class_id,class_name,orientation_min_eur,orientation_max_eur,typical_cash_result,reality_basis,example_profile
+1,Teamwear,-250000,100000,"Club cost, discount, equipment value or near-zero cash",Model inference; public cash values are rarely disclosed at this level.,"Amateur club, small semi-professional club, small lower-league club."
+2,Niedrig,100000,1000000,Small guaranteed annual payment plus equipment,Anchored by lower professional examples such as the reported Luton supplier value.,Typical third division; strong regional club can approach the top of the band.
+3,Mittel,1000000,10000000,Meaningful paid technical partnership,"Anchored by Brentford, Crystal Palace and Celtic estimates.","Large third-division club, strong second-division club, smaller first-division club."
+4,Hoch,10000000,50000000,Large national or international partnership,"Anchored by Everton, Borussia Dortmund and Juventus.",Champions League-level club below the absolute global giants.
+5,Premium,50000000,150000000,Global elite technical partnership,"Football Benchmark reports the ten largest active deals above EUR 50m and four giants above EUR 100m; anchors include Bayern, Liverpool, Manchester United, Manchester City, Real Madrid and Barcelona.",Global football brand or strategic overbid for a borderline elite club.

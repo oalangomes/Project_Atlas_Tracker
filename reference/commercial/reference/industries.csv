@@ -1,0 +1,37 @@
+industry_id,display_name,notes
+aerospace_defense,Luft- und Raumfahrt / Verteidigung,B2B-Industrie mit geringer Konsumentenorientierung
+agriculture_food_production,Landwirtschaft und Lebensmittelproduktion,"Landwirtschaft, Fischerei und Lebensmittelherstellung"
+airline,Fluggesellschaften,Passagier- und Frachtfluggesellschaften
+automotive,Automobil und Fahrzeugbau,"Fahrzeughersteller, Händler und Zulieferer"
+banking_finance,Banken und Finanzdienstleistungen,"Banken, Investments, Vermögensverwaltung und Finanzierung"
+betting_gaming,Wetten und Glücksspiel,"Wettanbieter, Lotterien und Glücksspielmarken"
+beverage_alcohol,Alkoholische Getränke,"Bier, Wein und Spirituosen"
+beverage_non_alcohol,Alkoholfreie Getränke,"Softdrinks, Wasser, Kaffee und funktionale Getränke"
+business_services,Allgemeine Unternehmensdienstleistungen,B2B-Anbieter ohne ausreichend präzise Branchenquelle
+chemicals_materials,Chemie und Werkstoffe,"Chemie, Glas, Metalle und Werkstoffe"
+construction_building,Bau und Baustoffe,"Bauunternehmen, Baustoffe, Gebäudetechnik und Handwerk"
+consumer_goods,Konsumgüter,"Haushalt, Möbel, Körperpflege, Spielwaren und Geräte"
+crypto_fintech,Fintech und Krypto,"Digitale Zahlungen, Fintech, Blockchain und Krypto"
+education_research,Bildung und Forschung,"Hochschulen, Schulen und Forschungsorganisationen"
+energy_oil_gas,"Öl, Gas und Kraftstoffe","Mineralöl, Erdgas und Kraftstoffe"
+energy_utilities,Energie und Versorgung,"Strom, Wasser, erneuerbare Energien und Versorger"
+fashion_luxury,Mode und Luxus,"Mode, Schmuck, Uhren, Beauty und Luxusmarken"
+food_restaurant,Lebensmittel und Gastronomie,"Lebensmittelmarken, Restaurants, Bäckereien und Gastronomie"
+healthcare_pharma,"Gesundheit, Pharma und Medizintechnik","Pharma, Biotech, Medizin und Gesundheitsanbieter"
+hospitality_tourism,"Hotels, Reisen und Tourismus","Hotels, Resorts, Reiseanbieter und Tourismus"
+industrial_manufacturing,Industrie und Maschinenbau,"Maschinenbau, Fertigung, Elektrotechnik und Industrieausrüstung"
+insurance,Versicherungen,Versicherung und Rückversicherung
+local_services,Lokale Dienstleistungen,Kleine verbrauchernahe Dienstleister ohne präzise Branchenquelle
+logistics,Logistik und Fracht,"Versand, Kurier, Fracht, Lager und Häfen"
+media_entertainment,Medien und Unterhaltung,"Gaming, Film, Musik, Verlage, Streaming und Rundfunk"
+mining_resources,Bergbau und Rohstoffe,"Bergbau, Rohstoffgewinnung und Metallurgie"
+nonprofit_association,Verbände und Non-Profit,"Stiftungen, Verbände und gemeinnützige Organisationen"
+professional_services,Beratung und professionelle Dienste,"Beratung, Recht, Werbung, Architektur und Agenturen"
+public_sector,Öffentlicher Sektor,Behörden und öffentliche Einrichtungen
+real_estate,Immobilien,"Immobilienentwicklung, Verwaltung und Vermittlung"
+retail_ecommerce,Handel und E-Commerce,"Einzelhandel, Großhandel, Shops und Marktplätze"
+sports_fitness,Sport und Fitness,"Fitness, Sportangebote und sportnahe Dienstleistungen; Ausrüster separat"
+technology_hardware,Technologie-Hardware,"Elektronik, Computerhardware, Halbleiter und Geräte"
+technology_software,Software und digitale Dienste,"Software, Cloud, IT, Internet und digitale Plattformen"
+telecom,Telekommunikation,"Mobilfunk, Breitband und Telekommunikation"
+transport_mobility,Transport und Mobilität,"Bahn, ÖPNV, Bus, Mobilitätsplattformen und Personenverkehr"

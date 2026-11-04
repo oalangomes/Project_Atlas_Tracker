@@ -1,0 +1,1110 @@
+{
+  "format": "project-atlas-competition-qualification-rules",
+  "version": "1.0.0",
+  "modelId": "atlas-competition-qualification-rules-v1",
+  "generatedFor": "Project Atlas v0.23.34",
+  "policy": {
+    "observedRealityWins": true,
+    "unknownDoesNotTrigger": true,
+    "finalityRequiredForPlacementInference": true,
+    "dynamicCupAndCoefficientRoutes": "Only guaranteed league-position routes are inferred; cup pass-down, title-holder and coefficient/EPS routes remain observation-driven unless season-specific rule explicitly encodes them."
+  },
+  "rules": [
+    {
+      "id": "England Premier League:2025",
+      "leagueEaId": 13,
+      "leagueName": "England Premier League",
+      "seasonFrom": 2025,
+      "seasonTo": 2025,
+      "teamCount": 20,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          18,
+          19,
+          20
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "europa_league_qualification": [
+          6
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "cup_passdown",
+          "note": "FA Cup/EFL Cup and UEFA title-holder routes can add or shift European places; Atlas only auto-infers guaranteed league positions."
+        }
+      ],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Premier League / EFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.premierleague.com/en/premier-league-explained",
+          "https://www.efl.com/documents/efl-handbook.pdf"
+        ]
+      }
+    },
+    {
+      "id": "England Premier League:2026",
+      "leagueEaId": 13,
+      "leagueName": "England Premier League",
+      "seasonFrom": 2026,
+      "seasonTo": 2026,
+      "teamCount": 20,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          18,
+          19,
+          20
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ],
+        "europa_league_qualification": [
+          6
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "cup_passdown",
+          "note": "FA Cup/EFL Cup and UEFA title-holder routes can add or shift European places; Atlas only auto-infers guaranteed league positions."
+        }
+      ],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Premier League / EFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.premierleague.com/en/premier-league-explained",
+          "https://www.efl.com/documents/efl-handbook.pdf"
+        ]
+      }
+    },
+    {
+      "id": "England Premier League:baseline",
+      "leagueEaId": 13,
+      "leagueName": "England Premier League",
+      "seasonFrom": 2027,
+      "seasonTo": 2099,
+      "teamCount": 20,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          18,
+          19,
+          20
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "europa_league_qualification": [
+          5
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "european_performance_spot",
+          "note": "A fifth UCL place is dynamic and is not auto-inferred until known/observed."
+        },
+        {
+          "type": "cup_passdown",
+          "note": "Domestic cup outcomes may pass European places down the table."
+        }
+      ],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Premier League / EFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.premierleague.com/en/premier-league-explained",
+          "https://www.efl.com/documents/efl-handbook.pdf"
+        ]
+      }
+    },
+    {
+      "id": "England Championship:baseline",
+      "leagueEaId": 14,
+      "leagueName": "England Championship",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 24,
+      "expectedFinalMatches": 46,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2
+        ],
+        "promotion_playoff": [
+          3,
+          4,
+          5,
+          6
+        ],
+        "relegation": [
+          22,
+          23,
+          24
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Premier League / EFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.premierleague.com/en/premier-league-explained",
+          "https://www.efl.com/documents/efl-handbook.pdf"
+        ]
+      }
+    },
+    {
+      "id": "England League One:baseline",
+      "leagueEaId": 60,
+      "leagueName": "England League One",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 24,
+      "expectedFinalMatches": 46,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2
+        ],
+        "promotion_playoff": [
+          3,
+          4,
+          5,
+          6
+        ],
+        "relegation": [
+          21,
+          22,
+          23,
+          24
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Premier League / EFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.premierleague.com/en/premier-league-explained",
+          "https://www.efl.com/documents/efl-handbook.pdf"
+        ]
+      }
+    },
+    {
+      "id": "England League Two:baseline",
+      "leagueEaId": 61,
+      "leagueName": "England League Two",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 24,
+      "expectedFinalMatches": 46,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2,
+          3
+        ],
+        "promotion_playoff": [
+          4,
+          5,
+          6,
+          7
+        ],
+        "relegation": [
+          23,
+          24
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Premier League / EFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.premierleague.com/en/premier-league-explained",
+          "https://www.efl.com/documents/efl-handbook.pdf"
+        ]
+      }
+    },
+    {
+      "id": "Germany Bundesliga:baseline",
+      "leagueEaId": 19,
+      "leagueName": "Germany Bundesliga",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          16
+        ],
+        "relegation": [
+          17,
+          18
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "europa_league_qualification": [
+          5
+        ],
+        "conference_league_qualification": [
+          6
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "cup_passdown",
+          "note": "DFB-Pokal outcome can improve/pass down Europa/Conference allocation."
+        }
+      ],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Bundesliga / DFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.bundesliga.com/de/bundesliga/news/relegation-alle-infos-termine-modus-abstieg-aufstieg-3008",
+          "https://www.bundesliga.com/de/bundesliga/news/dfl-informationen-saisonfinale-2025-26-meisterehrungen-37369"
+        ]
+      }
+    },
+    {
+      "id": "Germany 2 Bundesliga:baseline",
+      "leagueEaId": 20,
+      "leagueName": "Germany 2 Bundesliga",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2
+        ],
+        "promotion_playoff": [
+          3
+        ],
+        "relegation_playoff": [
+          16
+        ],
+        "relegation": [
+          17,
+          18
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Bundesliga / DFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.bundesliga.com/de/bundesliga/news/relegation-alle-infos-termine-modus-abstieg-aufstieg-3008",
+          "https://www.bundesliga.com/de/bundesliga/news/dfl-informationen-saisonfinale-2025-26-meisterehrungen-37369"
+        ]
+      }
+    },
+    {
+      "id": "Germany 3 Liga:baseline",
+      "leagueEaId": 2076,
+      "leagueName": "Germany 3 Liga",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 20,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2
+        ],
+        "promotion_playoff": [
+          3
+        ],
+        "relegation": [
+          17,
+          18,
+          19,
+          20
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "official_current",
+        "source": "Bundesliga / DFL",
+        "verifiedAt": "2026-08-27",
+        "urls": [
+          "https://www.bundesliga.com/de/bundesliga/news/relegation-alle-infos-termine-modus-abstieg-aufstieg-3008",
+          "https://www.bundesliga.com/de/bundesliga/news/dfl-informationen-saisonfinale-2025-26-meisterehrungen-37369"
+        ]
+      }
+    },
+    {
+      "id": "Spain Primera Division:baseline",
+      "leagueEaId": 53,
+      "leagueName": "Spain Primera Division",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 20,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          18,
+          19,
+          20
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "europa_league_qualification": [
+          5
+        ],
+        "conference_league_qualification": [
+          6
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "performance_spot_or_cup_passdown",
+          "note": "Additional UEFA performance/cup routes remain observation-driven."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Spain Segunda Division:baseline",
+      "leagueEaId": 54,
+      "leagueName": "Spain Segunda Division",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 22,
+      "expectedFinalMatches": 42,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2
+        ],
+        "promotion_playoff": [
+          3,
+          4,
+          5,
+          6
+        ],
+        "relegation": [
+          19,
+          20,
+          21,
+          22
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Italy Serie A:baseline",
+      "leagueEaId": 31,
+      "leagueName": "Italy Serie A",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 20,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          18,
+          19,
+          20
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "europa_league_qualification": [
+          5
+        ],
+        "conference_league_qualification": [
+          6
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "performance_spot_or_cup_passdown",
+          "note": "Additional UEFA performance/cup routes remain observation-driven."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Italy Serie B:baseline",
+      "leagueEaId": 32,
+      "leagueName": "Italy Serie B",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 20,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2
+        ],
+        "promotion_playoff": [
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "relegation_playoff": [
+          16,
+          17
+        ],
+        "relegation": [
+          18,
+          19,
+          20
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "conditional_playoff",
+          "note": "Serie B playoff/playout participation also depends on point-gap rules; Atlas treats these positions as playoff zones, never direct promotion/relegation."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "France Ligue 1:baseline",
+      "leagueEaId": 16,
+      "leagueName": "France Ligue 1",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          16
+        ],
+        "relegation": [
+          17,
+          18
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "europa_league_qualification": [
+          5
+        ],
+        "conference_league_qualification": [
+          6
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "cup_passdown",
+          "note": "Coupe de France route can shift lower UEFA allocation."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "France Ligue 2:baseline",
+      "leagueEaId": 17,
+      "leagueName": "France Ligue 2",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "promotion": [
+          1,
+          2
+        ],
+        "promotion_playoff": [
+          3,
+          4,
+          5
+        ],
+        "relegation_playoff": [
+          16
+        ],
+        "relegation": [
+          17,
+          18
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Holland Eredivisie:baseline",
+      "leagueEaId": 10,
+      "leagueName": "Holland Eredivisie",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          16
+        ],
+        "relegation": [
+          17,
+          18
+        ],
+        "champions_league_qualification": [
+          1,
+          2,
+          3
+        ],
+        "europa_league_qualification": [
+          4
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "europe_playoff",
+          "positions": [
+            5,
+            6,
+            7,
+            8
+          ],
+          "note": "European playoff winner is observation-driven."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Portugal Primeira Liga:baseline",
+      "leagueEaId": 308,
+      "leagueName": "Portugal Primeira Liga",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          16
+        ],
+        "relegation": [
+          17,
+          18
+        ],
+        "champions_league_qualification": [
+          1,
+          2
+        ],
+        "europa_league_qualification": [
+          3
+        ],
+        "conference_league_qualification": [
+          4
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3,
+          4
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "cup_or_access_list_shift",
+          "note": "UEFA access-list and cup routes can alter entry rounds/slots; only conservative guaranteed positions are inferred."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Scotland Premiership:baseline",
+      "leagueEaId": 50,
+      "leagueName": "Scotland Premiership",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 12,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          11
+        ],
+        "relegation": [
+          12
+        ],
+        "champions_league_qualification": [
+          1,
+          2
+        ],
+        "europe_qualification": [
+          1,
+          2,
+          3
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "split_league",
+          "note": "Final table after championship/relegation split; cup routes can add/shift Europe places."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Norway Eliteserien:baseline",
+      "leagueEaId": 41,
+      "leagueName": "Norway Eliteserien",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 16,
+      "expectedFinalMatches": 30,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          14
+        ],
+        "relegation": [
+          15,
+          16
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Sweden Allsvenskan:baseline",
+      "leagueEaId": 56,
+      "leagueName": "Sweden Allsvenskan",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 16,
+      "expectedFinalMatches": 30,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          14
+        ],
+        "relegation": [
+          15,
+          16
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Poland Ekstraklasa:baseline",
+      "leagueEaId": 66,
+      "leagueName": "Poland Ekstraklasa",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          16,
+          17,
+          18
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Turkey Super Lig:baseline",
+      "leagueEaId": 68,
+      "leagueName": "Turkey Super Lig",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 18,
+      "expectedFinalMatches": 34,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          16,
+          17,
+          18
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Rep Ireland Premier Division:baseline",
+      "leagueEaId": 65,
+      "leagueName": "Rep Ireland Premier Division",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 10,
+      "expectedFinalMatches": 36,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          9
+        ],
+        "relegation": [
+          10
+        ]
+      },
+      "dynamicConditions": [],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Switzerland Super League:baseline",
+      "leagueEaId": 189,
+      "leagueName": "Switzerland Super League",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 12,
+      "expectedFinalMatches": 38,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation_playoff": [
+          11
+        ],
+        "relegation": [
+          12
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "split_league",
+          "note": "Final placement is evaluated only after the 38-match split phase."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Austria Bundesliga:baseline",
+      "leagueEaId": 80,
+      "leagueName": "Austria Bundesliga",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 12,
+      "expectedFinalMatches": 32,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          12
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "split_league",
+          "note": "Final placement is evaluated only after the split phase; European playoff routes remain observation-driven."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Denmark Superliga:baseline",
+      "leagueEaId": 1,
+      "leagueName": "Denmark Superliga",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 12,
+      "expectedFinalMatches": 32,
+      "positions": {
+        "league_title": [
+          1
+        ],
+        "relegation": [
+          11,
+          12
+        ]
+      },
+      "dynamicConditions": [
+        {
+          "type": "split_league",
+          "note": "Final placement is evaluated only after the split phase; European playoff routes remain observation-driven."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Belgium Pro League:observed-only",
+      "leagueEaId": 4,
+      "leagueName": "Belgium Pro League",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 16,
+      "expectedFinalMatches": null,
+      "positions": {},
+      "dynamicConditions": [
+        {
+          "type": "multi_phase",
+          "note": "Championship/Europe/relegation groups require phase-aware rules; observed FC26 outcomes remain authoritative."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    },
+    {
+      "id": "Romania Liga I:observed-only",
+      "leagueEaId": 330,
+      "leagueName": "Romania Liga I",
+      "seasonFrom": 2025,
+      "seasonTo": 2099,
+      "teamCount": 16,
+      "expectedFinalMatches": null,
+      "positions": {},
+      "dynamicConditions": [
+        {
+          "type": "multi_phase",
+          "note": "Championship/relegation play-out requires phase-aware rules; observed FC26 outcomes remain authoritative."
+        }
+      ],
+      "provenance": {
+        "kind": "curated_format_baseline",
+        "source": "Project Atlas competition-format registry",
+        "verifiedAt": "2026-08-27",
+        "note": "Stable placement structure encoded conservatively; observed FC26 participation and league transitions remain authoritative reality checks."
+      }
+    }
+  ]
+}

@@ -1,0 +1,1828 @@
+{
+  "modelVersion": "dynamic-revenue-1",
+  "generatedAt": "2026-08-03",
+  "baseConvention": "Amounts are annual league-level model pools in the native currency. Atlas converts them to the career base currency with versioned reference rates and always exposes the source quality.",
+  "fxToEur": {
+    "EUR": 1.0,
+    "GBP": 1.17,
+    "USD": 0.92
+  },
+  "qualityLabels": {
+    "official": "Offiziell",
+    "reconstructed": "Rekonstruiert",
+    "calibrated": "Kalibriert",
+    "estimated": "Geschätzt"
+  },
+  "sources": [
+    {
+      "key": "premier_league_distribution",
+      "title": "Premier League broadcast distribution FAQ",
+      "publisher": "Premier League",
+      "published": "current",
+      "url": "https://www.premierleague.com/en/about/faq/broadcast",
+      "note": "Domestic revenue 50% equal, 25% merit, 25% facility fees; international growth is merit-linked and the maximum/minimum ratio is capped."
+    },
+    {
+      "key": "premier_league_2024_25_payments",
+      "title": "Premier League central payments to clubs 2024/25",
+      "publisher": "Premier League",
+      "published": "2025-07-01",
+      "url": "https://www.premierleague.com/en/news/4325409/premier-league-central-payments-to-clubs-202425-season",
+      "note": "Official club-level central payments used as calibration context."
+    },
+    {
+      "key": "dfl_2021_25_key",
+      "title": "Distribution of media revenue 2021/22 to 2024/25",
+      "publisher": "DFL",
+      "published": "2020-12-07",
+      "url": "https://media.dfl.de/sites/3/2020/12/2020-12-07_Distribution-of-media-revenue_2021_22-2024_25-EN.pdf",
+      "note": "Official pillars: equal distribution, performance, youth and interest."
+    },
+    {
+      "key": "dfl_2025_29_pool",
+      "title": "DFL increases national media revenue to EUR 1.121 billion per season",
+      "publisher": "DFL/Bundesliga",
+      "published": "2024-12-05",
+      "url": "https://www.bundesliga.com/en/bundesliga/news/dfl-increases-national-media-revenue-to-1121-billion-per-season-from-2025-26-29981",
+      "note": "Official domestic rights total for Bundesliga and Bundesliga 2 in 2025/26-2028/29."
+    },
+    {
+      "key": "laliga_distribution",
+      "title": "Distribution of TV Rights",
+      "publisher": "LALIGA",
+      "published": "2025-12-22",
+      "url": "https://www.laliga.com/en-US/transparency/economic-management/tv-rights",
+      "note": "Official club distributions and legal criteria; sporting and social reach components."
+    },
+    {
+      "key": "spain_law",
+      "title": "Royal Decree-Law 5/2015",
+      "publisher": "Boletín Oficial del Estado",
+      "published": "2015-05-01",
+      "url": "https://www.boe.es/buscar/act.php?id=BOE-A-2015-4780",
+      "note": "Legal framework for central selling and distribution."
+    },
+    {
+      "key": "portugal_centralisation",
+      "title": "Liga Portugal Centralização",
+      "publisher": "Liga Portugal",
+      "published": "current",
+      "url": "https://www.ligaportugal.pt/pages/centralizacao",
+      "note": "Central selling is planned from 2028/29; earlier seasons remain modelled as individual club deals."
+    },
+    {
+      "key": "spfl_2024_25",
+      "title": "Record distribution to SPFL clubs",
+      "publisher": "SPFL",
+      "published": "2025-10-08",
+      "url": "https://spfl.co.uk/news/record-distribution-to-spfl-clubs",
+      "note": "Official 2024/25 group distributions of GBP 42m and ladder-based league payments."
+    },
+    {
+      "key": "uefa_2024_27",
+      "title": "Distribution to clubs from UEFA competitions for the 2024-27 cycle",
+      "publisher": "UEFA",
+      "published": "2024-03-22",
+      "url": "https://editorial.uefa.com/resources/028b-1a7880138a24-7a993e2e33d1-1000/20240322_circular_2024_13_en.pdf",
+      "note": "Official starting fees and match bonuses for UCL, UEL and UECL."
+    }
+  ],
+  "profiles": [
+    {
+      "key": "eng_pl_2025",
+      "leagueIds": [
+        13
+      ],
+      "aliases": [
+        "premier league",
+        "england premier league"
+      ],
+      "nativeCurrency": "GBP",
+      "annualPoolMajor": 2750000000,
+      "teamCount": 20,
+      "weights": {
+        "equal": 0.5,
+        "merit": 0.25,
+        "audience": 0.25
+      },
+      "quality": "calibrated",
+      "sourceKeys": [
+        "premier_league_distribution",
+        "premier_league_2024_25_payments"
+      ],
+      "validFromSeason": 2024,
+      "validToSeason": 2028,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 43,
+        "baseFill": 0.93,
+        "seasonTicketShare": 0.62,
+        "hospitalityPerHeadMajor": 8,
+        "concessionsPerHeadMajor": 7,
+        "variableCostPerHeadMajor": 4.8,
+        "fixedCostMajor": 125000
+      },
+      "commercial": {
+        "annualBaseMajor": 8000000,
+        "prestigeScaleMajor": 2500000
+      },
+      "operations": {
+        "monthlyBaseMajor": 650000,
+        "stadiumCostPerSeatAnnualMajor": 125,
+        "wageOverheadRate": 0.18
+      },
+      "label": "Premier League",
+      "notes": "Offizielle Eckdaten werden mit einem transparenten Atlas-Verteilungsschlüssel kalibriert.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.0
+    },
+    {
+      "key": "eng_championship_2025",
+      "leagueIds": [
+        14
+      ],
+      "aliases": [
+        "championship"
+      ],
+      "nativeCurrency": "GBP",
+      "annualPoolMajor": 250000000,
+      "teamCount": 24,
+      "weights": {
+        "equal": 0.6,
+        "merit": 0.25,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 29,
+        "baseFill": 0.78,
+        "seasonTicketShare": 0.55,
+        "hospitalityPerHeadMajor": 5,
+        "concessionsPerHeadMajor": 6,
+        "variableCostPerHeadMajor": 3.8,
+        "fixedCostMajor": 75000
+      },
+      "commercial": {
+        "annualBaseMajor": 2200000,
+        "prestigeScaleMajor": 850000
+      },
+      "operations": {
+        "monthlyBaseMajor": 320000,
+        "stadiumCostPerSeatAnnualMajor": 90,
+        "wageOverheadRate": 0.18
+      },
+      "label": "Championship",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "eng_league_one_2025",
+      "leagueIds": [
+        60
+      ],
+      "aliases": [
+        "league one"
+      ],
+      "nativeCurrency": "GBP",
+      "annualPoolMajor": 75000000,
+      "teamCount": 24,
+      "weights": {
+        "equal": 0.65,
+        "merit": 0.25,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 23,
+        "baseFill": 0.63,
+        "seasonTicketShare": 0.48,
+        "hospitalityPerHeadMajor": 3,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 42000
+      },
+      "commercial": {
+        "annualBaseMajor": 700000,
+        "prestigeScaleMajor": 300000
+      },
+      "operations": {
+        "monthlyBaseMajor": 145000,
+        "stadiumCostPerSeatAnnualMajor": 65,
+        "wageOverheadRate": 0.17
+      },
+      "label": "League One",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "eng_league_two_2025",
+      "leagueIds": [
+        61
+      ],
+      "aliases": [
+        "league two"
+      ],
+      "nativeCurrency": "GBP",
+      "annualPoolMajor": 52000000,
+      "teamCount": 24,
+      "weights": {
+        "equal": 0.68,
+        "merit": 0.22,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 20,
+        "baseFill": 0.57,
+        "seasonTicketShare": 0.42,
+        "hospitalityPerHeadMajor": 2.5,
+        "concessionsPerHeadMajor": 4.5,
+        "variableCostPerHeadMajor": 2.6,
+        "fixedCostMajor": 32000
+      },
+      "commercial": {
+        "annualBaseMajor": 450000,
+        "prestigeScaleMajor": 220000
+      },
+      "operations": {
+        "monthlyBaseMajor": 105000,
+        "stadiumCostPerSeatAnnualMajor": 55,
+        "wageOverheadRate": 0.16
+      },
+      "label": "League Two",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "ger_bundesliga_2025",
+      "leagueIds": [
+        19
+      ],
+      "aliases": [
+        "bundesliga",
+        "1. bundesliga"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 896800000,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.5,
+        "merit": 0.43,
+        "youth": 0.04,
+        "audience": 0.03
+      },
+      "quality": "calibrated",
+      "sourceKeys": [
+        "dfl_2021_25_key",
+        "dfl_2025_29_pool"
+      ],
+      "validFromSeason": 2025,
+      "validToSeason": 2028,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 31,
+        "baseFill": 0.91,
+        "seasonTicketShare": 0.6,
+        "hospitalityPerHeadMajor": 6,
+        "concessionsPerHeadMajor": 6,
+        "variableCostPerHeadMajor": 4,
+        "fixedCostMajor": 100000
+      },
+      "commercial": {
+        "annualBaseMajor": 5500000,
+        "prestigeScaleMajor": 1800000
+      },
+      "operations": {
+        "monthlyBaseMajor": 470000,
+        "stadiumCostPerSeatAnnualMajor": 105,
+        "wageOverheadRate": 0.17
+      },
+      "label": "Bundesliga",
+      "notes": "Offizielle Eckdaten werden mit einem transparenten Atlas-Verteilungsschlüssel kalibriert.",
+      "poolBaseSeason": 2025,
+      "annualGrowthRate": 0.0
+    },
+    {
+      "key": "ger_bundesliga2_2025",
+      "leagueIds": [
+        20
+      ],
+      "aliases": [
+        "2. bundesliga"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 224200000,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.55,
+        "merit": 0.39,
+        "youth": 0.04,
+        "audience": 0.02
+      },
+      "quality": "calibrated",
+      "sourceKeys": [
+        "dfl_2021_25_key",
+        "dfl_2025_29_pool"
+      ],
+      "validFromSeason": 2025,
+      "validToSeason": 2028,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 23,
+        "baseFill": 0.82,
+        "seasonTicketShare": 0.55,
+        "hospitalityPerHeadMajor": 4,
+        "concessionsPerHeadMajor": 5.5,
+        "variableCostPerHeadMajor": 3.4,
+        "fixedCostMajor": 62000
+      },
+      "commercial": {
+        "annualBaseMajor": 1500000,
+        "prestigeScaleMajor": 650000
+      },
+      "operations": {
+        "monthlyBaseMajor": 250000,
+        "stadiumCostPerSeatAnnualMajor": 75,
+        "wageOverheadRate": 0.17
+      },
+      "label": "2. Bundesliga",
+      "notes": "Offizielle Eckdaten werden mit einem transparenten Atlas-Verteilungsschlüssel kalibriert.",
+      "poolBaseSeason": 2025,
+      "annualGrowthRate": 0.0
+    },
+    {
+      "key": "ger_3liga_2025",
+      "leagueIds": [
+        2076
+      ],
+      "aliases": [
+        "3. liga"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 45000000,
+      "teamCount": 20,
+      "weights": {
+        "equal": 0.68,
+        "merit": 0.22,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 18,
+        "baseFill": 0.61,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 2.5,
+        "concessionsPerHeadMajor": 4.5,
+        "variableCostPerHeadMajor": 2.7,
+        "fixedCostMajor": 34000
+      },
+      "commercial": {
+        "annualBaseMajor": 500000,
+        "prestigeScaleMajor": 220000
+      },
+      "operations": {
+        "monthlyBaseMajor": 110000,
+        "stadiumCostPerSeatAnnualMajor": 55,
+        "wageOverheadRate": 0.16
+      },
+      "label": "3. Liga",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "esp_laliga_2024",
+      "leagueIds": [
+        53
+      ],
+      "aliases": [
+        "la liga",
+        "laliga",
+        "primera división"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 1500000000,
+      "teamCount": 20,
+      "weights": {
+        "equal": 0.5,
+        "merit": 0.25,
+        "audience": 0.25
+      },
+      "quality": "reconstructed",
+      "sourceKeys": [
+        "laliga_distribution",
+        "spain_law"
+      ],
+      "validFromSeason": 2024,
+      "validToSeason": 2026,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 35,
+        "baseFill": 0.79,
+        "seasonTicketShare": 0.55,
+        "hospitalityPerHeadMajor": 6,
+        "concessionsPerHeadMajor": 5.5,
+        "variableCostPerHeadMajor": 3.8,
+        "fixedCostMajor": 90000
+      },
+      "commercial": {
+        "annualBaseMajor": 5000000,
+        "prestigeScaleMajor": 2100000
+      },
+      "operations": {
+        "monthlyBaseMajor": 450000,
+        "stadiumCostPerSeatAnnualMajor": 100,
+        "wageOverheadRate": 0.17
+      },
+      "label": "LaLiga",
+      "notes": "Die Verteilung wurde aus offiziellen Ausschüttungen oder Rechtsgrundlagen rekonstruiert.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.0
+    },
+    {
+      "key": "esp_segunda_2024",
+      "leagueIds": [
+        54
+      ],
+      "aliases": [
+        "segunda división",
+        "laliga hypermotion"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 210000000,
+      "teamCount": 22,
+      "weights": {
+        "equal": 0.7,
+        "merit": 0.15,
+        "audience": 0.15
+      },
+      "quality": "reconstructed",
+      "sourceKeys": [
+        "laliga_distribution",
+        "spain_law"
+      ],
+      "validFromSeason": 2024,
+      "validToSeason": 2026,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 20,
+        "baseFill": 0.62,
+        "seasonTicketShare": 0.48,
+        "hospitalityPerHeadMajor": 3,
+        "concessionsPerHeadMajor": 4.5,
+        "variableCostPerHeadMajor": 2.8,
+        "fixedCostMajor": 43000
+      },
+      "commercial": {
+        "annualBaseMajor": 900000,
+        "prestigeScaleMajor": 400000
+      },
+      "operations": {
+        "monthlyBaseMajor": 170000,
+        "stadiumCostPerSeatAnnualMajor": 65,
+        "wageOverheadRate": 0.16
+      },
+      "label": "LaLiga 2",
+      "notes": "Die Verteilung wurde aus offiziellen Ausschüttungen oder Rechtsgrundlagen rekonstruiert.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.0
+    },
+    {
+      "key": "ita_serie_a_2024",
+      "leagueIds": [
+        31
+      ],
+      "aliases": [
+        "serie a"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 900000000,
+      "teamCount": 20,
+      "weights": {
+        "equal": 0.5,
+        "merit": 0.28,
+        "audience": 0.22
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 31,
+        "baseFill": 0.72,
+        "seasonTicketShare": 0.47,
+        "hospitalityPerHeadMajor": 5.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3.6,
+        "fixedCostMajor": 83000
+      },
+      "commercial": {
+        "annualBaseMajor": 4000000,
+        "prestigeScaleMajor": 1700000
+      },
+      "operations": {
+        "monthlyBaseMajor": 410000,
+        "stadiumCostPerSeatAnnualMajor": 95,
+        "wageOverheadRate": 0.17
+      },
+      "label": "Serie A",
+      "notes": "Mangels vollständiger offizieller Ausschüttungsdaten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "ita_serie_b_2024",
+      "leagueIds": [
+        32
+      ],
+      "aliases": [
+        "serie b"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 110000000,
+      "teamCount": 20,
+      "weights": {
+        "equal": 0.62,
+        "merit": 0.25,
+        "audience": 0.13
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 18,
+        "baseFill": 0.55,
+        "seasonTicketShare": 0.42,
+        "hospitalityPerHeadMajor": 2.7,
+        "concessionsPerHeadMajor": 4,
+        "variableCostPerHeadMajor": 2.7,
+        "fixedCostMajor": 38000
+      },
+      "commercial": {
+        "annualBaseMajor": 700000,
+        "prestigeScaleMajor": 320000
+      },
+      "operations": {
+        "monthlyBaseMajor": 145000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Serie B",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "fra_ligue1_2024",
+      "leagueIds": [
+        16
+      ],
+      "aliases": [
+        "ligue 1"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 500000000,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.5,
+        "merit": 0.3,
+        "audience": 0.2
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 27,
+        "baseFill": 0.7,
+        "seasonTicketShare": 0.48,
+        "hospitalityPerHeadMajor": 4.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3.3,
+        "fixedCostMajor": 69000
+      },
+      "commercial": {
+        "annualBaseMajor": 2800000,
+        "prestigeScaleMajor": 1250000
+      },
+      "operations": {
+        "monthlyBaseMajor": 320000,
+        "stadiumCostPerSeatAnnualMajor": 82,
+        "wageOverheadRate": 0.17
+      },
+      "label": "Ligue 1",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "fra_ligue2_2024",
+      "leagueIds": [
+        17
+      ],
+      "aliases": [
+        "ligue 2"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 90000000,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.62,
+        "merit": 0.25,
+        "audience": 0.13
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 16,
+        "baseFill": 0.53,
+        "seasonTicketShare": 0.4,
+        "hospitalityPerHeadMajor": 2.5,
+        "concessionsPerHeadMajor": 3.8,
+        "variableCostPerHeadMajor": 2.5,
+        "fixedCostMajor": 32000
+      },
+      "commercial": {
+        "annualBaseMajor": 550000,
+        "prestigeScaleMajor": 250000
+      },
+      "operations": {
+        "monthlyBaseMajor": 120000,
+        "stadiumCostPerSeatAnnualMajor": 52,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Ligue 2",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "ned_eredivisie_2024",
+      "leagueIds": [
+        10
+      ],
+      "aliases": [
+        "eredivisie"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 135000000,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.55,
+        "merit": 0.3,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 24,
+        "baseFill": 0.78,
+        "seasonTicketShare": 0.58,
+        "hospitalityPerHeadMajor": 4,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3.1,
+        "fixedCostMajor": 52000
+      },
+      "commercial": {
+        "annualBaseMajor": 1800000,
+        "prestigeScaleMajor": 780000
+      },
+      "operations": {
+        "monthlyBaseMajor": 210000,
+        "stadiumCostPerSeatAnnualMajor": 72,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Eredivisie",
+      "notes": "Mangels vollständiger offizieller Ausschüttungsdaten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "por_primeira_pre_2028",
+      "leagueIds": [
+        308
+      ],
+      "aliases": [
+        "primeira liga",
+        "liga portugal"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 0,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.0,
+        "merit": 0.2,
+        "audience": 0.8
+      },
+      "quality": "calibrated",
+      "sourceKeys": [
+        "portugal_centralisation"
+      ],
+      "validFromSeason": 2024,
+      "validToSeason": 2027,
+      "distributionModel": "individual",
+      "matchday": {
+        "ticketPriceMajor": 22,
+        "baseFill": 0.64,
+        "seasonTicketShare": 0.47,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 4.5,
+        "variableCostPerHeadMajor": 2.9,
+        "fixedCostMajor": 44000
+      },
+      "commercial": {
+        "annualBaseMajor": 1200000,
+        "prestigeScaleMajor": 650000
+      },
+      "operations": {
+        "monthlyBaseMajor": 170000,
+        "stadiumCostPerSeatAnnualMajor": 62,
+        "wageOverheadRate": 0.16
+      },
+      "individualBaseMajor": 2000000,
+      "individualSpreadMajor": 32000000,
+      "label": "Liga Portugal (individuelle Rechte)",
+      "notes": "Die individuelle Vermarktung bis 2027/28 ist offiziell belegt; die vereinsbezogene Betragshöhe bleibt ein transparentes Atlas-Modell.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "sco_premiership_2024",
+      "leagueIds": [
+        50
+      ],
+      "aliases": [
+        "scottish premiership",
+        "premiership"
+      ],
+      "nativeCurrency": "GBP",
+      "annualPoolMajor": 29400000,
+      "teamCount": 12,
+      "weights": {
+        "equal": 0.2,
+        "merit": 0.7,
+        "audience": 0.1
+      },
+      "quality": "reconstructed",
+      "sourceKeys": [
+        "spfl_2024_25"
+      ],
+      "validFromSeason": 2024,
+      "validToSeason": 2025,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 27,
+        "baseFill": 0.73,
+        "seasonTicketShare": 0.54,
+        "hospitalityPerHeadMajor": 4.5,
+        "concessionsPerHeadMajor": 5.5,
+        "variableCostPerHeadMajor": 3.4,
+        "fixedCostMajor": 55000
+      },
+      "commercial": {
+        "annualBaseMajor": 1200000,
+        "prestigeScaleMajor": 620000
+      },
+      "operations": {
+        "monthlyBaseMajor": 165000,
+        "stadiumCostPerSeatAnnualMajor": 70,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Scottish Premiership",
+      "notes": "Die Verteilung wurde aus offiziellen Ausschüttungen oder Rechtsgrundlagen rekonstruiert.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.0
+    },
+    {
+      "key": "bel_pro",
+      "leagueIds": [
+        4
+      ],
+      "aliases": [
+        "belgium pro league"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 100000000,
+      "teamCount": 16,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 26,
+        "baseFill": 0.72,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 1200000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Belgium Pro League",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "aut_bundesliga",
+      "leagueIds": [
+        80
+      ],
+      "aliases": [
+        "austria bundesliga"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 42000000,
+      "teamCount": 12,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 22,
+        "baseFill": 0.7,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 850000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Austria Bundesliga",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "sui_super",
+      "leagueIds": [
+        189
+      ],
+      "aliases": [
+        "switzerland super league"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 38000000,
+      "teamCount": 12,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 25,
+        "baseFill": 0.67,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 900000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Switzerland Super League",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "tur_super",
+      "leagueIds": [
+        68
+      ],
+      "aliases": [
+        "turkey süper lig"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 190000000,
+      "teamCount": 20,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 20,
+        "baseFill": 0.68,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 1600000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Turkey Süper Lig",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "den_super",
+      "leagueIds": [
+        1
+      ],
+      "aliases": [
+        "denmark superliga"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 34000000,
+      "teamCount": 12,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 24,
+        "baseFill": 0.7,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 850000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Denmark Superliga",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "nor_elite",
+      "leagueIds": [
+        41
+      ],
+      "aliases": [
+        "norway eliteserien"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 30000000,
+      "teamCount": 16,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 22,
+        "baseFill": 0.62,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 700000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Norway Eliteserien",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "swe_all",
+      "leagueIds": [
+        56
+      ],
+      "aliases": [
+        "sweden allsvenskan"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 28000000,
+      "teamCount": 16,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 21,
+        "baseFill": 0.65,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 650000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Sweden Allsvenskan",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "pol_ekstra",
+      "leagueIds": [
+        66
+      ],
+      "aliases": [
+        "poland ekstraklasa"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 75000000,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 18,
+        "baseFill": 0.62,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 800000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Poland Ekstraklasa",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "irl_prem",
+      "leagueIds": [
+        65
+      ],
+      "aliases": [
+        "ireland premier division"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 5000000,
+      "teamCount": 10,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 18,
+        "baseFill": 0.56,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 250000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Ireland Premier Division",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "usa_mls",
+      "leagueIds": [
+        39
+      ],
+      "aliases": [
+        "major league soccer"
+      ],
+      "nativeCurrency": "USD",
+      "annualPoolMajor": 250000000,
+      "teamCount": 30,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 36,
+        "baseFill": 0.72,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 2300000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Major League Soccer",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "ksa_pro",
+      "leagueIds": [
+        350
+      ],
+      "aliases": [
+        "saudi pro league"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 300000000,
+      "teamCount": 18,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 18,
+        "baseFill": 0.55,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 2200000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Saudi Pro League",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "arg_primera",
+      "leagueIds": [
+        353
+      ],
+      "aliases": [
+        "argentina primera división"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 95000000,
+      "teamCount": 30,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 12,
+        "baseFill": 0.72,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 1100000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Argentina Primera División",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "aus_aleague",
+      "leagueIds": [
+        351
+      ],
+      "aliases": [
+        "australia a-league"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 35000000,
+      "teamCount": 14,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 30,
+        "baseFill": 0.52,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 700000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Australia A-League",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "rom_liga1",
+      "leagueIds": [
+        330
+      ],
+      "aliases": [
+        "romania liga i"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 36000000,
+      "teamCount": 16,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 10,
+        "baseFill": 0.5,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 400000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Romania Liga I",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "kor_k1",
+      "leagueIds": [
+        83
+      ],
+      "aliases": [
+        "k league 1"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 70000000,
+      "teamCount": 12,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 14,
+        "baseFill": 0.43,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 800000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "K League 1",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "chn_super",
+      "leagueIds": [
+        2012
+      ],
+      "aliases": [
+        "china super league"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 120000000,
+      "teamCount": 16,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 10,
+        "baseFill": 0.42,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 1000000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "China Super League",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "ind_super",
+      "leagueIds": [
+        2149
+      ],
+      "aliases": [
+        "indian super league"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 35000000,
+      "teamCount": 13,
+      "weights": {
+        "equal": 0.58,
+        "merit": 0.27,
+        "audience": 0.15
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 5,
+        "baseFill": 0.5,
+        "seasonTicketShare": 0.45,
+        "hospitalityPerHeadMajor": 3.5,
+        "concessionsPerHeadMajor": 5,
+        "variableCostPerHeadMajor": 3,
+        "fixedCostMajor": 45000
+      },
+      "commercial": {
+        "annualBaseMajor": 650000,
+        "prestigeScaleMajor": 450000
+      },
+      "operations": {
+        "monthlyBaseMajor": 140000,
+        "stadiumCostPerSeatAnnualMajor": 60,
+        "wageOverheadRate": 0.16
+      },
+      "label": "Indian Super League",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "ger_frauen",
+      "leagueIds": [
+        2215
+      ],
+      "aliases": [
+        "frauen-bundesliga"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 18000000,
+      "teamCount": 14,
+      "weights": {
+        "equal": 0.65,
+        "merit": 0.25,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 14,
+        "baseFill": 0.48,
+        "seasonTicketShare": 0.3,
+        "hospitalityPerHeadMajor": 2,
+        "concessionsPerHeadMajor": 3,
+        "variableCostPerHeadMajor": 2.2,
+        "fixedCostMajor": 18000
+      },
+      "commercial": {
+        "annualBaseMajor": 350000,
+        "prestigeScaleMajor": 180000
+      },
+      "operations": {
+        "monthlyBaseMajor": 70000,
+        "stadiumCostPerSeatAnnualMajor": 35,
+        "wageOverheadRate": 0.14
+      },
+      "label": "Frauen-Bundesliga",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "eng_wsl",
+      "leagueIds": [
+        2216
+      ],
+      "aliases": [
+        "wsl"
+      ],
+      "nativeCurrency": "GBP",
+      "annualPoolMajor": 24000000,
+      "teamCount": 14,
+      "weights": {
+        "equal": 0.65,
+        "merit": 0.25,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 14,
+        "baseFill": 0.48,
+        "seasonTicketShare": 0.3,
+        "hospitalityPerHeadMajor": 2,
+        "concessionsPerHeadMajor": 3,
+        "variableCostPerHeadMajor": 2.2,
+        "fixedCostMajor": 18000
+      },
+      "commercial": {
+        "annualBaseMajor": 350000,
+        "prestigeScaleMajor": 180000
+      },
+      "operations": {
+        "monthlyBaseMajor": 70000,
+        "stadiumCostPerSeatAnnualMajor": 35,
+        "wageOverheadRate": 0.14
+      },
+      "label": "Wsl",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "fra_women",
+      "leagueIds": [
+        2218
+      ],
+      "aliases": [
+        "france women's league"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 14000000,
+      "teamCount": 12,
+      "weights": {
+        "equal": 0.65,
+        "merit": 0.25,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 14,
+        "baseFill": 0.48,
+        "seasonTicketShare": 0.3,
+        "hospitalityPerHeadMajor": 2,
+        "concessionsPerHeadMajor": 3,
+        "variableCostPerHeadMajor": 2.2,
+        "fixedCostMajor": 18000
+      },
+      "commercial": {
+        "annualBaseMajor": 350000,
+        "prestigeScaleMajor": 180000
+      },
+      "operations": {
+        "monthlyBaseMajor": 70000,
+        "stadiumCostPerSeatAnnualMajor": 35,
+        "wageOverheadRate": 0.14
+      },
+      "label": "France Women'S League",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "usa_nwsl",
+      "leagueIds": [
+        2221
+      ],
+      "aliases": [
+        "nwsl"
+      ],
+      "nativeCurrency": "USD",
+      "annualPoolMajor": 80000000,
+      "teamCount": 16,
+      "weights": {
+        "equal": 0.65,
+        "merit": 0.25,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 14,
+        "baseFill": 0.48,
+        "seasonTicketShare": 0.3,
+        "hospitalityPerHeadMajor": 2,
+        "concessionsPerHeadMajor": 3,
+        "variableCostPerHeadMajor": 2.2,
+        "fixedCostMajor": 18000
+      },
+      "commercial": {
+        "annualBaseMajor": 350000,
+        "prestigeScaleMajor": 180000
+      },
+      "operations": {
+        "monthlyBaseMajor": 70000,
+        "stadiumCostPerSeatAnnualMajor": 35,
+        "wageOverheadRate": 0.14
+      },
+      "label": "Nwsl",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    },
+    {
+      "key": "esp_ligaf",
+      "leagueIds": [
+        2222
+      ],
+      "aliases": [
+        "liga f"
+      ],
+      "nativeCurrency": "EUR",
+      "annualPoolMajor": 18000000,
+      "teamCount": 16,
+      "weights": {
+        "equal": 0.65,
+        "merit": 0.25,
+        "audience": 0.1
+      },
+      "quality": "estimated",
+      "sourceKeys": [],
+      "validFromSeason": 2024,
+      "validToSeason": 2099,
+      "distributionModel": "central",
+      "matchday": {
+        "ticketPriceMajor": 14,
+        "baseFill": 0.48,
+        "seasonTicketShare": 0.3,
+        "hospitalityPerHeadMajor": 2,
+        "concessionsPerHeadMajor": 3,
+        "variableCostPerHeadMajor": 2.2,
+        "fixedCostMajor": 18000
+      },
+      "commercial": {
+        "annualBaseMajor": 350000,
+        "prestigeScaleMajor": 180000
+      },
+      "operations": {
+        "monthlyBaseMajor": 70000,
+        "stadiumCostPerSeatAnnualMajor": 35,
+        "wageOverheadRate": 0.14
+      },
+      "label": "Liga F",
+      "notes": "Mangels vollständiger offizieller Daten wird ein transparentes, manuell korrigierbares Atlas-Modell verwendet.",
+      "poolBaseSeason": 2024,
+      "annualGrowthRate": 0.02
+    }
+  ],
+  "fallback": {
+    "key": "atlas_generic_league",
+    "nativeCurrency": "EUR",
+    "annualPoolMajor": 20000000,
+    "teamCount": 18,
+    "weights": {
+      "equal": 0.62,
+      "merit": 0.25,
+      "audience": 0.13
+    },
+    "quality": "estimated",
+    "sourceKeys": [],
+    "distributionModel": "central",
+    "matchday": {
+      "ticketPriceMajor": 28,
+      "baseFill": 0.78,
+      "seasonTicketShare": 0.48,
+      "hospitalityPerHeadMajor": 4.5,
+      "concessionsPerHeadMajor": 5.5,
+      "variableCostPerHeadMajor": 3.2,
+      "fixedCostMajor": 65000
+    },
+    "commercial": {
+      "annualBaseMajor": 1500000,
+      "prestigeScaleMajor": 650000
+    },
+    "operations": {
+      "monthlyBaseMajor": 180000,
+      "stadiumCostPerSeatAnnualMajor": 75,
+      "wageOverheadRate": 0.16
+    },
+    "label": "Allgemeines Liga-Modell",
+    "notes": "Für diese Liga liegt noch kein eigenes Profil vor. Atlas verwendet ein transparentes Schätzmodell."
+  }
+}

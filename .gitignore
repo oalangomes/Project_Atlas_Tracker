@@ -1,0 +1,28 @@
+# Python and test caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments and editor state
+.venv/
+venv/
+.idea/
+.vscode/
+
+# Local career data, logs, backups, and settings
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.log
+.env
+.env.*
+backups/
+ResetArchive/
+
+# Generated or user-specific artifacts
+artifacts/
+media_cache/

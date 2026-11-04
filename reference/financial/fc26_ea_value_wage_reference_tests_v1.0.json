@@ -1,0 +1,164 @@
+{
+  "model": "ea-legacy-transition-v0.1",
+  "warning": "These outputs test the chosen tracker approximation, not a proven byte-exact reproduction of FC 26 native code.",
+  "marketValue": [
+    {
+      "name": "men_80_cam_balanced",
+      "input": {
+        "sex": "men",
+        "overall": 80,
+        "potential": 85,
+        "age": 24,
+        "position": "CAM",
+        "contract_years": 3,
+        "form": 5,
+        "domestic_prestige": 4,
+        "international_reputation": 0
+      },
+      "expected": {
+        "base_value": 18000000,
+        "age_pct": 30.0,
+        "remaining_potential": 5,
+        "potential_pct": 60.0,
+        "contract_pct": 10.0,
+        "form_pct": 0.0,
+        "position_pct": 5.0,
+        "prestige_pct": 0.0,
+        "reputation_pct": 0.0,
+        "overall_damping": 0.4,
+        "combined_pct": 22.0,
+        "minimum_value": 800000,
+        "raw_value": 21960000.0,
+        "rounded_value": 21960000
+      }
+    },
+    {
+      "name": "men_73_st_high_potential",
+      "input": {
+        "sex": "men",
+        "overall": 73,
+        "potential": 88,
+        "age": 19,
+        "position": "ST",
+        "contract_years": 4,
+        "form": 7,
+        "domestic_prestige": 4,
+        "international_reputation": 0
+      },
+      "expected": {
+        "base_value": 2600000,
+        "age_pct": 23.0,
+        "remaining_potential": 15,
+        "potential_pct": 300.0,
+        "contract_pct": 14.0,
+        "form_pct": 15.0,
+        "position_pct": 7.0,
+        "prestige_pct": 0.0,
+        "reputation_pct": 0.0,
+        "overall_damping": 1.0,
+        "combined_pct": 67.0,
+        "minimum_value": 800000,
+        "raw_value": 4342000.0,
+        "rounded_value": 4342000
+      }
+    },
+    {
+      "name": "men_80_gk_older_short_contract",
+      "input": {
+        "sex": "men",
+        "overall": 80,
+        "potential": 80,
+        "age": 35,
+        "position": "GK",
+        "contract_years": 1,
+        "form": 5,
+        "domestic_prestige": 6,
+        "international_reputation": 0
+      },
+      "expected": {
+        "base_value": 18000000,
+        "age_pct": -38.0,
+        "remaining_potential": 0,
+        "potential_pct": 0.0,
+        "contract_pct": -30.0,
+        "form_pct": 0.0,
+        "position_pct": -15.0,
+        "prestige_pct": 0.0,
+        "reputation_pct": 0.0,
+        "overall_damping": 0.4,
+        "combined_pct": -36.2,
+        "minimum_value": 800000,
+        "raw_value": 11484000.0,
+        "rounded_value": 11484000
+      }
+    }
+  ],
+  "wage": [
+    {
+      "name": "men_80_st_premier_league",
+      "input": {
+        "overall": 80,
+        "age": 24,
+        "position": "ST",
+        "league_id": 13,
+        "domestic_prestige": 4,
+        "profitability": 7,
+        "is_women": false
+      },
+      "expected": {
+        "base_wage": 56000,
+        "age_pct": -10.0,
+        "position_pct": 18.0,
+        "league_pct": 85.0,
+        "prestige_multiplier": 1.1,
+        "profitability_multiplier": 1.5,
+        "raw_wage": 178332.0,
+        "rounded_wage": 178500
+      }
+    },
+    {
+      "name": "men_70_cb_championship",
+      "input": {
+        "overall": 70,
+        "age": 20,
+        "position": "CB",
+        "league_id": 14,
+        "domestic_prestige": 4,
+        "profitability": 7,
+        "is_women": false
+      },
+      "expected": {
+        "base_wage": 24500,
+        "age_pct": -30.0,
+        "position_pct": -3.0,
+        "league_pct": 40.0,
+        "prestige_multiplier": 1.0,
+        "profitability_multiplier": 1.6,
+        "raw_wage": 41944.0,
+        "rounded_wage": 42000
+      }
+    },
+    {
+      "name": "men_85_cam_laliga",
+      "input": {
+        "overall": 85,
+        "age": 28,
+        "position": "CAM",
+        "league_id": 53,
+        "domestic_prestige": 8,
+        "profitability": 5,
+        "is_women": false
+      },
+      "expected": {
+        "base_wage": 85000,
+        "age_pct": 18.0,
+        "position_pct": 8.0,
+        "league_pct": 65.0,
+        "prestige_multiplier": 1.0,
+        "profitability_multiplier": 1.2,
+        "raw_wage": 194820.0,
+        "rounded_wage": 195000
+      }
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "none",
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "strict": true,
+    "useUnknownInCatchVariables": false,
+    "noEmitOnError": true,
+    "removeComments": true,
+    "outFile": "../atlas/static/app.js"
+  },
+  "files": [
+    "src/types.ts",
+    "src/core.ts",
+    "src/shell.ts",
+    "src/views_overview.ts",
+    "src/views_analysis.ts",
+    "src/views_matches.ts",
+    "src/views_people.ts",
+    "src/views_history.ts",
+    "src/views_manual.ts",
+    "src/views_media.ts",
+    "src/bindings.ts",
+    "src/app.ts"
+  ]
+}
