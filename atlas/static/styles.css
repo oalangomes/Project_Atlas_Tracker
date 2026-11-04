@@ -547,3 +547,52 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 .commission-claim-kind{display:inline-flex;align-items:center;border:1px solid rgba(43,220,137,.3);border-radius:999px;padding:3px 8px;color:#a6f0ca;font-size:12px;font-weight:750;line-height:1.35;white-space:nowrap}.commission-claim-kind.hypothesis{border-color:rgba(245,184,77,.4);color:#ffd58b}.commission-claim-kind.fact{border-color:rgba(94,166,255,.38);color:#b8d8ff}.commission-claim-limit{display:block;margin:6px 0 0;color:#f2ca83;font-size:13px;line-height:1.5}.commission-report-output li{font-size:14px;line-height:1.65}.commission-report-output li .table-subline{font-size:12px}.commission-report-output h4{font-size:14px}.report-provenance{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}.report-provenance summary{cursor:pointer;color:var(--muted);font-size:12px}.report-provenance small{display:block;margin-top:8px;color:var(--muted);font-size:12px;line-height:1.5}.match-position-source{display:block;color:var(--muted);font-size:11px;line-height:1.35}.match-pitch-wrap .pitch-caveat,.match-pitch-wrap .match-pitch-direction{font-size:12px}.match-player-list-row b{font-size:13px}.match-player-list-row small{font-size:11px}.match-player-token{font-size:10px}.commission-pitch-player{min-width:54px;min-height:44px;padding:4px}.commission-pitch-player span{font-size:12px}.commission-pitch-player small{font-size:11px}.commission-pitch-player{z-index:2}.match-comparison-card{margin-top:12px}.match-performance-section{margin-top:12px}.match-stat-label>span{font-size:12px}.match-stat-row{font-size:13px}
 @media(max-width:900px){.match-player-list{grid-template-columns:1fr}.match-commission-layout{grid-template-columns:1fr}.commission-report-head{display:grid}.commission-claim-kind{white-space:normal}.commission-pitch-player{min-width:46px;min-height:40px}}
 .commission-followup-form{display:grid;gap:10px;margin-top:14px;padding:14px;border:1px solid rgba(43,220,137,.28);border-radius:12px;background:rgba(10,30,42,.72)}.commission-followup-form h4,.commission-followup-form p{margin:0}.commission-followup-form>p,.commission-followup-question small{color:var(--muted);font-size:12px;line-height:1.5}.commission-followup-question{display:grid;gap:7px}.commission-followup-question label{display:grid;gap:4px;line-height:1.45}.commission-followup-question textarea{min-height:74px;resize:vertical}
+
+
+/* P0 / Match Center: evidence-first layout over Atlas canonical components */
+.match-p0-nav{display:flex;flex-wrap:wrap;gap:8px;margin:13px 0 17px}
+.match-p0-nav a{display:inline-flex;align-items:center;min-height:36px;padding:8px 13px;border:1px solid var(--line);border-radius:9px;background:rgba(13,31,48,.82);color:var(--text);text-decoration:none;font-size:13px;font-weight:700;transition:background .15s,border-color .15s}
+.match-p0-nav a:hover,.match-p0-nav a:focus-visible{background:rgba(28,76,83,.55);border-color:var(--accent);outline-offset:2px}
+.match-p0-metrics{margin:0 0 16px;padding:16px;border:1px solid var(--line);border-radius:13px;background:linear-gradient(125deg,rgba(13,41,50,.94),rgba(10,25,42,.96))}
+.match-p0-legend{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:center;margin-bottom:12px;font-size:13px}
+.match-p0-legend strong:last-child{text-align:right}.match-p0-legend span{color:var(--muted);font-size:11px}
+.match-p0-metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.match-p0-metric{padding:14px;min-width:0;border:1px solid rgba(112,178,182,.16);border-radius:10px;background:rgba(6,18,30,.68)}
+.match-p0-metric>span{display:block;color:var(--muted);font-size:12px;margin-bottom:9px;font-weight:650}
+.match-p0-values{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:7px;font-variant-numeric:tabular-nums}
+.match-p0-values b{font-size:clamp(18px,1.8vw,25px);font-weight:840}
+.match-p0-values b:first-child{color:#81ecc0}.match-p0-values b:last-child{text-align:right;color:#dcecf6}
+.match-p0-values i{font-size:12px;color:var(--muted);font-style:normal}
+.match-p0-main{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(340px,1fr);gap:16px;align-items:start;margin:0 0 16px}
+.match-p0-primary,.match-p0-secondary{display:grid;gap:16px;min-width:0}
+.match-p0-main .match-comparison-card{margin:0}
+.match-p0-main .match-comparison-head,.match-p0-main .match-stat-row{font-size:13px}
+.match-p0-main .match-stat-label>span{font-size:12px}
+.match-p0-secondary .commission-report-output{min-height:110px;background:transparent;border:0;padding:0}
+.match-p0-secondary .commission-report-head{display:block}
+.match-p0-secondary .commission-report-head strong{display:block;font-size:17px;line-height:1.5;margin-bottom:8px}
+.match-p0-secondary .commission-report-output li{font-size:13px;line-height:1.6;margin-bottom:10px}
+.match-p0-secondary .card-body{padding:16px}
+.match-p0-context .card-header p,.match-p0-highlights .card-header p{max-width:62ch}
+.match-p0-table-scroll{overflow-x:auto;padding:8px 14px 15px}
+.match-p0-context-table{width:100%;min-width:450px;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.match-p0-context-table th,.match-p0-context-table td{padding:10px 8px;text-align:right;border-bottom:1px solid var(--line);font-size:12px}
+.match-p0-context-table thead th{color:var(--muted);font-size:11px;font-weight:650}
+.match-p0-context-table th:first-child{text-align:left}
+.match-p0-context-table tbody th{font-weight:650;color:var(--text)}
+.match-p0-context-table tbody tr:last-child>*{border-bottom:0}
+.match-p0-empty{padding:15px 18px;margin:0;font-size:13px;line-height:1.5}
+.match-p0-leaders{display:grid;gap:8px;padding:12px}
+.match-p0-leader{display:grid;grid-template-columns:1fr auto;gap:5px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:rgba(6,19,32,.6)}
+.match-p0-leader span{grid-column:1/-1;font-size:11px;color:var(--muted)}
+.match-p0-leader strong{min-width:0;font-size:13px;overflow-wrap:anywhere}
+.match-p0-leader b{white-space:nowrap;color:#81ecc0;font-size:18px;font-variant-numeric:tabular-nums}
+.match-p0-fold{margin:14px 0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:rgba(8,23,38,.47)}
+.match-p0-fold>summary{padding:15px 18px;cursor:pointer;font-size:13px;font-weight:750;color:var(--text)}
+.match-p0-fold[open]>summary{border-bottom:1px solid var(--line)}
+.match-p0-fold .match-commission-layout{margin:10px 12px 14px}
+.match-p0-provenance .match-coverage-section{margin:10px 12px 14px}
+.match-p0-unavailable{margin:12px 0 16px;font-size:13px}
+#p0-match-comparison,#p0-match-commission,#p0-match-players,#p0-match-positions{scroll-margin-top:80px}
+@media(max-width:1150px){.match-p0-main{grid-template-columns:minmax(0,1fr)}.match-p0-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.match-p0-secondary{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}}
+@media(max-width:720px){.match-p0-metrics{padding:12px}.match-p0-legend{font-size:11px;gap:6px}.match-p0-metric-grid,.match-p0-secondary{grid-template-columns:1fr}.match-p0-metric{padding:12px}.match-p0-nav a{font-size:12px;padding:7px 9px}.match-p0-main{gap:12px}}
