@@ -1830,7 +1830,7 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
 
 
 def _report_recommendation_target_conflict(context: dict[str, Any], mode: str, text: str) -> bool:
-    if mode not in {"match", "match_player"}:
+    if mode not in {"match", "match_player", "next_match"}:
         return False
     facts = _report_fact_map(context)
     match = facts.get("match") or {}
