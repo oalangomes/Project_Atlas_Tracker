@@ -1,43 +1,33 @@
 # Atlas Technical Commission — Sheffield Hub coverage
 
-Audit reference: `oalangomes/ea-fc-sheffield-hub` at commit `60c77b85ee528fca11678f5f83aaa6271ae71f2e` (2026-11-03). This is an incremental Atlas integration; the Hub is a metric reference, not a second runtime.
+Audit reference: `oalangomes/ea-fc-sheffield-hub` at commit `60c77b85ee528fca11678f5f83aaa6271ae71f2e` (2026-11-03). Hub calculations are references for incremental integration, not a second runtime.
 
 ## Coverage matrix
 
-| Hub concept / source | Atlas evidence | Atlas treatment in this increment | Coverage |
+| Hub concept / source | Atlas evidence | Current treatment | Coverage / limit |
 |---|---|---|---|
-| Sample policy: 300+ minutes and 3+ valid appearances; reliable at 450+ and 5+ | `player_match_performances` minutes/rating; linked MatchStats goals/assists | Same thresholds and sample labels. Valid appearances use 15+ recorded minutes or a linked goal/assist. Atlas does not export starter status, so a low-minute starter cannot be identified. | Partial; threshold parity, input difference disclosed |
-| Season and last-five rating, weighted by minutes | Rating history ordered by date/fixture | Season and recent rating use valid appearances only; last five valid appearances are minute-weighted. Missing ratings do not become zero. | Covered for available rows |
-| Hierarchy separate from form and recommendation | No reliable squad hierarchy/status field in the selected career export | Hierarchy stays N/D. Form and deterministic recommendation remain separate; recommendations do not promote or demote a player. | Hierarchy unavailable |
-| Role/function comparison | Registered position plus match position when source provenance is reliable | Atlas compares registered position to observed match-position groups. The Hub's finer functional subgroups, position-specific event attribution and starter/reserve minutes require function-by-player exports that Atlas does not currently have. | Partial |
-| Defensive-player context (`gerar_defesa_por_jogador.py`) | Player minutes, team xGA, opponent shots/on-target, goals against | Could support a minutes-weighted exposure estimate. It is not presented as an individual defensive action or causal player contribution in this increment. | Not exposed in Commission yet |
-| Goalkeeper context (`gerar_goleiros_profissional.py`) | MatchStats saves/ratings; team goals against, opponent shots/on-target and xGA; recorded positions | Match-level player card shows direct saved player facts. A season goalkeeper index needs reliable keeper identity/minutes per match and is not calculated here. Swapped-keeper matches must remain indeterminate. | Partial; no keeper index |
-| Team style/control (`gerar_metricas_profissional.py`) | Linked team MatchStats: passes, pass accuracy, shots, NPK-xG, dribbles, crosses, through passes, tackles/interceptions | Deterministic per-match aggregates power the team identity page; Ollama describes only those aggregates. Possession percentage, pressing, line height and tactical instructions remain N/D unless exported. | Partial, evidence-limited |
-| Opponent difficulty/facility profiles | Opponent team shots and recorded results from completed linked exports | Descriptive lower/upper opponent-shot-volume cohorts; each cohort requires at least five observations. Labels describe observed points and goal difference only, not opponent style or causation. | Partial, descriptive only |
-| Functional rival and recommended XI (`comissao_tecnica_core.py`) | Player positions/minutes/ratings; no persisted Atlas hierarchy or Hub-style live squad roster | No Hub-style XI or decisive rival recommendation is generated. A positional map shows only match-specific recorded positions and never claims starters or formation. | Unavailable in this increment |
-| Formation, load and fixture preparation | Squad positions, recent recorded minutes, fixture calendar | Existing Ollama preparation can choose only among deterministic shapes supported by the registered squad and must cite facts. The match page does not infer the formation used. | Partial |
-| Goal/assist by role (`nota_posicao_funcao_core.py`) | MatchStats events and, where available, actual position | Match player reports cite individual MatchStats. Atlas does not yet attribute goals/assists to time-sliced roles; no role-specific event split is inferred. | Partial |
+| Sample policy and last-five form | `player_match_performances`, linked MatchStats | Retains 300+ min/3 appearances usable, 450+ min/5 reliable; last five valid individual appearances weighted by minutes | Threshold parity; no reliable starter flag, so short starters cannot be identified |
+| Season/last-five player performance | Rating and MatchStats by fixture, selected career/snapshot | Match report receives up to five valid prior MatchStats appearances and evidence counts | Partial where exports are missing |
+| Collective season and recent references | Linked team exports, fixtures, snapshot import sequence | Match report receives all eligible pre-date exports, last-five averages, venue split and per-metric counts | Descriptive only; temporal order must be present in fixture dates |
+| Hierarchy separate from form/recommendation | No reliable formal hierarchy source | Hierarchy stays N/D; rating/minutes never imply rank | Unavailable |
+| Position and function comparisons | Registered position; trusted `actual_position` provenance | Separate nominal peers from recorded observed position; no tactical role asserted from CM/CB etc. alone | Partial; no role-specific per-period event attribution |
+| Defensive-player context | MatchStats actions, team exposure, minutes | Direct actions can be interpreted with source coverage; no individual causal defensive index is inferred | Partial |
+| Goalkeeper context | Saves, rating, goals conceded, shots faced, recorded position | Match-level direct fields remain available | No season index if keeper identity/minutes or swaps are ambiguous |
+| Team style/control | Pass, shot, xG, dribble, cross, through-pass, duel and defensive metrics | Existing deterministic team profile and Match Intelligence reused; LLM may contextualize references | Possession share, pressing, line height and instructions remain unavailable unless exported |
+| Opponent difficulty/facility profile | Opponent shots and recorded results | Existing descriptive cohorts require minimum observations and do not imply opponent style or cause | Partial, descriptive only |
+| Functional rival / recommended XI | Player positions, minutes, ratings | No hierarchy or XI invented; next-match shape proposals remain limited to deterministic roster-position counts | Unavailable beyond data-supported options |
+| Goal/assist by role | MatchStats events and sometimes observed position | Match/player reports use cited records; no time-sliced role split | Unavailable without granular event and role minutes |
 
-## Provenance boundaries
+## Provenance and safety
 
-- Extracted: FC26 MatchStats fields already linked to an Atlas career, plus rating/minute/position history.
-- Derived: per-match rates, sample labels, team aggregates, and descriptive opponent-shot cohorts. Derived values retain the source coverage and do not fill missing data.
-- Unavailable: starter/reserve designation, saved hierarchy/status, time-sliced role minutes, possession share where not exported, and tactical instructions. These display as N/D or are omitted.
-- Professional and youth 5x5 remain separate. No Lua change is required for this increment.
+- Extracted records, Atlas-derived rates/averages, and unavailable categories are distinct. Missing values stay absent/N/D.
+- Historical match context excludes the target match and same/later dates and constrains source exports to the selected career snapshot import sequence.
+- Every query is career scoped. Plymouth Argyle and Sheffield United careers are never combined.
+- Position observations require `career_playermatchratinghistory_position`; they do not prove starting status, tactical function or movement.
+- Professional MatchStats and youth 5x5 remain separate. Lua exporters and EA FC save files are unchanged/read-only.
 
-## Cache and import behavior
+## Report pipeline and quality claims
 
-Ollama reports are stored in the existing `technical_commission_report_cache` table, scoped by career, report type, match/player/season, model and a hash of source facts. Identical facts reuse a saved report across snapshots; changed facts produce a new report. Match and team reports are queued only for newly completed fixtures or newly linked MatchStats. Existing history is not bulk-sent to Ollama on application startup. Player reports remain on demand. Offline Ollama leaves Atlas facts available and can be retried later.
+Reports use the existing Atlas-local Ollama integration and `technical_commission_report_cache`, scoped by career, mode, target, model, source hash and report contract version. Reports contain cited fact IDs, item types (`fact`, `inference`, `hypothesis`) and limitations for hypotheses. Local validation checks source references, numerical values against cited facts, known source boundaries and objective conflicts; it is not an independent sports-quality score. Coverage and filtered counts are not labeled as interpretation confidence or a 9/10 quality score.
 
-## Hub files audited
-
-- `scripts/politica_amostra_esportiva.py`
-- `scripts/funcoes_esportivas.py`
-- `scripts/gerar_metricas_profissional.py`
-- `scripts/comissao_tecnica_core.py`
-- `scripts/gerar_goleiros_profissional.py`
-- `scripts/gerar_defesa_por_jogador.py`
-- `scripts/nota_posicao_funcao_core.py`
-- `docs/criterios-metricas-profissional.md`
-- `docs/comissao-tecnica.md`
-
+The twelve reproducible cases in `tests/fixtures/commission_intelligence_cases.json` are synthetic validator scenarios, not model outputs. A live model-quality comparison requires Ollama and the selected local model to be available. If Ollama is offline, Atlas statistical modules remain usable and no real model-quality result should be claimed.

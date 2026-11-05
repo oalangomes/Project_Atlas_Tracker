@@ -4,8 +4,61 @@ function applyClubAliasLocally(teamId:number, displayName:string):void {
     state.snapshots.forEach((snapshot:any)=>patch(snapshot,"managed_team_ea_id","managed_team_name"));
 }
 
+function commissionReportMarkup(result:any,params:any):string {
+    const report=result.report||{},catalog=new Map((result.fact_catalog||[]).map((item:any)=>[item.id,item.label]));
+    const refs=(ids:string[])=>esc((ids||[]).map((id:string)=>catalog.get(id)||id).join(" · "));
+    const kindLabel=(kind:string)=>kind==="fact"?tr("claimFact"):kind==="hypothesis"?tr("claimHypothesis"):tr("claimInference");
+    const items=(values:any[])=>values?.length?`<ul>${values.map((item:any)=>`<li><span class="commission-claim-kind ${esc(item.kind||"inference")}">${esc(kindLabel(item.kind))}</span> ${esc(item.text)}${item.kind==="hypothesis"&&item.limitations?`<small class="commission-claim-limit">${tr("claimLimit")}: ${esc(item.limitations)}</small>`:""}<small class="table-subline">Evidence: ${refs(item.fact_refs)}</small></li>`).join("")}</ul>`:"";
+    const list=(values:any[],label:string)=>values?.length?`<h4>${label}</h4>${items(values)}`:"";
+    const note=report.commission_note?.text?`<p class="commission-note"><strong>${tr("commissionNote")}:</strong> ${esc(report.commission_note.text)}<small>${refs(report.commission_note.fact_refs)}</small></p>`:"";
+    const summaryKind=report.summary?.kind||"inference";
+    const provenance=`<details class="report-provenance"><summary>Evidence coverage and validation</summary><small>${num(result.coverage?.previous_linked_matches)} prior linked matches · ${num(result.validation?.accepted_claims)} claims kept · ${num(result.validation?.rejected_claims)} filtered · ${esc(result.validation?.interpretation_quality||tr("interpretationNotScored"))}</small></details>`;
+    const coachContext=(result.fact_catalog||[]).find((item:any)=>item.id==="coach_context")?.value||[];
+    const followup=commissionFollowupForm(report.information_requests, {...params,model:result.model,coach_context:coachContext});
+    const coachNote=result.coach_context_received?`<p class="chart-note">Coach-provided context was sent separately from imported Atlas facts.</p>`:"";
+    return `<div class="commission-report-head"><strong>${esc(report.summary?.text||"Report generated.")}</strong><small><span class="commission-claim-kind ${esc(summaryKind)}">${esc(kindLabel(summaryKind))}</span> · ${esc(result.model||"Ollama")}${result.cached?" · cached report":" · generated now"}<br>Atlas facts: ${refs(report.summary?.fact_refs)}</small></div>${report.summary?.limitations?`<p class="commission-claim-limit">${tr("claimLimit")}: ${esc(report.summary.limitations)}</p>`:""}${note}${report.formation?`<section class="commission-formation"><span>Suggested formation · based on Atlas squad data</span><strong>${esc(report.formation.shape)}</strong><p>${esc(report.formation.reason)}</p><small>Evidence: ${refs(report.formation.fact_refs)}</small></section>`:""}${list(report.strengths,"Strengths")}${list(report.development_areas,"Development areas")}${list(report.training_suggestions,"Training suggestions")}${list(report.observations,"Observed performance")}${list(report.recommendations,"Staff recommendations")}${coachNote}${followup}${provenance}<p class="chart-note">AI interpretation is separate from imported facts. Atlas does not record injury, suspension or physical availability; this report cannot confirm them.</p>`;
+}
+
+async function submitCommissionFollowup(form:HTMLFormElement):Promise<void> {
+    const output=form.closest("[data-commission-report-output]") as HTMLElement|null;
+    const questions=Array.from(form.querySelectorAll<HTMLInputElement>('input[name="question"]'));
+    const answers=Array.from(form.querySelectorAll<HTMLTextAreaElement>('textarea[name="answer"]'));
+    const priorQuestions=Array.from(form.querySelectorAll<HTMLInputElement>('input[name="prior_question"]'));
+    const priorAnswers=Array.from(form.querySelectorAll<HTMLInputElement>('input[name="prior_answer"]'));
+    const prior=priorQuestions.map((question,index)=>({question:question.value,answer:String(priorAnswers[index]?.value||"").trim()})).filter(item=>item.answer);
+    const clarifications=[...prior,...questions.map((question,index)=>({question:question.value,answer:String(answers[index]?.value||"").trim()})).filter(item=>item.answer)];
+    if(!clarifications.length){toast("Answer at least one question.");return;}
+    const button=form.querySelector<HTMLButtonElement>('button[type="submit"]');
+    if(button)button.disabled=true;
+    if(output)output.innerHTML=`<p>${esc(tr("contextSent"))}</p>`;
+    const payload:any={snapshot_id:Number(form.dataset.snapshotId||state.snapshotId),mode:String(form.dataset.mode||"match"),force_refresh:true,model:String(form.dataset.model||"")||undefined,clarifications};
+    if(Number(form.dataset.fixtureId||0))payload.fixture_id=Number(form.dataset.fixtureId);
+    if(Number(form.dataset.playerEaId||0))payload.player_ea_id=Number(form.dataset.playerEaId);
+    try{
+        const started:any=await api(`/api/careers/${state.careerId}/commission/report-jobs`,{method:"POST",body:JSON.stringify(payload)});
+        let job:any={status:started.status},attempt=0;
+        while(job.status==="queued"||job.status==="running"){
+            await new Promise(resolve=>setTimeout(resolve,1500));
+            job=await api(`/api/careers/${state.careerId}/commission/report-jobs/${started.job_id}`);
+            if(++attempt>240)throw new Error("The follow-up is taking longer than expected; refresh the saved report later.");
+        }
+        if(job.status==="failed")throw new Error(job.error||"The follow-up failed.");
+        const result=job.result||{};
+        if(output)output.innerHTML=result.available?commissionReportMarkup(result,payload):`<p>${esc(result.message||"Ollama report unavailable.")}</p>`;
+    }catch(error:any){if(output)output.innerHTML=`<p class="status-badge amber">${esc(String(error?.message||error))}</p>`;}
+    finally{if(button)button.disabled=false;}
+}
+
 
 function bindContent() {
+    if(!(content as any).__commissionFollowupBound){
+        content.addEventListener("submit",(event:Event)=>{
+            const form=event.target as HTMLFormElement;
+            if(!form.matches("[data-commission-followup]"))return;
+            event.preventDefault();void submitCommissionFollowup(form);
+        });
+        (content as any).__commissionFollowupBound=true;
+    }
     bindSortableTables();
     $$('[data-club-tab]', content).forEach((button:any)=>button.onclick=async(event:Event)=>{event.preventDefault();state.clubTab=button.dataset.clubTab||"overview";await renderClub();applyIcons(content);bindContent();});
     $$('[data-competition-list-tab]', content).forEach((button:any)=>button.onclick=async(event:Event)=>{event.preventDefault();state.competitionListTab=button.dataset.competitionListTab||"deeper";await renderCompetitions();applyIcons(content);bindContent();});
@@ -119,7 +172,10 @@ function bindContent() {
         }
         if(job.status==='failed')throw new Error(job.error||'The background report failed.');
         const result:any=job.result||{};
-        if(output){if(!result.available){output.innerHTML=`<p>${esc(result.message||'Ollama report unavailable.')}</p>`;}else{const report=result.report||{},catalog=new Map((result.fact_catalog||[]).map((item:any)=>[item.id,item.label]));const refs=(ids:string[])=>esc((ids||[]).map((id:string)=>catalog.get(id)||id).join(' · '));const draft=`${tr('draftAcceptance')}: ${num(result.draft_claim_acceptance_pct,1)}% · ${num(result.rejected_claims)} filtered`;const quality=`<span class="status-badge ${result.confidence_pct>=90?'good':'amber'}">${tr('reportConfidence')}: ${num(result.confidence_pct,1)}% · ${tr('reportQuality')}: ${num(result.quality_score,1)}/10 · ${draft}</span>`;const hold=result.review_required?`<p class="status-badge amber">${tr('reviewRequired')}</p>`:'';const note=report.commission_note?.text?`<p class="commission-note"><strong>${tr('commissionNote')}:</strong> ${esc(report.commission_note.text)}</p>`:'';const items=(values:any[])=>values.map((item:any)=>`<li>${esc(item.text)}<small class="table-subline">Atlas facts: ${refs(item.fact_refs)}</small></li>`).join('');const list=(values:any[])=>values?.length?`<h4>${values===report.strengths?'Strengths':values===report.development_areas?'Development areas':values===report.training_suggestions?'Training suggestions':values===report.observations?'Observed performance':'Staff recommendations'}</h4><ul>${items(values)}</ul>`:'';output.innerHTML=`${hold}<div class="commission-report-head"><strong>${esc(report.summary?.text||'Report generated.')}</strong><small>${esc(result.model||'Ollama')}${result.cached?' · cached report':' · generated now'} · ${quality}<br>Atlas facts: ${refs(report.summary?.fact_refs)}</small></div>${note}${report.formation?`<section class="commission-formation"><span>Suggested formation · based on Atlas squad data</span><strong>${esc(report.formation.shape)}</strong><p>${esc(report.formation.reason)}</p><small>Evidence: ${refs(report.formation.fact_refs)}</small></section>`:''}${list(report.strengths)}${list(report.development_areas)}${list(report.training_suggestions)}${list(report.observations)}${list(report.recommendations)}<p class="chart-note">AI interpretation is separate from imported facts. Atlas does not record injury, suspension or physical availability; this report cannot confirm them.</p>`;}}
+        if(output){
+          if(!result.available){output.innerHTML=`<p>${esc(result.message||'Ollama report unavailable.')}</p>`;}
+          else output.innerHTML=commissionReportMarkup(result,payload);
+        }
       }catch(error:any){if(output)output.textContent=`Local report failed. Atlas metrics are unchanged. ${String(error?.message||error)}`;}
       finally{button.disabled=false;button.textContent=oldLabel;button.dataset.forceRefresh='0';}
     });
@@ -135,14 +191,15 @@ function bindContent() {
         do{
           job=await api(`/api/careers/${state.careerId}/commission/retroactive-report-jobs/${jobId}`);
           if(retroOutput){
-            const total=num(job.total),completed=num(job.completed),pct=job.total?Math.round(100*job.completed/job.total):0;
-            const heading=['complete','complete_with_warnings'].includes(job.status)?tr('retroDone'):tr('retroWorking');
-            retroOutput.innerHTML=`<p><strong>${heading}</strong> · ${completed}/${total} (${pct}%)</p><p>${esc(job.current||'')}<br>New: ${num(job.generated)} · reused: ${num(job.reused)} · below confidence: ${num(job.review_required)} · failed: ${num(job.failed)}</p>${job.backup_path?`<small>${tr('retroBackup')}</small>`:''}${job.error?`<p class="status-badge amber">${esc(job.error)}</p>`:''}`;
+            const totalCount=Number(job.total_tasks??job.total??0),completedCount=Number(job.completed_tasks??job.completed??0),total=num(totalCount),completed=num(completedCount),pct=totalCount?Math.round(completedCount*100/totalCount):0;
+            const heading=job.status==='paused_offline'?tr('retroPaused'):job.status==='complete_with_warnings'||job.status==='failed'?tr('retroFailed'):job.status==='complete'?tr('retroDone'):tr('retroWorking');
+            retroOutput.innerHTML=`<p><strong>${heading}</strong> · ${completed}/${total} (${pct}%)</p><p>${esc(job.current_task||job.current||'')}<br>Generated: ${num(job.generated)} · reused: ${num(job.reused)} · review: ${num(job.review_required)} · failed: ${num(job.failed)} · missing: ${num(job.skipped_missing_data)} · pending: ${num(job.pending)}</p>${job.backup_path?`<small>${tr('retroBackup')}: ${esc(job.backup_path)}</small>`:''}${job.error?`<p class="status-badge amber">${esc(job.error)}</p>`:''}`;
+            if(retroButton&&['paused_offline','paused','complete_with_warnings','failed'].includes(job.status))retroButton.textContent=tr('retroResume');
           }
           if(['queued','running'].includes(job.status))await new Promise(resolve=>setTimeout(resolve,2000));
         }while(['queued','running'].includes(job.status));
         sessionStorage.removeItem(`atlas-retro-${state.careerId}`);
-        if(job.status==='complete'||job.status==='complete_with_warnings')toast(tr('retroDone'));
+        if(job.status==='complete')toast(tr('retroDone'));
       }catch(error:any){
         if(retroOutput)retroOutput.innerHTML=`<p class="status-badge amber">${esc(String(error?.message||error))}</p>`;
         sessionStorage.removeItem(`atlas-retro-${state.careerId}`);
@@ -155,7 +212,7 @@ function bindContent() {
       retroButton.disabled=true;
       if(retroOutput)retroOutput.innerHTML=`<p>${tr('retroBackup')}…</p>`;
       try{
-        const started:any=await api(`/api/careers/${state.careerId}/commission/retroactive-report-jobs`,{method:'POST',body:JSON.stringify({})});
+        const started:any=await api(`/api/careers/${state.careerId}/commission/retroactive-report-jobs`,{method:'POST',body:JSON.stringify({season_index:Number(retroButton.dataset.seasonIndex)})});
         sessionStorage.setItem(`atlas-retro-${state.careerId}`,started.job_id);
         await pollRetroactive(started.job_id);
       }catch(error:any){
