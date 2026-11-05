@@ -9,7 +9,7 @@ from scripts.audit_commission_reports import audit_database, evaluate_report
 
 from atlas.commission import REPORT_VERSION, _validate_report_item
 from atlas.commission_prompt_policy import (
-    FORMATION_SLOTS, REASONING_POLICY, claim_signature, compatible_formations,
+    FORMATION_SLOTS, REASONING_POLICY, build_system_prompt, claim_signature, compatible_formations,
     is_generic_claim, report_focus, report_subject,
 )
 
@@ -46,6 +46,20 @@ class ReportSubjectTests(unittest.TestCase):
         self.assertEqual(subject["opponent_team_name"], "Watford")
         self.assertEqual(subject["selected_player_ea_id"], 12345)
         self.assertEqual(subject["selected_player_name"], "Selected Defender")
+
+    def test_mode_specific_prompts_do_not_mix_match_and_player_instructions(self):
+        individual = build_system_prompt("Brazilian Portuguese", "Analyze player", "player")
+        match = build_system_prompt("Brazilian Portuguese", "Analyze match", "match")
+        next_fixture = build_system_prompt("Brazilian Portuguese", "Prepare next match", "next_match")
+        self.assertIn("ACCUMULATED PLAYER:", individual)
+        self.assertNotIn("opponent shot-volume cohorts", individual)
+        self.assertNotIn("pooled across earlier opponents", individual)
+        self.assertIn("MATCH:", match)
+        self.assertNotIn("UPCOMING MATCH:", match)
+        self.assertIn("UPCOMING MATCH:", next_fixture)
+        self.assertIn("allowed_formations", next_fixture)
+        self.assertIn("SPORTING ANALYSIS CONTRACT", individual)
+        self.assertIn("Brazilian Portuguese", individual)
 
     def test_policy_explicitly_forbids_opponent_advice_and_boilerplate(self):
         self.assertIn("ONLY club being advised", REASONING_POLICY)
