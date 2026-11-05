@@ -1,11 +1,11 @@
-"""Launch and monitor the Atlas retrospective Technical Commission, using Atlas's API.
+r"""Launch and monitor the Atlas retrospective Technical Commission, using Atlas's API.
 
 Windows:
     py -3 -m scripts.replay_commission_reports
     py -3 -m scripts.replay_commission_reports --list
     py -3 -m scripts.replay_commission_reports --career-id 1 --season-index 0 --yes
     py -3 -m scripts.replay_commission_reports --career-id 1 --job-id <job_id>
-    py -3 -m scripts.replay_commission_reports --career-id 1 --season-index 0 --yes --audit-db C:\path\atlas_core.sqlite3 --output replay-result.json
+    py -3 -m scripts.replay_commission_reports --career-id 1 --season-index 0 --yes --audit-db C:\path\atlas_tracker.sqlite3 --output replay-result.json
 
 Start Atlas first (default local address http://127.0.0.1:8765).
 The Atlas server handles the database backup, ordered replay, caching and resume.
@@ -55,6 +55,7 @@ def validate_base_url(value: str) -> str:
 class AtlasAPI:
     base_url: str = "http://127.0.0.1:8765"
     timeout: float = 20.0
+    start_timeout: float = 600.0
 
     def __post_init__(self) -> None:
         self.base_url = validate_base_url(self.base_url)
@@ -69,7 +70,10 @@ class AtlasAPI:
             headers={"Accept": "application/json", "Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+            # Starting a replay includes a synchronous SQLite backup. Large real
+            # workspaces can need much longer than a normal status GET.
+            request_timeout = self.start_timeout if payload is not None else self.timeout
+            with urllib.request.urlopen(request, timeout=request_timeout) as response:
                 parsed = json.loads(response.read().decode("utf-8"))
         except urllib.error.HTTPError as exc:
             try:
@@ -78,6 +82,9 @@ class AtlasAPI:
                 details = ""
             raise ReplayError(f"Atlas HTTP {exc.code}: {details or exc.reason}") from exc
         except (OSError, TimeoutError, ValueError) as exc:
+            if payload is not None and "timed out" in str(exc).lower():
+                raise ReplayError("Atlas start timed out. The backup or replay may still have started; "
+                                  "check the job in Atlas before sending another start request.") from exc
             raise ReplayError(f"Cannot reach a valid local Atlas API at {self.base_url}: {exc}") from exc
         if isinstance(parsed, dict) and parsed.get("error"):
             raise ReplayError(str(parsed["error"]))

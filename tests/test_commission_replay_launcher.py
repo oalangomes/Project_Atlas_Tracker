@@ -70,6 +70,22 @@ class ReplayLauncherContractTests(unittest.TestCase):
         request = call.call_args.args[0]
         self.assertEqual(request.get_method(), "POST")
         self.assertEqual(json.loads(request.data.decode("utf-8")), {"season_index": 0})
+        self.assertEqual(call.call_args.kwargs["timeout"], 600.0)
+
+    def test_status_read_keeps_short_timeout(self):
+        class FakeResponse:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def read(self):
+                return b'{}'
+        with patch("scripts.replay_commission_reports.urllib.request.urlopen",
+                   return_value=FakeResponse()) as call:
+            AtlasAPI().request("/api/careers")
+        self.assertEqual(call.call_args.kwargs["timeout"], 20.0)
 
     def test_poll_reports_progress_and_does_not_restart_jobs(self):
         states = [

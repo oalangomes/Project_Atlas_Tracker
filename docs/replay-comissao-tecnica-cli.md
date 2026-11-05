@@ -37,7 +37,7 @@ Acompanhar um job já iniciado SEM criar outro:
     py -3 -m scripts.replay_commission_reports --career-id 1 --job-id SEU_JOB_ID
 
 Iniciar e auditar os relatórios persistidos da mesma carreira ao final:
-    py -3 -m scripts.replay_commission_reports --career-id 1 --season-index 0 --yes --audit-db "C:\CAMINHO\atlas_core.sqlite3" --output replay-result.json
+    py -3 -m scripts.replay_commission_reports --career-id 1 --season-index 0 --yes --audit-db "C:\CAMINHO\atlas_tracker.sqlite3" --output replay-result.json
 
 **Atenção:** season_index é o índice **exato do banco** e pode ser 0.
 Não troque por número do menu, ano da temporada ou índice da carreira.
