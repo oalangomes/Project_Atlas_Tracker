@@ -614,7 +614,9 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             with self.state.database.connect() as conn:
                 if not conn.execute("SELECT 1 FROM careers WHERE id=?", (career_id,)).fetchone():
                     raise ValueError("Carreira não encontrada.")
-                season = as_int(payload.get("season_index") or payload.get("seasonIndex"))
+                # Index 0 is a valid first season; never treat it as missing.
+                season_value = payload["season_index"] if "season_index" in payload else payload.get("seasonIndex")
+                season = as_int(season_value)
                 if season is None:
                     latest = conn.execute("SELECT season_index FROM snapshots WHERE career_id=? ORDER BY import_sequence DESC,id DESC LIMIT 1",
                                           (career_id,)).fetchone()
