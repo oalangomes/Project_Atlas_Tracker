@@ -150,16 +150,16 @@ class NonGenericInsightsTests(unittest.TestCase):
                     "player", claim, {"player_summary"}, section="recommendations"))
 
     def test_concrete_follow_up_is_not_blocked(self):
-        text = ("Revisar a queda de passes-chave por 90 nos últimos cinco jogos "
-                "antes de alterar a função de meia central.")
+        text = ("O jogador registrou 2 assistências em 7 partidas; acompanhar "
+                "as próximas atuações antes de alterar sua função.")
         self.assertFalse(is_generic_claim(text, "recommendations"))
         claim = {"text": text, "kind": "inference",
-                 "limitations": "", "fact_refs": ["player_matchstats"]}
+                 "limitations": "", "fact_refs": ["player_summary"]}
         self.assertTrue(_validate_report_item(
             {"mode": "player", "facts": [
-                {"id": "player_matchstats", "value": [
-                    {"stats": {"key_passes": 5}}]}]},
-            "player", claim, {"player_matchstats"}, section="recommendations"))
+                {"id": "player_summary", "value": {
+                    "appearances": 7, "metrics": {"assists": 2}}}]},
+            "player", claim, {"player_summary"}, section="recommendations"))
 
 
 if __name__ == "__main__":
