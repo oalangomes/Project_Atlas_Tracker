@@ -5,6 +5,7 @@ on:
     paths:
       - 'atlas/commission.py'
       - 'atlas/commission_prompt_policy.py'
+      - 'scripts/audit_commission_reports.py'
       - 'tests/test_commission.py'
       - 'tests/test_commission_prompt_policy.py'
       - '.github/workflows/commission-prompt-contract.yml'
@@ -20,7 +21,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Compile analytical code and tests
-        run: python -m compileall -q atlas/commission.py atlas/commission_prompt_policy.py tests/test_commission.py tests/test_commission_prompt_policy.py
+        run: python -m compileall -q atlas/commission.py atlas/commission_prompt_policy.py tests/test_commission.py tests/test_commission_prompt_policy.py scripts/audit_commission_reports.py
       - name: Unit and regression tests — Commission
         run: python -m unittest discover -s tests -p 'test_commission*.py' -v
       - name: Validate patch
