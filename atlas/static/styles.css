@@ -638,3 +638,87 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 @media(max-width:1180px){.player-p1-layout{grid-template-columns:minmax(0,1fr)}.player-p1-layout>.player-analysis-radar,.player-p1-layout>.player-p1-ai,.player-p1-layout>.player-p1-role{grid-column:1;grid-row:auto}}
 @media(max-width:820px){.player-p1-season-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.player-p1-layout{gap:12px}.player-p1-season-grid{grid-template-columns:1fr}.player-p1-actions>.button{width:100%}}
+
+
+/* P2 — season technical commission: native Atlas data, editorial hierarchy and honest uncertainty. */
+.commission-p2{display:grid;gap:16px;min-width:0}
+.commission-p2 .card-header p{font-size:12px;line-height:1.5}
+.commission-p2-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:25px;align-items:center;padding:23px 26px;background:radial-gradient(circle at 94% -15%,rgba(43,220,137,.15),transparent 40%),linear-gradient(135deg,rgba(11,46,53,.95),rgba(9,24,40,.96));border-color:rgba(43,220,137,.25)}
+.commission-p2-eyebrow{display:block;color:#87dcb9;font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.commission-p2-hero h2{font-size:clamp(22px,2.3vw,32px);line-height:1.2;margin:8px 0}
+.commission-p2-hero p{font-size:13px;line-height:1.65;color:#b8c9d8;max-width:75ch;margin:0}
+.commission-p2-hero-meta{display:grid;gap:5px;min-width:165px;padding:12px 19px;border-left:1px solid rgba(116,194,165,.25);text-align:right}
+.commission-p2-hero-meta>.commission-p2-state{color:var(--muted);font-size:12px}
+.commission-p2-hero-meta>strong{color:#8bf0c2;font-size:clamp(24px,2.4vw,36px);font-variant-numeric:tabular-nums}
+.commission-p2-hero-meta>strong small{font-size:17px;font-weight:600;color:var(--muted)}
+.commission-p2-hero-meta>span:last-child{font-size:12px;color:#d6e5ef}
+.commission-p2-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.commission-p2-metric{padding:17px 18px;display:grid;gap:12px;border:1px solid var(--line);background:linear-gradient(145deg,rgba(9,31,45,.85),rgba(9,23,38,.95));border-radius:12px}
+.commission-p2-metric>span{font-size:12px;line-height:1.3;color:#c1d1df}
+.commission-p2-metric strong{font-size:clamp(24px,2.3vw,33px);color:#a1efc9;line-height:1.1;font-variant-numeric:tabular-nums}
+.commission-p2-metric small{font-size:11px;color:var(--muted)}
+.commission-p2-main{display:grid;grid-template-columns:minmax(0,1.18fr) minmax(350px,.82fr);gap:16px;align-items:start}
+.commission-p2-left,.commission-p2-right{min-width:0;display:grid;gap:16px}
+.commission-p2-signal-panel,.commission-p2-recent,.commission-p2-ai,.commission-p2-position-section{min-width:0;overflow:hidden}
+.commission-p2-form-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;padding:14px}
+.commission-p2-form-group{min-width:0;padding:13px 12px 8px;border:1px solid var(--line);background:rgba(5,18,31,.43);border-radius:10px}
+.commission-p2-form-group.positive{border-top:3px solid #2bdc89}
+.commission-p2-form-group.negative{border-top:3px solid #ecae5d}
+.commission-p2-form-group h3{font-size:13px;margin:0 0 10px}
+.commission-p2-form-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:9px 0;border-bottom:1px solid rgba(126,163,180,.14)}
+.commission-p2-form-row:last-child{border-bottom:0}
+.commission-p2-form-player{display:grid;min-width:0;gap:4px}
+.commission-p2-form-player strong{font-size:13px;overflow-wrap:anywhere;line-height:1.35}
+.commission-p2-form-player .entity-link{font-size:inherit;text-align:left}
+.commission-p2-form-player small,.commission-p2-form-numbers small{font-size:11px;color:var(--muted);line-height:1.3}
+.commission-p2-form-numbers{display:grid;text-align:right;gap:4px}
+.commission-p2-form-numbers strong{font-size:18px;line-height:1.2;font-variant-numeric:tabular-nums}
+.commission-p2-form-group.positive .commission-p2-form-numbers strong{color:#7df0b4}
+.commission-p2-form-group.negative .commission-p2-form-numbers strong{color:#f1c17f}
+.commission-p2-empty{margin:0;padding:15px 10px;font-size:12px;line-height:1.6}
+.commission-p2-fixtures{display:grid;padding:9px 16px 14px}
+.commission-p2-fixture{display:grid;grid-template-columns:94px minmax(0,1fr) 58px;grid-template-areas:"date teams score" "date source source";align-items:center;gap:4px 10px;padding:11px 3px;border-bottom:1px solid rgba(126,163,180,.14)}
+.commission-p2-fixture:last-child{border-bottom:0}
+.commission-p2-fixture-date{grid-area:date;font-size:11px;color:var(--muted)}
+.commission-p2-fixture>div{grid-area:teams;display:grid;min-width:0;gap:4px}
+.commission-p2-fixture>div strong{font-size:13px;overflow-wrap:anywhere}
+.commission-p2-fixture>div small{font-size:11px;color:var(--muted)}
+.commission-p2-score{grid-area:score;text-align:right;font-size:17px;font-variant-numeric:tabular-nums}
+.commission-p2-fixture-source{grid-area:source;color:var(--muted);font-size:10px}
+.commission-p2-ai{border-color:rgba(43,220,137,.23)}
+.commission-p2-ai .card-header{background:linear-gradient(110deg,rgba(13,53,51,.46),rgba(8,28,42,.48))}
+.commission-p2-ai .card-header h2{font-size:16px}
+.commission-p2-ai .card-body{display:grid;gap:12px;padding:16px}
+.commission-p2-ai .commission-report-output{border:0;background:transparent;padding:0;min-height:110px}
+.commission-p2-ai .commission-report-head{display:block}
+.commission-p2-ai .commission-report-head strong{display:block;margin-bottom:8px;font-size:17px;line-height:1.55}
+.commission-p2-ai .commission-report-head small{font-size:11px;line-height:1.55}
+.commission-p2-ai .commission-report-output li{font-size:13px;line-height:1.55;margin-bottom:10px}
+.commission-p2-ai .commission-report-output li small{font-size:11px}
+.commission-p2-ai .button{justify-self:start;max-width:100%}
+.commission-p2-ai-warning{padding:10px 12px;border-left:3px solid #f2b64f;background:rgba(242,182,79,.1);border-radius:7px;font-size:12px;line-height:1.5;color:#f1d09d;margin:0}
+.commission-p2-position-columns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;padding:16px}
+.commission-p2-position-columns>section{display:grid;align-content:start;gap:7px;min-width:0}
+.commission-p2-position-columns h3{margin:0 0 7px;font-size:14px}
+.commission-p2-position{display:grid;grid-template-columns:minmax(0,1fr) 65px;gap:6px 12px;align-items:center;padding:10px 11px;border:1px solid var(--line);border-radius:9px;background:rgba(7,24,37,.5)}
+.commission-p2-position>div:first-child{display:grid;gap:5px;min-width:0}
+.commission-p2-position>div:first-child strong{font-size:13px}
+.commission-p2-position>div:first-child small,.commission-p2-position-value small{font-size:11px;color:var(--muted)}
+.commission-p2-position-value{display:grid;gap:4px;text-align:right}
+.commission-p2-position-value strong{font-size:16px;color:#c7e4f0;font-variant-numeric:tabular-nums}
+.commission-p2-position-bar{grid-column:1/-1;height:4px;border-radius:999px;background:rgba(79,116,135,.22);overflow:hidden}
+.commission-p2-position-bar i{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,#157e74,#2bdc89)}
+.commission-p2-secondary{margin:0;border:1px solid var(--line);border-radius:12px;background:rgba(8,24,39,.42);min-width:0}
+.commission-p2-secondary>summary,.commission-p2 .commission-advanced>summary{cursor:pointer;padding:16px 18px;font-size:13px;font-weight:750;color:var(--text)}
+.commission-p2-secondary[open]>summary,.commission-p2 .commission-advanced[open]>summary{border-bottom:1px solid var(--line)}
+.commission-p2-secondary>section{margin:12px 14px}
+.commission-p2-process-body{padding:13px;display:grid;gap:13px;min-width:0}
+.commission-p2-process-body .analysis-metrics{margin:16px 0}
+.commission-p2-audit-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-top:13px}
+.commission-p2-audit-metrics>div{padding:10px;border:1px solid var(--line);border-radius:8px;font-size:12px;line-height:1.5}
+.commission-p2-audit-metrics b{color:#97e9c2;font-variant-numeric:tabular-nums}
+.commission-p2 .commission-advanced{margin:0;border:1px solid var(--line);border-radius:12px;min-width:0}
+.commission-p2 .commission-advanced-body{padding:14px;min-width:0}
+@media(max-width:1180px){.commission-p2-main{grid-template-columns:minmax(0,1fr)}.commission-p2-form-columns{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:830px){.commission-p2-metrics,.commission-p2-position-columns{grid-template-columns:repeat(2,minmax(0,1fr))}.commission-p2-audit-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.commission-p2-hero{padding:18px}}
+@media(max-width:600px){.commission-p2-hero{grid-template-columns:1fr;gap:10px}.commission-p2-hero-meta{text-align:left;border-left:0;border-top:1px solid var(--line);padding:12px 0 0}.commission-p2-metrics,.commission-p2-position-columns,.commission-p2-form-columns{grid-template-columns:1fr}.commission-p2-fixture{grid-template-columns:1fr auto;grid-template-areas:"date score" "teams teams" "source source"}.commission-p2-audit-metrics{grid-template-columns:1fr}}
