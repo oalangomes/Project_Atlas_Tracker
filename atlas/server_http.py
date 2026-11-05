@@ -625,15 +625,14 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                     raise ValueError("A season with imported snapshots is required.")
                 resumable = _find_resumable_replay(conn, career_id, season, selected_model)
             backup_path = str(resumable.get("backup_path") or "") if resumable else ""
-            backup_created = False
-            if not backup_path:
-                backup_path = str(self.state.database.create_backup(label="pre_commission_retroactive_reports"))
-                backup_created = True
+            # Report generation only changes derived cache and replay checkpoints.
+            # Preserve a legacy job's backup reference, but never copy the database
+            # merely to start, retry, or resume this non-destructive operation.
             started = start_retroactive_commission_reports(
                 self.state.database, career_id, season, selected_model, selected_language, backup_path)
             self._json(started | {"season_index": season, "model": selected_model,
                                   "report_version": REPORT_VERSION, "backup_path": backup_path,
-                                  "backup_created": backup_created})
+                                  "backup_created": False})
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/commission/backfill", path)

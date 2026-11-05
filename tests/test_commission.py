@@ -544,8 +544,14 @@ class CommissionMetricTests(unittest.TestCase):
             "summary": {"text": "Plymouth scored four from 3.1 recorded NPK-xG; the score alone does not establish territorial dominance.",
                         "kind": "inference", "limitations": "No spatial or possession data is exported.",
                         "fact_refs": ["match", "matchstats"]},
-            "observations": [{"text": "The result was 4–0, while recorded NPK-xG was 3.1 for Plymouth.",
-                              "kind": "fact", "limitations": "", "fact_refs": ["match", "matchstats"]}],
+            "observations": [
+                {"text": "The result was 4–0, while recorded NPK-xG was 3.1 for Plymouth.",
+                 "kind": "fact", "limitations": "", "fact_refs": ["match", "matchstats"]},
+                {"text": "Plymouth Argyle conceded 4 goals.", "kind": "fact", "limitations": "",
+                 "fact_refs": ["match"]},
+                {"text": "Plymouth Argyle scored 4 goals.", "kind": "fact", "limitations": "",
+                 "fact_refs": ["match"]},
+            ],
             "recommendations": [{"text": "Review finishing decisions across the next few matches before changing the attacking approach.",
                                  "kind": "hypothesis", "limitations": "One match cannot establish a persistent finishing pattern.",
                                  "fact_refs": ["matchstats"]}],
@@ -562,6 +568,12 @@ class CommissionMetricTests(unittest.TestCase):
         self.assertEqual(first["report"]["summary"]["fact_refs"], ["match", "matchstats"])
         self.assertIn("does not establish territorial dominance", first["report"]["summary"]["text"])
         self.assertEqual(first["report"]["observations"][0]["kind"], "fact")
+        self.assertTrue(any(item["text"] == "Plymouth Argyle scored 4 goals."
+                            for item in first["report"]["observations"]))
+        self.assertFalse(any(item["text"] == "Plymouth Argyle conceded 4 goals."
+                             for item in first["report"]["observations"]))
+        self.assertTrue(any("score_value_conflict" in item["reasons"]
+                            for item in first["validation"]["rejected_claim_details"]))
         self.assertEqual(first["report"]["recommendations"][0]["kind"], "hypothesis")
         self.assertEqual(first["report"]["recommendations"][0]["limitations"], "One match cannot establish a persistent finishing pattern.")
         self.assertEqual(first["report"]["information_requests"], content["information_requests"])

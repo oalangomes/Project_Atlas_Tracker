@@ -8,7 +8,7 @@ Windows:
     py -3 -m scripts.replay_commission_reports --career-id 1 --season-index 0 --yes --audit-db C:\path\atlas_tracker.sqlite3 --output replay-result.json
 
 Start Atlas first (default local address http://127.0.0.1:8765).
-The Atlas server handles the database backup, ordered replay, caching and resume.
+The Atlas server handles ordered replay, caching and resume.
 This program does not touch the FC26 save or write directly to SQLite.
 """
 from __future__ import annotations
@@ -70,8 +70,8 @@ class AtlasAPI:
             headers={"Accept": "application/json", "Content-Type": "application/json"},
         )
         try:
-            # Starting a replay includes a synchronous SQLite backup. Large real
-            # workspaces can need much longer than a normal status GET.
+            # Task planning on a large workspace can take longer than a status GET.
+            # A timeout must never encourage an ambiguous second start request.
             request_timeout = self.start_timeout if payload is not None else self.timeout
             with urllib.request.urlopen(request, timeout=request_timeout) as response:
                 parsed = json.loads(response.read().decode("utf-8"))
@@ -83,7 +83,7 @@ class AtlasAPI:
             raise ReplayError(f"Atlas HTTP {exc.code}: {details or exc.reason}") from exc
         except (OSError, TimeoutError, ValueError) as exc:
             if payload is not None and "timed out" in str(exc).lower():
-                raise ReplayError("Atlas start timed out. The backup or replay may still have started; "
+                raise ReplayError("Atlas start timed out. The replay may still have started; "
                                   "check the job in Atlas before sending another start request.") from exc
             raise ReplayError(f"Cannot reach a valid local Atlas API at {self.base_url}: {exc}") from exc
         if isinstance(parsed, dict) and parsed.get("error"):
@@ -261,7 +261,7 @@ def main(argv: list[str] | None = None) -> int:
             print("Pré-visualização concluída. Nenhuma chamada de geração ou escrita executada.")
             return 0
         if not args.yes:
-            confirmation = input("Digite GERAR para iniciar o replay com backup automático: ").strip()
+            confirmation = input("Digite GERAR para iniciar o replay: ").strip()
             if confirmation != "GERAR":
                 print("Cancelado, sem iniciar o replay.")
                 return 0
@@ -275,7 +275,10 @@ def main(argv: list[str] | None = None) -> int:
         job_path(chosen_id, job_id)
         print(f"\nReplay iniciado: {job_id} | contrato v{started.get('report_version', '?')} | "
               f"modelo {started.get('model', '?')}")
-        print(f"Backup: {started.get('backup_path') or 'não informado pelo Atlas'}")
+        if started.get("backup_path"):
+            print(f"Backup preexistente associado ao job: {started['backup_path']}")
+        else:
+            print("Nenhum backup automático criado.")
         print(f"Retomar acompanhamento: py -3 -m scripts.replay_commission_reports "
               f"--career-id {chosen_id} --job-id {job_id}")
         result = {"job_id": job_id, "career_id": chosen_id, "season_index": season["index"],

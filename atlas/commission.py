@@ -17,13 +17,14 @@ from typing import Any
 
 from .commission_prompt_policy import (build_system_prompt, claim_signature, compatible_formations,
                                        is_generic_claim, report_focus, report_subject)
+from .claim_binding import score_claim_bindings
 
 MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
-REPORT_VERSION = 32
+REPORT_VERSION = 33
 _REPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="atlas-ollama-report")
 _REPORT_JOB_LOCK = Lock()
 _REPORT_JOBS: dict[str, dict[str, Any]] = {}
@@ -1517,6 +1518,8 @@ def _claim_has_structural_conflict(context: dict[str, Any], mode: str, text: str
             return True
     match = facts.get("match") or {}
     if mode in {"match", "match_player"} and match:
+        if score_claim_bindings(context, {"text": text, "fact_refs": ["match", "selected_match_player"]})[1]:
+            return True
         if any(term in folded for term in ("queda recente", "declínio", "decline", "recent drop", "falling trend")) and any(term in folded for term in ("dados longitudinais insuficientes", "insufficient longitudinal", "trend cannot be established", "tendência clara", "clear trend")):
             return True
         if match.get("event_timing_available") is False:
@@ -1653,7 +1656,8 @@ def _report_item_metric_conflict(context: dict[str, Any], item: dict[str, Any]) 
     has_completed_passes = any(term in text for term in ("completou", "completó", "completed ", "passes completados", "passes concluídos", "passes completed", "completed passes", "passes certos", "passos concluídos"))
     has_pass_count = any(term in text for term in pass_count_terms) and not has_pass_accuracy and not has_pressure_completion and not has_pressure_attempts
     has_xg = any(term in text for term in ("xg", "expected goals", "gols esperados", "goles esperados"))
-    has_goals = bool(re.search(r"\b(?:goals?|gols?|goles?)\b", text))
+    # Explicit score claims are checked against the subject's own fixture value.
+    has_goals = bool(re.search(r"\b(?:goals?|gols?|goles?)\b", text)) and not score_claim_bindings(context, item)[0]
     has_assists = any(term in text for term in ("assist", "assistência", "asistencia"))
     has_dribbles = any(term in text for term in ("dribble", "drible"))
     has_duels = any(term in text for term in ("duel", "duelo"))
@@ -1765,12 +1769,23 @@ def _report_item_numeric_conflict(context: dict[str, Any], item: dict[str, Any])
 
 
 def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, Any], valid_ids: set[str],
-                          section: str | None = None) -> bool:
-    if not isinstance(item.get("text"), str) or not item["text"].strip():
+                          section: str | None = None, rejection_reasons: list[str] | None = None) -> bool:
+    def reject(reason: str) -> bool:
+        if rejection_reasons is not None:
+            rejection_reasons.append(reason)
         return False
+
+    if not isinstance(item.get("text"), str) or not item["text"].strip():
+        return reject("empty_text")
     refs = item.get("fact_refs")
     if not isinstance(refs, list) or not refs or not set(refs).issubset(valid_ids):
-        return False
+        return reject("missing_or_invalid_fact_refs")
+    if mode in {"match", "match_player"}:
+        _, score_issues = score_claim_bindings(context, item)
+        if score_issues:
+            if rejection_reasons is not None:
+                rejection_reasons.extend(score_issues)
+            return False
     if mode == "match_player":
         facts = _report_fact_map(context)
         selected = facts.get("selected_match_player") or {}
@@ -1794,39 +1809,44 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
             refs = item["fact_refs"]
     kind = item.get("kind")
     if kind not in {"fact", "inference", "hypothesis"}:
-        return False
+        return reject("invalid_claim_kind")
     if kind == "hypothesis" and (not isinstance(item.get("limitations"), str) or len(item["limitations"].strip()) < 12):
-        return False
+        return reject("hypothesis_missing_limitations")
     folded = item["text"].casefold()
     causal_or_tactical_language = ("consequência natural", "natural consequence", "natural result of", "devido ao ritmo", "due to the tempo", "higher tempo", "ritmo mais alto", "pressão ofensiva", "intense attacking pressure", "presión ofensiva", "intensidade na circulação", "maintain intensity in circulation", "intensidad de circulación", "vulnerável a ataques diretos", "vulnerable to direct attacks", "vulnerable to direct attack")
     if mode in {"match", "match_player"} and kind == "inference" and any(term in folded for term in causal_or_tactical_language):
-        return False
+        return reject("unsupported_causal_inference")
     if is_generic_claim(item["text"], section):
-        return False
+        return reject("generic_claim")
     if section == "recommendations" and _report_recommendation_target_conflict(context, mode, item["text"]):
-        return False
+        return reject("recommendation_targets_opponent")
     if section == "recommendations" and _report_unavailable_metric_recommendation_conflict(context, item):
-        return False
+        return reject("recommendation_uses_unavailable_metric")
     if mode in {"match", "match_player"} and _report_wrong_team_metric_conflict(context, item):
-        return False
+        return reject("wrong_team_metric_source")
     if mode in {"match", "match_player"} and _report_managed_team_role_conflict(context, item["text"]):
-        return False
+        return reject("wrong_managed_team_role")
     if mode == "match_player" and _report_selected_player_metric_conflict(context, item):
-        return False
+        return reject("selected_player_metric_conflict")
     if mode == "player" and _report_accumulated_player_metric_conflict(context, item):
-        return False
+        return reject("player_summary_metric_conflict")
     if mode in {"match", "match_player"} and _report_missing_metric_source_conflict(context, item):
-        return False
+        return reject("metric_source_missing")
     if mode == "team_identity" and _report_unfounded_team_style_conflict(context, item):
-        return False
+        return reject("unfounded_team_style")
     if mode in {"match", "match_player"} and _report_uncompared_dominance_conflict(context, item):
-        return False
+        return reject("uncompared_dominance")
     if section == "recommendations" and _report_recommendation_confuses_xg_and_finishing(context, item):
-        return False
-    return (not _claim_has_structural_conflict(context, mode, item["text"])
-            and not _report_item_numeric_conflict(context, item)
-            and not _report_item_metric_conflict(context, item)
-            and not _report_item_comparison_direction_conflict(context, mode, item))
+        return reject("xg_finishing_confusion")
+    if _claim_has_structural_conflict(context, mode, item["text"]):
+        return reject("structural_fact_conflict")
+    if _report_item_numeric_conflict(context, item):
+        return reject("numeric_fact_conflict")
+    if _report_item_metric_conflict(context, item):
+        return reject("entity_metric_conflict")
+    if _report_item_comparison_direction_conflict(context, mode, item):
+        return reject("comparison_direction_conflict")
+    return True
 
 
 def _report_recommendation_target_conflict(context: dict[str, Any], mode: str, text: str) -> bool:
@@ -1864,6 +1884,7 @@ def _report_wrong_team_metric_conflict(context: dict[str, Any], item: dict[str, 
     metric_terms = ("xg", "expected goals", "gols esperados", "goles esperados", "finaliza", "shots", "chutes",
                     "tiros", "passes", "pass accuracy", "precisão", "tackles", "desarmes", "duels", "duelos",
                     "duelos", "interceptions", "interceptações", "intercepciones", "gols", "goals", "goles")
+    performance_terms = metric_terms[:-3]
     if not any(term in text for term in metric_terms):
         return False
     refs = set(item.get("fact_refs") or [])
@@ -1886,7 +1907,8 @@ def _report_wrong_team_metric_conflict(context: dict[str, Any], item: dict[str, 
                 if entity and entity != name.casefold():
                     return True
             # The fixture fact supports score and identity, not the named club's performance metrics.
-            if "match" in refs and not ({"matchstats", "match_players"} & refs):
+            if ("match" in refs and not ({"matchstats", "match_players"} & refs)
+                    and any(term in text for term in performance_terms)):
                 return True
         else:
             stats = row.get("stats") or {}
@@ -1901,13 +1923,6 @@ def _report_wrong_team_metric_conflict(context: dict[str, Any], item: dict[str, 
                 metric_keys.extend(("offense_duels_won", "defense_duels_won", "aerial_duels_won"))
             if metric_keys and not any(stats.get(key) is not None for key in metric_keys):
                 return True
-            score = match.get("score") or []
-            if len(score) == 2:
-                side_index = 0 if name.casefold() == str(match.get("home") or "").casefold() else 1
-                score_value = _float(score[side_index])
-                goal_claims = re.findall(r"(?<![\w])\d+(?:[.,]\d+)?\s*(?:non[- ]penalty\s+)?(?:goals?|gols?|goles?)\b", text)
-                if goal_claims and score_value is not None and any(abs(float(re.search(r"\d+(?:[.,]\d+)?", claim).group().replace(",", ".")) - score_value) > 0.051 for claim in goal_claims):
-                    return True
             if "xg" in text or "expected goals" in text or "gols esperados" in text or "goles esperados" in text:
                 xg_pairs = re.findall(
                     r"(?:xg|expected goals|gols esperados|goles esperados)\s*(?:de|of|=|:)?\s*(\d+(?:[.,]\d+)?)|(?<![\w])(\d+(?:[.,]\d+)?)\s*xg\b",
@@ -1935,6 +1950,14 @@ def _report_managed_team_role_conflict(context: dict[str, Any], text: str) -> bo
 def _report_selected_player_metric_conflict(context: dict[str, Any], item: dict[str, Any]) -> bool:
     """Bind unlabelled player-performance statements to the selected participant's own row."""
     text = str(item.get("text") or "").casefold()
+    score_bindings, _ = score_claim_bindings(context, item)
+    if (score_bindings
+            and all(binding["subject_side"] != "selected_player" for binding in score_bindings)
+            and not any(term in text for term in ("assist", "xg", "pass", "passe", "shot", "chute",
+                                                  "finaliza", "save", "defesa", "duel", "duelo",
+                                                  "tackle", "desarme", "intercept", "dribble",
+                                                  "drible", "cross", "cruzamento", "minute", "minuto"))):
+        return False
     facts = _report_fact_map(context)
     selected = facts.get("selected_match_player") or {}
     player_name = str(selected.get("name") or "").casefold().strip()
@@ -1955,6 +1978,14 @@ def _report_selected_player_metric_conflict(context: dict[str, Any], item: dict[
     if not (refs & {"selected_match_player", "pre_match_player_context", "match_players"}):
         return True
     stats = selected.get("stats") or {}
+    # A ratio is one claim about one metric. The denominator cannot be borrowed
+    # from another stat merely because the same number occurs in the fact row.
+    for match in re.finditer(r"(?<!\w)(\d+)\s+(?:de|dos|das|of|out of)\s+"
+                             r"(?:(?:seus|suas|his|her)\s+)?(\d+)\s+(?:dribles|dribbles)\b", text):
+        completed, attempted = int(match.group(1)), int(match.group(2))
+        if (_float(stats.get("dribbles_completed")) != completed
+                or _float(stats.get("dribbles")) != attempted):
+            return True
     allowed: list[float] = []
     def add(*keys: str) -> None:
         for key in keys:
@@ -2450,8 +2481,19 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         safe_default_refs = [item for item in default_refs.get(mode, []) if item in valid_ids]
         deterministic_summary = _deterministic_report_summary(context)
         summary = report.get("summary")
-        summary_valid = (isinstance(summary, dict) and _validate_report_item(context, mode, summary, valid_ids)
+        rejected_details: list[dict[str, Any]] = []
+        accepted_score_bindings: list[dict[str, Any]] = []
+        summary_reasons: list[str] = []
+        summary_valid = (isinstance(summary, dict) and _validate_report_item(context, mode, summary, valid_ids,
+                                                                              rejection_reasons=summary_reasons)
                          and not is_generic_claim(summary.get("text", ""), "summary"))
+        if summary_valid and mode in {"match", "match_player"}:
+            accepted_score_bindings.extend(score_claim_bindings(context, summary)[0])
+        elif not summary_valid:
+            if isinstance(summary, dict) and not summary_reasons:
+                summary_reasons.append("generic_claim")
+            rejected_details.append({"section": "summary", "text": str(summary.get("text") or "")[:700]
+                                     if isinstance(summary, dict) else "", "reasons": summary_reasons or ["invalid_claim"]})
         if summary_valid:
             report["summary"] = {"text": summary["text"][:900], "kind": summary["kind"],
                                   "limitations": str(summary.get("limitations") or "")[:500],
@@ -2470,16 +2512,25 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
             values = report.get(key) if isinstance(report.get(key), list) else []
             cleaned = []
             for item in values:
-                if not isinstance(item, dict) or not _validate_report_item(context, mode, item, valid_ids, section=key):
+                reasons: list[str] = []
+                if not isinstance(item, dict) or not _validate_report_item(context, mode, item, valid_ids,
+                                                                            section=key, rejection_reasons=reasons):
                     rejected_claims += 1
+                    rejected_details.append({"section": key,
+                                             "text": str(item.get("text") or "")[:700] if isinstance(item, dict) else "",
+                                             "reasons": reasons or ["invalid_claim"]})
                     continue
                 # The same claim in the summary/observations/recommendations is not
                 # three distinct insights. Keep its first fully validated occurrence.
                 signature = claim_signature(item["text"])
                 if not signature or signature in seen_claims:
                     rejected_claims += 1
+                    rejected_details.append({"section": key, "text": item["text"][:700],
+                                             "reasons": ["duplicate_claim"]})
                     continue
                 seen_claims.add(signature)
+                if mode in {"match", "match_player"}:
+                    accepted_score_bindings.extend(score_claim_bindings(context, item)[0])
                 cleaned.append({"text": item["text"][:700], "kind": item["kind"],
                                 "limitations": str(item.get("limitations") or "")[:500],
                                 "fact_refs": item["fact_refs"]})
@@ -2509,6 +2560,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         accepted_claims += int(report.get("formation") is not None)
         validation = {"method": "source-reference, evidence-scope, and objective-contradiction checks",
                       "accepted_claims": accepted_claims, "rejected_claims": rejected_claims,
+                      "rejected_claim_details": rejected_details[:100],
+                      "accepted_score_bindings": accepted_score_bindings[:100],
                       "interpretation_quality": "not independently scored"}
         result = {"available": True, "fallback": False, "cached": False, "model": selected,
                   "mode": mode, "scope_key": scope, "report": report, "fact_catalog": context["facts"],

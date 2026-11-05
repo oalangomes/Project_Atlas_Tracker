@@ -14,7 +14,7 @@ Este lançador apenas chama a API do Atlas: não modifica o save do FC26.
 
 Na raiz do projeto, abrir **executar_reports_retroativos.bat**.
 O terminal permite escolher carreira e temporada, exige a confirmação GERAR,
-inicia o replay com backup automático e mostra o andamento.
+inicia o replay sem copiar o banco e mostra o andamento.
 
 ## Terminal (raiz do repositório)
 
@@ -63,6 +63,6 @@ O ID para reconexão é impresso logo após iniciar o replay.
 O resumo JSON, quando solicitado, inclui progresso, gerados, reutilizados,
 relatórios que exigem revisão e relatório opcional da auditoria.
 
-A partir de P3, REPORT_VERSION=32 evita reaproveitamento de contexto
+A partir de P3.1, REPORT_VERSION=33 evita reaproveitamento de contexto
 incompatível. Auditoria estrutural não comprova qualidade futebolística;
 revise relatórios reais de partidas e jogadores após o replay.
