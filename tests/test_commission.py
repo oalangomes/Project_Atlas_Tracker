@@ -16,6 +16,7 @@ from atlas.commission import (analyze_players, assess_sample, get_commission, ge
                               _report_item_metric_conflict, _prior_match_context,
                               _normalize_report_clarifications, _coach_can_answer_information_request,
                               _historical_report_tasks, _ensure_replay_schema,
+                              _run_retroactive_commission_reports_guarded,
                               run_retroactive_commission_reports, get_retroactive_commission_report_job,
                               REPORT_VERSION)
 
@@ -101,6 +102,14 @@ class CommissionReplayQueueTests(unittest.TestCase):
             attempts = conn.execute("SELECT attempts FROM technical_commission_replay_tasks WHERE sequence=1").fetchone()[0]
         self.assertEqual(attempts, 2)
         self.assertEqual(get_retroactive_commission_report_job(self.database, 1, 'job')['status'], 'complete')
+
+    def test_unexpected_worker_error_is_persisted_instead_of_sticking_running(self):
+        with patch('atlas.commission.run_retroactive_commission_reports',
+                   side_effect=RuntimeError('unexpected startup failure')):
+            _run_retroactive_commission_reports_guarded(self.database, 1, 'job', 'pt-BR', 'local')
+        progress = get_retroactive_commission_report_job(self.database, 1, 'job')
+        self.assertEqual(progress['status'], 'failed')
+        self.assertIn('unexpected startup failure', progress['errors'][-1]['message'])
 
 
 class CommissionMetricTests(unittest.TestCase):

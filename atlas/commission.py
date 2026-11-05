@@ -2852,6 +2852,25 @@ def _find_resumable_replay(conn: Any, career_id: int, season_index: int, model: 
     return dict(row) if row else None
 
 
+def _run_retroactive_commission_reports_guarded(database: Any, career_id: int, job_id: str,
+                                               language: str, model: str) -> None:
+    """Persist unexpected worker exceptions instead of leaving a false running state."""
+    try:
+        run_retroactive_commission_reports(database, career_id, job_id, language, model)
+    except Exception as exc:
+        detail = f"{exc.__class__.__name__}: {str(exc)[:240]}"
+        with database.connect() as conn:
+            row = conn.execute("SELECT errors_json FROM technical_commission_replay_runs WHERE job_id=?",
+                               (job_id,)).fetchone()
+            if not row:
+                return
+            errors = json.loads(row["errors_json"] or "[]")
+            errors.append({"stage": "worker", "message": detail})
+            conn.execute("""UPDATE technical_commission_replay_runs
+                           SET status='failed',current_task=NULL,errors_json=?,updated_at=CURRENT_TIMESTAMP
+                           WHERE job_id=?""", (json.dumps(errors, ensure_ascii=False), job_id))
+
+
 def start_retroactive_commission_reports(database: Any, career_id: int, season_index: int,
                                          model: str, language: str, backup_path: str = "") -> dict[str, str]:
     """Persist an ordered run and its tasks before scheduling local model work."""
@@ -2907,7 +2926,8 @@ def start_retroactive_commission_reports(database: Any, career_id: int, season_i
                               SELECT COUNT(*) FROM technical_commission_replay_tasks WHERE job_id=? AND status='skipped_missing_data')
                               WHERE job_id=?""", (job_id, job_id))
             deduplicated = False
-    _REPORT_EXECUTOR.submit(run_retroactive_commission_reports, database, career_id, job_id, language, model)
+    _REPORT_EXECUTOR.submit(_run_retroactive_commission_reports_guarded,
+                            database, career_id, job_id, language, model)
     return {"job_id": job_id, "status": "queued", "deduplicated": str(deduplicated).lower()}
 
 
