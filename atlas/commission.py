@@ -2960,14 +2960,43 @@ def run_retroactive_commission_reports(database: Any, career_id: int, job_id: st
         task = dict(task_row)
         fixture_arg = int(task["fixture_id"]) if task["mode"] in {"match", "match_player"} or task["stage"] in {"team_checkpoint", "player_checkpoint"} else None
         player_arg = int(task["player_ea_id"]) if task["player_ea_id"] is not None else None
-        with database.connect() as conn:
-            conn.execute("UPDATE technical_commission_replay_runs SET current_task=?,updated_at=CURRENT_TIMESTAMP WHERE job_id=?",
-                         (task["label"], job_id))
-            cached = get_cached_commission_report(conn, career_id, int(task["snapshot_id"]), task["mode"],
-                fixture_arg, player_arg,
-                selected_model, language)
-            was_cached = cached.get("state") == "ready"
-            result = cached.get("result") if was_cached else None
+        try:
+            with database.connect() as conn:
+                conn.execute("UPDATE technical_commission_replay_runs SET current_task=?,updated_at=CURRENT_TIMESTAMP WHERE job_id=?",
+                             (task["label"], job_id))
+                cached = get_cached_commission_report(conn, career_id, int(task["snapshot_id"]), task["mode"],
+                    fixture_arg, player_arg,
+                    selected_model, language)
+                was_cached = cached.get("state") == "ready"
+                result = cached.get("result") if was_cached else None
+        except ValueError as exc:
+            # A single historical player checkpoint may no longer have a
+            # professional-squad row. Record it and continue the chronological queue.
+            message = f"{exc.__class__.__name__}: {str(exc)[:240]}"
+            with database.connect() as conn:
+                conn.execute("""UPDATE technical_commission_replay_tasks
+                               SET status='skipped_missing_data',error=?,completed_at=CURRENT_TIMESTAMP
+                               WHERE job_id=? AND sequence=?""", (message, job_id, task["sequence"]))
+                conn.execute("""UPDATE technical_commission_replay_runs
+                               SET skipped_missing_data=skipped_missing_data+1,current_task=NULL,
+                                   updated_at=CURRENT_TIMESTAMP WHERE job_id=?""", (job_id,))
+            continue
+        except Exception as exc:
+            message = f"{exc.__class__.__name__}: {str(exc)[:240]}"
+            with database.connect() as conn:
+                row = conn.execute("SELECT errors_json FROM technical_commission_replay_runs WHERE job_id=?",
+                                   (job_id,)).fetchone()
+                errors = json.loads(row["errors_json"] or "[]") if row else []
+                errors.append({"sequence": int(task["sequence"]), "stage": task["stage"],
+                               "player_ea_id": task["player_ea_id"], "message": message})
+                conn.execute("""UPDATE technical_commission_replay_tasks
+                               SET status='failed',error=?,completed_at=CURRENT_TIMESTAMP
+                               WHERE job_id=? AND sequence=?""", (message, job_id, task["sequence"]))
+                conn.execute("""UPDATE technical_commission_replay_runs
+                               SET errors_json=?,failed=failed+1,completed_tasks=completed_tasks+1,
+                                   current_task=NULL,updated_at=CURRENT_TIMESTAMP WHERE job_id=?""",
+                             (json.dumps(errors, ensure_ascii=False), job_id))
+            continue
         if not was_cached:
             result = None
             message = "Report unavailable"

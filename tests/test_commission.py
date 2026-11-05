@@ -111,6 +111,25 @@ class CommissionReplayQueueTests(unittest.TestCase):
         self.assertEqual(progress['status'], 'failed')
         self.assertIn('unexpected startup failure', progress['errors'][-1]['message'])
 
+    def test_missing_historical_player_checkpoint_is_skipped_and_queue_continues(self):
+        success = {'available': True, 'source_hash': 'facts', 'report': {}, 'review_required': False}
+        with patch('atlas.commission.ollama_models', return_value={'available': True, 'models': ['local']}), \
+             patch('atlas.commission.get_cached_commission_report',
+                   side_effect=[ValueError('Selected player is not in the current professional squad.'),
+                                {'state': 'missing'}]), \
+             patch('atlas.commission.get_commission_report', return_value=success.copy()) as generate:
+            run_retroactive_commission_reports(self.database, 1, 'job', 'pt-BR', 'local')
+        progress = get_retroactive_commission_report_job(self.database, 1, 'job')
+        self.assertEqual(progress['status'], 'complete_with_warnings')
+        self.assertEqual(progress['skipped_missing_data'], 1)
+        self.assertEqual(progress['generated'], 1)
+        self.assertEqual(progress['failed'], 0)
+        self.assertEqual(generate.call_count, 1)
+        with self.database.connect() as conn:
+            statuses = [row[0] for row in conn.execute(
+                "SELECT status FROM technical_commission_replay_tasks WHERE job_id='job' ORDER BY sequence")]
+        self.assertEqual(statuses, ['skipped_missing_data', 'completed'])
+
 
 class CommissionMetricTests(unittest.TestCase):
     def test_detailed_match_never_selects_an_export_from_another_season(self):
