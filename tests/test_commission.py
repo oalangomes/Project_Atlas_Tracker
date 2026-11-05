@@ -571,6 +571,11 @@ class CommissionMetricTests(unittest.TestCase):
         self.assertIsNone(first["report"]["formation"])
         initial_body = json.loads(call.call_args.args[0].data.decode("utf-8"))
         initial_context = json.loads(initial_body["messages"][1]["content"])
+        self.assertEqual(initial_context["report_subject"]["managed_team_name"], "Plymouth Argyle")
+        self.assertEqual(initial_context["report_subject"]["opponent_team_name"], "Everton")
+        self.assertEqual(initial_context["report_subject"]["managed_team_side"], "away")
+        self.assertTrue(initial_context["analysis_focus"])
+        self.assertIn("SPORTING ANALYSIS CONTRACT", initial_body["messages"][0]["content"])
         comparison_fact = next(item for item in initial_context["facts"] if item["id"] == "match_comparisons")
         self.assertTrue(all("unit" in item and "current_match" in item and "reference_samples" in item
                             for item in comparison_fact["value"]))
