@@ -43,6 +43,36 @@ class WorkspaceDatabasePathTests(unittest.TestCase):
                     manager.delete(workspace_id)
                 remove.assert_not_called()
 
+    def test_new_and_cloned_profiles_use_runtime_database_filename(self):
+        new_id = "ws_111111111111"
+        clone_id = "ws_222222222222"
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root / "source.sqlite3"
+            with sqlite3.connect(source, factory=ClosingConnection) as conn:
+                conn.executescript("""CREATE TABLE careers(id INTEGER PRIMARY KEY,
+                    fingerprint_candidate TEXT,display_name TEXT,manager_name TEXT,initial_team_name TEXT);
+                    CREATE TABLE snapshots(id INTEGER PRIMARY KEY,career_date TEXT,managed_team_name TEXT,imported_at TEXT);
+                    INSERT INTO careers VALUES(1,'fixture','Manager','Manager','Plymouth Argyle');""")
+            manager = object.__new__(WorkspaceManager)
+            manager.database_path = source
+            registry = {"activeWorkspaceId": "main", "workspaces": [
+                {"id": "main", "name": "Main", "kind": "main", "careerFingerprint": "fixture"}]}
+            with patch("atlas.workspaces.app_data_dir", return_value=root), \
+                 patch("atlas.workspaces.workspace_data_dir",
+                       side_effect=lambda workspace_id: root / "workspaces" / workspace_id), \
+                 patch("atlas.workspaces.current_workspace_id", return_value="main"), \
+                 patch("atlas.workspaces.load_workspace_registry", return_value=registry), \
+                 patch("atlas.workspaces.save_workspace_registry"), \
+                 patch("atlas.workspaces._workspace_id", side_effect=[new_id, clone_id]):
+                created = manager.create_empty("New career")
+                self.assertEqual(created["databasePath"], str(root / "workspaces" / new_id / "atlas_tracker.sqlite3"))
+                cloned = manager.clone_current("Small pilot")
+                self.assertEqual(cloned["databasePath"], str(root / "workspaces" / clone_id / "atlas_tracker.sqlite3"))
+                self.assertEqual(cloned["careerCount"], 1)
+                self.assertFalse((root / "workspaces" / new_id / "atlas_core.sqlite3").exists())
+                self.assertFalse((root / "workspaces" / clone_id / "atlas_core.sqlite3").exists())
+
 
 if __name__ == "__main__":
     unittest.main()
