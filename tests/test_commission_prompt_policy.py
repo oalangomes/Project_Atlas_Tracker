@@ -3,7 +3,7 @@ import unittest
 
 from atlas.commission import REPORT_VERSION, _validate_report_item
 from atlas.commission_prompt_policy import (
-    FORMATION_SLOTS, REASONING_POLICY, compatible_formations,
+    FORMATION_SLOTS, REASONING_POLICY, claim_signature, compatible_formations,
     is_generic_claim, report_focus, report_subject,
 )
 
@@ -137,6 +137,27 @@ class ShapeCompatibilityTests(unittest.TestCase):
 
 
 class NonGenericInsightsTests(unittest.TestCase):
+    def test_generic_summary_is_rejected_and_literal_duplicate_detected(self):
+        self.assertTrue(is_generic_claim("A equipe jogou bem.", "summary"))
+        self.assertFalse(is_generic_claim(
+            "O Plymouth produziu 2.4 NPK-xG e concedeu 0.7, acima e abaixo do padrão anterior, respectivamente.",
+            "summary"))
+        self.assertEqual(claim_signature("O Plymouth marcou dois gols!"),
+                         claim_signature("o plymouth marcou dois gols."))
+
+    def test_upcoming_match_never_advises_the_opponent(self):
+        context = {"mode": "next_match", "managed_team": "Sheffield United",
+                   "managed_team_ea_id": 10, "facts": [
+                       {"id": "match", "value": {
+                           "home": "Sheffield United", "away": "Watford",
+                           "managed_team_ea_id": 10, "managed_team_side": "home"}}]}
+        opponent_claim = {"text": "Watford should improve defensive transitions.",
+                          "kind": "hypothesis", "limitations": "No spatial or tactical data.",
+                          "fact_refs": ["match"]}
+        self.assertFalse(_validate_report_item(
+            context, "next_match", opponent_claim, {"match"}, section="recommendations"))
+
+
     def test_empty_boilerplate_is_rejected(self):
         for text in ("Manter acompanhamento", "Monitorar o desempenho do time.",
                      "Continuar em observação", "Improve team performance",
