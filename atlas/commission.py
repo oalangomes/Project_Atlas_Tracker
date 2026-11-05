@@ -15,12 +15,15 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from typing import Any
 
+from .commission_prompt_policy import (REASONING_POLICY, compatible_formations, is_generic_claim,
+                                       report_focus, report_subject)
+
 MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
-REPORT_VERSION = 31
+REPORT_VERSION = 32
 _REPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="atlas-ollama-report")
 _REPORT_JOB_LOCK = Lock()
 _REPORT_JOBS: dict[str, dict[str, Any]] = {}
@@ -1059,18 +1062,12 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                                "last_3_recorded_appearances": len(recent),
                                "last_3_minutes": sum(int(item["minutes"] or 0) for item in recent),
                                "last_3_average_rating": round(sum(rated) / len(rated), 2) if rated else None})
-            positions = [str(item.get("position") or "").upper() for item in people]
-            gk = sum(pos == "GK" for pos in positions)
-            defenders = sum(pos in {"CB", "LCB", "RCB", "SW", "LB", "LWB", "RB", "RWB"} for pos in positions)
-            midfielders = sum(pos in {"CDM", "CM", "CAM", "LM", "RM", "RCM", "LCM", "RDM", "LDM"} for pos in positions)
-            forwards = sum(pos in {"ST", "CF", "LW", "RW", "LF", "RF"} for pos in positions)
-            formations = []
-            if len(people) >= 11 and gk >= 1 and defenders >= 3 and midfielders >= 2 and forwards >= 1:
-                formations = ["4-3-3", "4-2-3-1", "4-4-2"]
-                if defenders >= 3 and midfielders >= 4 and forwards >= 2:
-                    formations.append("3-5-2")
+            # The former coarse defenders/midfielders/forwards counts could approve a
+            # shape without a goalkeeper, wide players or enough distinct CBs.
+            # Slot checks are conservative and do not infer selection or fitness.
+            formations = compatible_formations(people)
             fact("squad", "Current squad and recorded recent load", people, "selected Atlas snapshot and player match ratings")
-            fact("formation_options", "Shapes supported by recorded squad positions", formations, "deterministic position-count check")
+            fact("formation_options", "Potential shapes compatible with registered squad positions", formations, "conservative position-slot matching with distinct EA player IDs; NOT a confirmed XI, condition or tactical role")
             fact("opponent", "Upcoming opponent", row["away_team_name"] if int(row["home_team_ea_id"] or -1) == team_id else row["home_team_name"], "fixture calendar only; no opponent style inferred")
             previous = conn.execute(
                 """SELECT fixture_id,date,home_team_name,away_team_name FROM fixture_observations
@@ -1362,11 +1359,13 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
     from .settings import application_language, normalize_language
     context = {"mode": mode, "career_id": int(career_id), "snapshot_id": int(snapshot_id),
                "career_date": snapshot["career_date"], "managed_team": snapshot["managed_team_name"],
-               "season_index": int(snapshot["season_index"]), "report_version": REPORT_VERSION,
+               "managed_team_ea_id": team_id, "season_index": int(snapshot["season_index"]), "report_version": REPORT_VERSION,
                "language": normalize_language(language_override) if language_override else application_language(), "facts": facts}
     if mode == "next_match":
         options = next((item.get("value") for item in facts if item["id"] == "formation_options"), [])
         context["allowed_formations"] = options
+    context["report_subject"] = report_subject(context)
+    context["analysis_focus"] = report_focus(context)
     return context, [str(item["id"]) for item in facts], scope
 
 
@@ -1801,6 +1800,8 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
     folded = item["text"].casefold()
     causal_or_tactical_language = ("consequência natural", "natural consequence", "natural result of", "devido ao ritmo", "due to the tempo", "higher tempo", "ritmo mais alto", "pressão ofensiva", "intense attacking pressure", "presión ofensiva", "intensidade na circulação", "maintain intensity in circulation", "intensidad de circulación", "vulnerável a ataques diretos", "vulnerable to direct attacks", "vulnerable to direct attack")
     if mode in {"match", "match_player"} and kind == "inference" and any(term in folded for term in causal_or_tactical_language):
+        return False
+    if is_generic_claim(item["text"], section):
         return False
     if section == "recommendations" and _report_recommendation_target_conflict(context, mode, item["text"]):
         return False
@@ -2382,6 +2383,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
               "Do not invent possession share, pressing, line height, events/minutes, starting status, injuries, fitness, hierarchy, or function beyond the supplied sources. A statistical advantage may support an interpretation such as more chances or higher xG; it does not prove territorial control or a tactical cause. Do not describe a result as a natural consequence of xG, explain passing changes by tempo, or infer intense attacking pressure from aggregate shots/saves unless direct evidence supports that relation; omit it or label it as a hypothesis with limitations. Do not infer a defensive style, transition vulnerability, opponent action, or player/goal chronology from aggregate counts. Do not describe chance creation via wings/corridors when spatial events are absent. Pass accuracy alone does not prove effective circulation or defensive failure. Tackles/interceptions alone do not prove aggression or reading errors. Evaluate finishing only from the supplied same-team goals-minus-xG comparison; a lower xG than the team's season average is about chance volume and is not evidence of poor conversion. Recommendations must concern the managed team and connect to an observed deviation; suggest a review or follow-up, not invented drills, target percentages, or decisive-game scenarios. If a recommendation depends on coach-only tactical context, ask a concise information_request instead. Do not suppress a useful, clearly labelled hypothesis solely because it is not proven. Every recommendation is for the managed club only: never advise the opponent. Keep a named club's metrics tied to its own supplied row. Do not call a team dominant, in control, or superior from one event count or the score alone; state a measured comparison and its scope. "
               "Keep each player attached to their own team_name/team_side row. Keep home and away orientation exactly as supplied. Do not aggregate players or transfer a team metric to an individual. For named player or team metrics, use the exact corresponding row; do not claim a group percentage unless the context supplies that aggregate. shots_on_target describes the team's/player's attacks; saving_shots_on_target and shots_against describe attempts faced. possession_won/lost are event counts, not possession share. Do not describe passes_completed_under_pressure unless that exact field is supplied for the cited entity. No event timing is supplied. "
               "Translate metric keys into football language (npk_goals means non-penalty goals; never print raw field keys). Preserve the Atlas sample labels. Avoid repeating the same point across sections. Return distinct findings supported by available evidence; do not fill categories artificially. Prioritize the most useful findings and return at most eight items in any one category. Use strengths/development/training lists only for player modes. Do not rate your own analysis quality. " + task)
+    system += " " + REASONING_POLICY
     if mode == "match_player":
         system += (" This is an individual report about the selected managed-team player. For current-match individual statistics, cite the exact selected_match_player fact; matchstats contains team rows. For prior performances, cite pre_match_player_context and identify them as earlier evidence. Keep observations about the selected player; use the opponent only as match context. Recommendations, strengths, development areas and training suggestions must apply to the selected player, never the opponent or a different teammate. Do not give team tactical recommendations in an individual report.")
     elif mode == "player":
