@@ -180,9 +180,14 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
     return priorities
 
 
+def claim_signature(text: str) -> str:
+    """Normalize only literal repetition, without guessing semantic equivalence."""
+    return re.sub(r"[^\\w]+", " ", str(text).casefold(), flags=re.UNICODE).strip()
+
+
 def is_generic_claim(text: str, section: str | None) -> bool:
     """Reject boilerplate instead of requiring arbitrary numbers in every claim."""
-    if section not in {"observations", "recommendations", "strengths", "development_areas",
+    if section not in {"summary", "observations", "recommendations", "strengths", "development_areas",
                        "training_suggestions"}:
         return False
     normalized = " ".join(str(text).casefold().split()).strip(" .!;")
@@ -195,6 +200,10 @@ def is_generic_claim(text: str, section: str | None) -> bool:
         r"(?:seguir|mantener)\s+(?:el\s+)?seguimiento(?:\s+(?:del\s+)?(?:jugador|equipo))?",
         r"(?:mejorar|vigilar)\s+(?:el\s+)?(?:rendimiento|desempeño)(?:\s+(?:del\s+)?(?:jugador|equipo))?",
     )
+    if normalized in {"o time jogou bem", "a equipe jogou bem", "a equipe teve boa atuação",
+                      "o jogador teve boa atuação", "the team played well", "the player did well",
+                      "el equipo jugó bien", "el jugador jugó bien"}:
+        return True
     return any(re.fullmatch(pattern, normalized) for pattern in generic)
 
 
