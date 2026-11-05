@@ -15,8 +15,8 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import Lock
 from typing import Any
 
-from .commission_prompt_policy import (REASONING_POLICY, compatible_formations, is_generic_claim,
-                                       report_focus, report_subject)
+from .commission_prompt_policy import (REASONING_POLICY, claim_signature, compatible_formations,
+                                       is_generic_claim, report_focus, report_subject)
 
 MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
@@ -2457,7 +2457,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         safe_default_refs = [item for item in default_refs.get(mode, []) if item in valid_ids]
         deterministic_summary = _deterministic_report_summary(context)
         summary = report.get("summary")
-        summary_valid = isinstance(summary, dict) and _validate_report_item(context, mode, summary, valid_ids)
+        summary_valid = (isinstance(summary, dict) and _validate_report_item(context, mode, summary, valid_ids)
+                         and not is_generic_claim(summary.get("text", ""), "summary"))
         if summary_valid:
             report["summary"] = {"text": summary["text"][:900], "kind": summary["kind"],
                                   "limitations": str(summary.get("limitations") or "")[:500],
@@ -2471,6 +2472,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         report["summary"]["model_generated"] = bool(summary_valid)
         accepted_claims = 1 if summary_valid else 0
         rejected_claims = 0 if summary_valid else 1
+        seen_claims = {claim_signature(report["summary"]["text"])} if summary_valid else set()
         for key in ("observations", "recommendations", "strengths", "development_areas", "training_suggestions"):
             values = report.get(key) if isinstance(report.get(key), list) else []
             cleaned = []
@@ -2478,6 +2480,13 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                 if not isinstance(item, dict) or not _validate_report_item(context, mode, item, valid_ids, section=key):
                     rejected_claims += 1
                     continue
+                # The same claim in the summary/observations/recommendations is not
+                # three distinct insights. Keep its first fully validated occurrence.
+                signature = claim_signature(item["text"])
+                if not signature or signature in seen_claims:
+                    rejected_claims += 1
+                    continue
+                seen_claims.add(signature)
                 cleaned.append({"text": item["text"][:700], "kind": item["kind"],
                                 "limitations": str(item.get("limitations") or "")[:500],
                                 "fact_refs": item["fact_refs"]})
