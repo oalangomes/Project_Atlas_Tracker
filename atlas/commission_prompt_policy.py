@@ -182,7 +182,7 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
 
 def claim_signature(text: str) -> str:
     """Normalize only literal repetition, without guessing semantic equivalence."""
-    return re.sub(r"[^\\w]+", " ", str(text).casefold(), flags=re.UNICODE).strip()
+    return re.sub(r"[^\w]+", " ", str(text).casefold(), flags=re.UNICODE).strip()
 
 
 def is_generic_claim(text: str, section: str | None) -> bool:
