@@ -1,5 +1,11 @@
 """Regression tests for Atlas commission prompt coherence and managed-team identity."""
 import unittest
+import json
+import sqlite3
+import tempfile
+from pathlib import Path
+
+from scripts.audit_commission_reports import audit_database, evaluate_report
 
 from atlas.commission import REPORT_VERSION, _validate_report_item
 from atlas.commission_prompt_policy import (
@@ -181,6 +187,50 @@ class NonGenericInsightsTests(unittest.TestCase):
                 {"id": "player_summary", "value": {
                     "appearances": 7, "metrics": {"assists": 2}}}]},
             "player", claim, {"player_summary"}, section="recommendations"))
+
+
+class StoredReportAuditTests(unittest.TestCase):
+    def test_flags_wrong_team_recommendation_generic_and_repetition(self):
+        payload = {"mode": "next_match", "review_required": True,
+                   "fact_catalog": [{"id": "match", "value": {
+                       "managed_team_side": "home", "managed_team_ea_id": 1929,
+                       "home": "Plymouth Argyle", "away": "Exeter City"}}],
+                   "report": {
+                       "summary": {"text": "A equipe jogou bem.", "kind": "inference",
+                                   "fact_refs": ["match"], "model_generated": False},
+                       "observations": [
+                           {"text": "Manter acompanhamento", "fact_refs": ["match"]},
+                           {"text": "Manter acompanhamento", "fact_refs": ["match"]}],
+                       "recommendations": [
+                           {"text": "Exeter City should improve its defensive transitions.",
+                            "fact_refs": ["match"]}],
+                   }}
+        result = evaluate_report(payload)
+        self.assertEqual(result["flags"]["generic_claims"], 3)
+        self.assertEqual(result["flags"]["duplicate_claims"], 1)
+        self.assertEqual(result["flags"]["opponent_targeted_recommendations"], 1)
+        self.assertEqual(result["flags"]["deterministic_summary_fallback"], 1)
+        self.assertEqual(result["flags"]["review_required"], 1)
+
+    def test_database_audit_is_read_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "atlas.sqlite3"
+            with sqlite3.connect(path) as conn:
+                conn.execute("""CREATE TABLE technical_commission_report_cache(
+                    career_id INTEGER, snapshot_id INTEGER, mode TEXT, scope_key TEXT,
+                    payload_json TEXT)""")
+                conn.execute("INSERT INTO technical_commission_report_cache VALUES(?,?,?,?,?)",
+                             (7, 20, "player", "player:100", json.dumps({
+                                 "mode": "player", "fact_catalog": [
+                                     {"id": "player_summary", "value": {"player_ea_id": 100}}],
+                                 "report": {"summary": {
+                                     "text": "A equipe jogou bem.", "fact_refs": ["player_summary"],
+                                     "model_generated": False}}})))
+            before = path.stat().st_mtime_ns
+            outcome = audit_database(path, career_id=7)
+            self.assertEqual(outcome["scanned"], 1)
+            self.assertEqual(outcome["flags"]["deterministic_summary_fallback"], 1)
+            self.assertEqual(path.stat().st_mtime_ns, before)
 
 
 if __name__ == "__main__":
