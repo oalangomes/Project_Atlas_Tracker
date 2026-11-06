@@ -578,6 +578,28 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                                                   model, force_refresh, clarifications=clarifications))
             return
 
+        match = re.fullmatch(r"/api/careers/(\d+)/commission/match-analysis-jobs", path)
+        if match:
+            career_id = int(match.group(1))
+            snapshot_id = as_int(payload.get("snapshot_id") or payload.get("snapshotId"))
+            fixture_id = as_int(payload.get("fixture_id") or payload.get("fixtureId"))
+            if snapshot_id is None or fixture_id is None:
+                raise ValueError("Snapshot and fixture IDs are required.")
+            with self.state.database.connect() as conn:
+                completed = conn.execute(
+                    """SELECT 1 FROM fixture_observations fo JOIN snapshots s ON s.id=fo.snapshot_id
+                       WHERE fo.snapshot_id=? AND fo.fixture_id=? AND s.career_id=?
+                         AND fo.managed_team_involved=1 AND fo.is_completed=1""",
+                    (snapshot_id, fixture_id, career_id),
+                ).fetchone()
+            if not completed:
+                raise ValueError("A completed managed-team fixture is required.")
+            from .commission import queue_auto_commission_reports
+            jobs = queue_auto_commission_reports(self.state.database, career_id, fixture_id, snapshot_id,
+                                                 include_team_identity=False)
+            self._json({"scheduled": jobs, "count": len(jobs)})
+            return
+
         match = re.fullmatch(r"/api/careers/(\d+)/commission/report-jobs", path)
         if match:
             career_id = int(match.group(1))
@@ -590,14 +612,22 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             model = str(payload.get("model") or "").strip() or None
             force_refresh = input_bool(payload.get("force_refresh") or payload.get("forceRefresh"), "Force new Ollama analysis", default=False)
             clarifications = payload.get("clarifications")
-            from .commission import get_commission_report, start_commission_report_job
+            from .commission import (get_commission_report, start_commission_report_job,
+                                     _briefing_facts, _report_source_hash)
+            dedupe_key = None
+            if mode == "player" and player_ea_id is not None and not force_refresh and not clarifications:
+                with self.state.database.connect() as conn:
+                    context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id)
+                selected_model = model or os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
+                source_hash = _report_source_hash(context, career_id, mode, scope)
+                dedupe_key = f"auto:{career_id}:{mode}:{scope}:{selected_model}:{source_hash}"
 
             def work() -> dict[str, Any]:
                 with self.state.database.connect() as conn:
                     return get_commission_report(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id,
                                                  model, force_refresh, clarifications=clarifications)
 
-            self._json(start_commission_report_job(career_id, work))
+            self._json(start_commission_report_job(career_id, work, dedupe_key))
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/commission/retroactive-report-jobs", path)

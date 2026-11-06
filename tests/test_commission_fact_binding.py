@@ -24,7 +24,7 @@ class ScoreClaimBindingTests(unittest.TestCase):
         item = {"text": text, "kind": kind, "limitations": "Hipótese sem evidência direta da partida.",
                 "fact_refs": refs}
         reasons = []
-        result = _validate_report_item(ctx, "match_player", item, {"match", "selected_match_player"},
+        result = _validate_report_item(ctx, ctx.get("mode", "match_player"), item, {"match", "selected_match_player"},
                                        rejection_reasons=reasons)
         self.assertEqual(result, expected, (text, reasons))
         bindings, issues = score_claim_bindings(ctx, item)
@@ -85,8 +85,10 @@ class ScoreClaimBindingTests(unittest.TestCase):
     def test_missing_source_and_legitimate_hypothesis(self):
         self.assertIn("score_source_missing", self.check_claim("Plymouth Argyle marcou 2 gols.", False,
                                                               refs=["selected_match_player"]))
+        match_context = context()
+        match_context["mode"] = "match"
         self.check_claim("Se o visitante cedesse espaços, o cenário exigiria uma revisão defensiva.", True,
-                         kind="hypothesis")
+                         ctx=match_context, kind="hypothesis")
 
 
 if __name__ == "__main__":

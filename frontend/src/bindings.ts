@@ -80,7 +80,7 @@ function bindContent() {
     $$<HTMLButtonElement>('[data-workspace-delete]',content).forEach(button=>button.onclick=async()=>{const workspaceId=String(button.dataset.workspaceDelete||''),name=String(button.dataset.workspaceName||'Branch');if(!workspaceId||!confirm(`Permanently delete branch “${name}”? The source career save is not affected.`))return;await api('/api/workspaces/delete',{method:'POST',body:JSON.stringify({workspaceId})});toast(`“${name}” deleted`);await refreshSetup();});
 
     $$('[data-route]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate(n.dataset.route);});
-    $$('[data-player]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate('player',{id:Number(n.dataset.player),tab:'overview'});});
+    $$('[data-player]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate('player',{id:Number(n.dataset.player),tab:'commission'});});
     $$('[data-club]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate('club',{id:Number(n.dataset.club)});});
     $$('[data-competition]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate('competition',{id:Number(n.dataset.competition),tab:state.competitionTab||'results'});});
     $$('[data-world-competition]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate('world-competition',{id:Number(n.dataset.worldCompetition)});});

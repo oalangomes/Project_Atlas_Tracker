@@ -18,7 +18,9 @@ from typing import Any
 from .commission_prompt_policy import (build_system_prompt, claim_signature, compatible_formations,
                                        is_generic_claim, report_focus, report_subject)
 from .claim_binding import score_claim_bindings
-from .commission_role_policy import player_role, prompt_evidence, role_relevance_conflict
+from .commission_role_policy import (CROSS_ROLE_METRIC_FIELDS, goalkeeper_match_context,
+                                     goalkeeper_opponent_xg_evidence, player_role,
+                                     prompt_evidence, role_relevance_conflict)
 
 MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
@@ -26,6 +28,14 @@ RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
 REPORT_VERSION = 34
+MATCH_PLAYER_REPORT_CONTRACT = 5
+_MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
+    r"\b(?:focar|foque|foco em|deve|devem|deveria|deveriam|precisa|precisam|"
+    r"treinar|treine|priorizar|priorize|melhorar|melhore|evitar|aumentar|reduzir|"
+    r"should|needs? to|need to|focus on|train|improve|prioriti[sz]e|"
+    r"debería|deberían|debe|necesita|enfocarse|entrenar|mejorar|priorizar)\b",
+    re.IGNORECASE,
+)
 _REPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="atlas-ollama-report")
 _REPORT_JOB_LOCK = Lock()
 _REPORT_JOBS: dict[str, dict[str, Any]] = {}
@@ -982,6 +992,9 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                     player_id = int(item["playerEaId"])
                     stats = item.get("stats") or {}
                     player_team_id = int(item.get("teamEaId") or -1)
+                    metric_fields = REPORT_PLAYER_FIELDS
+                    if mode == "match_player" and player_team_id == team_id:
+                        metric_fields = tuple(dict.fromkeys((*REPORT_PLAYER_FIELDS, *CROSS_ROLE_METRIC_FIELDS)))
                     player_facts.append({"player_ea_id": player_id, "name": item.get("displayName"),
                                          "team_ea_id": item.get("teamEaId"),
                                          "team_name": team_names.get(player_team_id),
@@ -991,7 +1004,7 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                                          "observed_position_source": "career_playermatchratinghistory_position" if player_id in observed_positions else None,
                                          "team_ea_id": item.get("teamEaId"), "team_index": item.get("teamIndex"),
                                          "minutes": stats.get("minutes_played"), "rating": stats.get("game_rating"),
-                                         "stats": _compact_metrics(stats, REPORT_PLAYER_FIELDS)})
+                                         "stats": _compact_metrics(stats, metric_fields)})
                 fact("match_players", "Player match performances and position evidence", player_facts,
                      "complete linked MatchStats export; observed positions only from career_playermatchratinghistory_position")
                 managed_players = [item for item in player_facts if int(item.get("team_ea_id") or -1) == team_id]
@@ -1360,6 +1373,10 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
             facts.append({"id": "match_comparisons", "label": "Precalculated like-for-like comparisons",
                           "value": comparisons,
                           "source": "Atlas deterministic calculations; same team and metric, current match versus pre-match per-match averages"})
+    if mode == "match_player":
+        comparison = _match_player_team_comparison(facts, team_id)
+        fact("match_player_team_comparison", "Selected player compared with team in this match", comparison,
+             "Atlas calculations from linked player and team MatchStats rows; teammate averages exclude the selected player")
     clarifications = _normalize_report_clarifications(clarifications)
     if clarifications:
         fact("coach_context", "Contexto enviado pelo treinador; não verificado pelo Atlas", clarifications,
@@ -1387,11 +1404,111 @@ def _report_source_hash(context: dict[str, Any], career_id: int, mode: str, scop
               "language": context.get("language"),
               "facts": context.get("facts", []), "allowed_formations": context.get("allowed_formations"),
               "role_analysis": context.get("role_analysis")}
+    if mode == "match_player":
+        stable["mode_contract_version"] = MATCH_PLAYER_REPORT_CONTRACT
     return hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
 
 
 def _report_fact_map(context: dict[str, Any]) -> dict[str, Any]:
     return {str(item.get("id")): item.get("value") for item in context.get("facts", []) if isinstance(item, dict)}
+
+
+def _match_player_team_comparison(facts: list[dict[str, Any]], team_id: int) -> dict[str, Any] | None:
+    """Precompute same-match player-versus-team signals for the technical analyst."""
+    values = {str(item.get("id")): item.get("value") for item in facts if isinstance(item, dict)}
+    selected = values.get("selected_match_player")
+    if not isinstance(selected, dict):
+        return None
+    player_id = int(selected.get("player_ea_id") or -1)
+    participants = [row for row in values.get("match_players", []) or []
+                    if isinstance(row, dict) and int(row.get("team_ea_id") or -1) == int(team_id)
+                    and _float(row.get("minutes")) is not None and float(row.get("minutes") or 0) > 0]
+    own_stats = selected.get("stats") or {}
+    peers = [row for row in participants if int(row.get("player_ea_id") or -1) != player_id]
+    team_row = next((row for row in values.get("matchstats", []) or []
+                     if isinstance(row, dict) and int(row.get("team_ea_id") or -1) == int(team_id)), {})
+    team_stats = team_row.get("stats") or {}
+    specs = {
+        "npk_goals": "scoring", "goals_derived": "scoring", "assists": "chance_creation",
+        "npk_expected_goals": "chance_quality_volume", "expected_assists": "chance_creation",
+        "shots": "attempt_volume", "shots_on_target": "attempt_volume", "key_passes": "chance_creation",
+        "passes": "pass_volume", "passes_completed": "pass_volume",
+        "pass_accuracy_pct_derived": "passing_efficiency",
+        "passes_under_pressure": "pressure_pass_volume",
+        "passes_completed_under_pressure": "pressure_pass_volume",
+        "pressure_pass_accuracy_pct": "pressure_pass_efficiency",
+        "dribbles": "dribble_volume", "dribbles_completed": "dribble_volume",
+        "dribble_success_pct_derived": "dribble_efficiency",
+        "crosses_attempted": "cross_volume", "crosses_delivered": "cross_volume",
+        "cross_success_pct_derived": "cross_efficiency", "tackles": "defensive_actions",
+        "interceptions": "defensive_actions", "clearances": "defensive_actions", "blocks": "defensive_actions",
+        "possession_won": "recoveries", "possession_lost": "turnovers",
+        "offense_duels_won": "duel_outcomes", "defense_duels_won": "duel_outcomes",
+        "aerial_duels_won": "duel_outcomes", "offense_duels_attempted": "duel_outcomes",
+        "defense_duels_attempted": "duel_outcomes", "aerial_duels_attempted": "duel_outcomes",
+        "offense_duel_success_pct_derived": "duel_efficiency",
+        "defense_duel_success_pct_derived": "duel_efficiency",
+        "aerial_duel_success_pct_derived": "duel_efficiency",
+        "saves": "goalkeeping_outcomes", "saving_shots_on_target": "goalkeeping_outcomes",
+        "goals_conceded": "goalkeeping_outcomes",
+    }
+    rate_metrics = {"pass_accuracy_pct_derived", "pressure_pass_accuracy_pct",
+                    "dribble_success_pct_derived", "cross_success_pct_derived",
+                    "offense_duel_success_pct_derived", "defense_duel_success_pct_derived",
+                    "aerial_duel_success_pct_derived"}
+    additive_metrics = {"npk_goals", "goals_derived", "assists", "shots", "shots_on_target",
+                        "key_passes", "passes", "passes_completed", "passes_under_pressure",
+                        "passes_completed_under_pressure", "dribbles", "dribbles_completed",
+                        "crosses_attempted", "crosses_delivered", "tackles", "interceptions",
+                        "clearances", "blocks", "possession_won", "possession_lost",
+                        "offense_duels_won", "defense_duels_won", "aerial_duels_won",
+                        "offense_duels_attempted", "defense_duels_attempted", "aerial_duels_attempted"}
+    metrics: dict[str, dict[str, Any]] = {}
+    player_minutes = _float(selected.get("minutes")) or 0.0
+    for key, meaning in specs.items():
+        player_value = _float(own_stats.get(key))
+        if player_value is None:
+            continue
+        peer_values = [(row, _float((row.get("stats") or {}).get(key))) for row in peers]
+        peer_values = [(row, value) for row, value in peer_values if value is not None]
+        peer_average = sum(value for _, value in peer_values) / len(peer_values) if peer_values else None
+        team_total = _float(team_stats.get(key))
+        if key == "pass_accuracy_pct_derived" and team_total is None:
+            team_passes = _float(team_stats.get("passes"))
+            team_completed = _float(team_stats.get("passes_completed"))
+            if team_passes and team_completed is not None:
+                team_total = round(team_completed * 100 / team_passes, 3)
+        ranked_values = [_float((row.get("stats") or {}).get(key)) for row in participants]
+        ranked_values = [value for value in ranked_values if value is not None]
+        rank = 1 + sum(value > player_value for value in ranked_values)
+        minutes_values = [(row, _float(row.get("minutes")) or 0.0) for row, _ in peer_values]
+        peer_per90 = [(_float((row.get("stats") or {}).get(key)) * 90 / mins)
+                      for row, mins in minutes_values if mins > 0]
+        metrics[key] = {
+            "interpretation_type": meaning,
+            "player_value": round(player_value, 3),
+            "team_value": round(team_total, 3) if team_total is not None else None,
+            "team_value_type": "collective_rate" if key in rate_metrics else "whole_team_match_total",
+            "difference_vs_team": round(player_value - team_total, 3)
+                if team_total is not None and key in rate_metrics else None,
+            "team_share_pct": round(player_value * 100 / team_total, 1)
+                if team_total and key in additive_metrics else None,
+            "teammate_average_excluding_player": round(peer_average, 3) if peer_average is not None else None,
+            "difference_vs_teammate_average": round(player_value - peer_average, 3) if peer_average is not None else None,
+            "teammates_with_data": len(peer_values),
+            "rank_among_exported_players": rank if ranked_values else None,
+            "players_with_data": len(ranked_values),
+            "player_per90": round(player_value * 90 / player_minutes, 3) if player_minutes > 0 else None,
+            "teammate_average_per90": round(sum(peer_per90) / len(peer_per90), 3) if peer_per90 else None,
+        }
+    if not metrics:
+        return None
+    return {"player_ea_id": player_id, "player_name": selected.get("name"),
+            "team_name": selected.get("team_name"), "position": selected.get("observed_position") or selected.get("registered_position"),
+            "position_source": "observed" if selected.get("observed_position") else "registered only",
+            "comparison_scope": "same completed match; exported managed-team participants only",
+            "metrics": metrics,
+            "interpretation_guard": "Counts are workload, not quality by themselves. Compare efficiency and role evidence; peer mean excludes the selected player. Missing values are not zero."}
 
 
 def _commission_note(context: dict[str, Any]) -> dict[str, Any] | None:
@@ -1471,6 +1588,296 @@ def _deterministic_match_summary(context: dict[str, Any]) -> dict[str, Any] | No
     else:
         text = f"{team} {outcome} {opponent} por {score}{f' en {comp}' if comp else ''}."
     return {"text": text, "fact_refs": ["match"]}
+
+
+def _fact_number(value: Any, language: str, decimals: int = 1) -> str | None:
+    number = _float(value)
+    if number is None:
+        return None
+    if abs(number - round(number)) < 1e-9:
+        return str(int(round(number)))
+    rendered = f"{number:.{decimals}f}".rstrip("0").rstrip(".")
+    return rendered.replace(".", ",") if language in {"pt-BR", "es-ES"} else rendered
+
+
+def _deterministic_match_player_summary(context: dict[str, Any]) -> dict[str, Any]:
+    facts = _report_fact_map(context)
+    player = facts.get("selected_match_player") or {}
+    stats = player.get("stats") or {}
+    language = str(context.get("language") or "pt-BR")
+    name = str(player.get("name") or "Player")
+    minutes = _fact_number(player.get("minutes"), language, 0) or "N/D"
+    rating = _fact_number(player.get("rating"), language, 1) or "N/D"
+    goals = stats.get("goals_derived")
+    if goals is None:
+        goals = stats.get("npk_goals")
+    assists = stats.get("assists")
+    goal_value = _fact_number(goals, language, 0)
+    assist_value = _fact_number(assists, language, 0)
+    if language == "en-GB":
+        text = f"{name}: {minutes} min, rating {rating}"
+        if goal_value is not None and assist_value is not None:
+            text += f"; {goal_value} {('goal' if goal_value == '1' else 'goals')} and {assist_value} {('assist' if assist_value == '1' else 'assists')} recorded."
+        else:
+            text += "; match figures are incomplete."
+    elif language == "es-ES":
+        text = f"{name}: {minutes} min, nota {rating}"
+        if goal_value is not None and assist_value is not None:
+            text += f"; {goal_value} {('gol' if goal_value == '1' else 'goles')} y {assist_value} {('asistencia' if assist_value == '1' else 'asistencias')} registrados."
+        else:
+            text += "; las cifras del partido están incompletas."
+    else:
+        text = f"{name}: {minutes} min, nota {rating}"
+        if goal_value is not None and assist_value is not None:
+            text += f"; {goal_value} {('gol' if goal_value == '1' else 'gols')} e {assist_value} {('assistência' if assist_value == '1' else 'assistências')} registrados."
+        else:
+            text += "; os números da partida estão incompletos."
+    return {"text": text, "kind": "fact", "limitations": "",
+            "fact_refs": ["selected_match_player"], "model_generated": False}
+
+
+def _deterministic_match_player_observations(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Select up to four concise, source-bound match facts without LLM ranking."""
+    facts = _report_fact_map(context)
+    player = facts.get("selected_match_player") or {}
+    stats = player.get("stats") or {}
+    language = str(context.get("language") or "pt-BR")
+    role = (context.get("role_analysis") or {}).get("role", "unknown")
+    observations: dict[str, dict[str, Any]] = {}
+
+    def add(category: str, text: str, refs: list[str] | None = None) -> None:
+        if text:
+            observations[category] = {"text": text, "kind": "fact", "limitations": "",
+                                      "fact_refs": refs or ["selected_match_player"]}
+
+    goals = stats.get("goals_derived") if stats.get("goals_derived") is not None else stats.get("npk_goals")
+    assists = _float(stats.get("assists"))
+    shots = _float(stats.get("shots"))
+    shots_on_target = _float(stats.get("shots_on_target"))
+    xg = stats.get("npk_expected_goals")
+    xa = stats.get("expected_assists")
+    key_passes = _float(stats.get("key_passes"))
+    goals_num = _float(goals)
+    xg_num, xa_num = _float(xg), _float(xa)
+    attack_parts: list[str] = []
+    if goals_num is not None and goals_num > 0:
+        shown = _fact_number(goals_num, language, 0)
+        if language == "en-GB":
+            attack_parts.append(f"{shown} {('goal' if goals_num == 1 else 'goals')}")
+        elif language == "es-ES":
+            attack_parts.append(f"{shown} {('gol' if goals_num == 1 else 'goles')}")
+        else:
+            attack_parts.append(f"{shown} {('gol' if goals_num == 1 else 'gols')}")
+    if assists is not None and assists > 0:
+        shown = _fact_number(assists, language, 0)
+        attack_parts.append((f"{shown} {('assist' if assists == 1 else 'assists')}" if language == "en-GB"
+                             else f"{shown} {('asistencia' if assists == 1 else 'asistencias')}" if language == "es-ES"
+                             else f"{shown} {('assistência' if assists == 1 else 'assistências')}"))
+    if shots is not None and shots > 0:
+        shown = _fact_number(shots, language, 0)
+        on_target = _fact_number(shots_on_target, language, 0)
+        if language == "en-GB":
+            attack_parts.append(f"{shown} shots" + (f", {on_target} on target" if on_target is not None else ""))
+        elif language == "es-ES":
+            attack_parts.append(f"{shown} tiros" + (f", {on_target} a puerta" if on_target is not None else ""))
+        else:
+            attack_parts.append(f"{shown} chutes" + (f", {on_target} no alvo" if on_target is not None else ""))
+    if xg_num is not None and xg_num > 0:
+        shown = _fact_number(xg_num, language, 2)
+        attack_parts.append(f"NPK-xG {shown}" if language == "en-GB" else f"NPK-xG de {shown}")
+    if xa_num is not None and xa_num > 0:
+        shown = _fact_number(xa_num, language, 2)
+        attack_parts.append(f"xA {shown}")
+    if key_passes is not None and key_passes > 0:
+        shown = _fact_number(key_passes, language, 0)
+        attack_parts.append((f"{shown} {('key pass' if key_passes == 1 else 'key passes')}" if language == "en-GB" else
+                             f"{shown} {('pase clave' if key_passes == 1 else 'pases clave')}" if language == "es-ES" else
+                             f"{shown} {('passe-chave' if key_passes == 1 else 'passes-chave')}"))
+    if attack_parts:
+        lead = {"pt-BR": "Registrou", "en-GB": "Recorded", "es-ES": "Registró"}.get(language, "Registrou")
+        add("attack", f"{lead} " + "; ".join(attack_parts) + ".")
+
+    passes = _float(stats.get("passes"))
+    completed = _float(stats.get("passes_completed"))
+    pressure = _float(stats.get("passes_under_pressure"))
+    pressure_completed = _float(stats.get("passes_completed_under_pressure"))
+    if passes is not None and passes > 0 and completed is not None:
+        accuracy = _float(stats.get("pass_accuracy_pct_derived"))
+        ratio = f"{_fact_number(completed, language, 0)}/{_fact_number(passes, language, 0)}"
+        if language == "en-GB":
+            text = f"Completed {ratio} passes" + (f" ({_fact_number(accuracy, language)}%)" if accuracy is not None else "")
+            if pressure is not None and pressure > 0 and pressure_completed is not None:
+                text += f"; under pressure, { _fact_number(pressure_completed, language, 0)}/{_fact_number(pressure, language, 0)} completed"
+            text += "."
+        elif language == "es-ES":
+            text = f"Completó {ratio} pases" + (f" ({_fact_number(accuracy, language)}%)" if accuracy is not None else "")
+            if pressure is not None and pressure > 0 and pressure_completed is not None:
+                text += f"; bajo presión, { _fact_number(pressure_completed, language, 0)}/{_fact_number(pressure, language, 0)} completados"
+            text += "."
+        else:
+            text = f"Completou {ratio} passes" + (f" ({_fact_number(accuracy, language)}%)" if accuracy is not None else "")
+            if pressure is not None and pressure > 0 and pressure_completed is not None:
+                text += f"; sob pressão, { _fact_number(pressure_completed, language, 0)}/{_fact_number(pressure, language, 0)} completos"
+            text += "."
+        add("passing", text)
+
+    dribbles = _float(stats.get("dribbles"))
+    dribbles_completed = _float(stats.get("dribbles_completed"))
+    crosses = _float(stats.get("crosses_attempted"))
+    crosses_completed = _float(stats.get("crosses_delivered"))
+    creation_parts: list[str] = []
+    if dribbles is not None and dribbles > 0 and dribbles_completed is not None:
+        pct = _float(stats.get("dribble_success_pct_derived"))
+        if language == "en-GB":
+            creation_parts.append(f"Dribbles completed: {_fact_number(dribbles_completed, language, 0)}/{_fact_number(dribbles, language, 0)}" + (f" ({_fact_number(pct, language)}%)" if pct is not None else ""))
+        elif language == "es-ES":
+            creation_parts.append(f"Regates completados: {_fact_number(dribbles_completed, language, 0)}/{_fact_number(dribbles, language, 0)}" + (f" ({_fact_number(pct, language)}%)" if pct is not None else ""))
+        else:
+            creation_parts.append(f"Dribles completos: {_fact_number(dribbles_completed, language, 0)}/{_fact_number(dribbles, language, 0)}" + (f" ({_fact_number(pct, language)}%)" if pct is not None else ""))
+    if crosses is not None and crosses > 0 and crosses_completed is not None:
+        creation_parts.append((f"crosses completed: {_fact_number(crosses_completed, language, 0)}/{_fact_number(crosses, language, 0)}" if language == "en-GB" else
+                               f"centros completados: {_fact_number(crosses_completed, language, 0)}/{_fact_number(crosses, language, 0)}" if language == "es-ES" else
+                               f"cruzamentos completados: {_fact_number(crosses_completed, language, 0)}/{_fact_number(crosses, language, 0)}"))
+    if creation_parts:
+        lead = {"pt-BR": "", "en-GB": "", "es-ES": ""}.get(language, "")
+        add("creation", lead + "; ".join(creation_parts) + ".")
+
+    duel_parts: list[str] = []
+    for attempts_key, won_key, pt, en, es in (
+        ("offense_duels_attempted", "offense_duels_won", "duelos ofensivos", "attacking duels", "duelos ofensivos"),
+        ("defense_duels_attempted", "defense_duels_won", "duelos defensivos", "defensive duels", "duelos defensivos"),
+        ("aerial_duels_attempted", "aerial_duels_won", "duelos aéreos", "aerial duels", "duelos aéreos"),
+    ):
+        attempts, won = _float(stats.get(attempts_key)), _float(stats.get(won_key))
+        if attempts is not None and attempts > 0 and won is not None:
+            label = en if language == "en-GB" else es if language == "es-ES" else pt
+            duel_parts.append(f"{label} {_fact_number(won, language, 0)}/{_fact_number(attempts, language, 0)}")
+    if duel_parts:
+        lead = {"pt-BR": "Disputas registradas:", "en-GB": "Recorded duels:", "es-ES": "Duelos registrados:"}.get(language, "Disputas registradas:")
+        add("duels", lead + " " + "; ".join(duel_parts) + ".")
+
+    won_possession = _float(stats.get("possession_won"))
+    lost_possession = _float(stats.get("possession_lost"))
+    if ((won_possession is not None and won_possession > 0)
+            or (lost_possession is not None and lost_possession > 0)):
+        possession_parts = []
+        if won_possession is not None:
+            won_label = "possession won" if language == "en-GB" else "posesión recuperada" if language == "es-ES" else "posse recuperada"
+            possession_parts.append(f"{won_label}: {_fact_number(won_possession, language, 0)}")
+        if lost_possession is not None:
+            lost_label = "possession lost" if language == "en-GB" else "posesión perdida" if language == "es-ES" else "posse perdida"
+            possession_parts.append(f"{lost_label}: {_fact_number(lost_possession, language, 0)}")
+        if language == "en-GB":
+            text = "; ".join(possession_parts) + "."
+        elif language == "es-ES":
+            text = "; ".join(possession_parts) + "."
+        else:
+            text = "; ".join(possession_parts) + "."
+        add("possession", text)
+    for key, label_pt, label_en, label_es in (
+        ("tackles", "desarmes", "tackles", "entradas"),
+        ("interceptions", "interceptações", "interceptions", "intercepciones"),
+        ("clearances", "cortes", "clearances", "despejes"),
+        ("blocks", "bloqueios", "blocks", "bloqueos"),
+    ):
+        value = _float(stats.get(key))
+        if value is not None and value > 0:
+            label = label_en if language == "en-GB" else label_es if language == "es-ES" else label_pt
+            add("defending", f"{_fact_number(value, language, 0)} {label} registrados." if language != "en-GB"
+                else f"{_fact_number(value, language, 0)} {label} recorded.")
+            break
+
+    keeper_context = (context.get("role_analysis") or {}).get("goalkeeper_match_context") or {}
+    if role == "goalkeeper":
+        outcomes = keeper_context.get("goalkeeper_recorded_outcomes") or {}
+        opponent = str(keeper_context.get("opponent_team_name") or "")
+        xg = _fact_number(keeper_context.get("opponent_xg"), language, 2)
+        xg_metric = keeper_context.get("opponent_xg_metric")
+        opponent_shots = _fact_number(keeper_context.get("opponent_shots_on_target"), language, 0)
+        parts: list[str] = []
+        if xg is not None:
+            is_total_xg = xg_metric == "expected_goals_derived"
+            xg_label = (("opponent total xG (Atlas-derived)" if is_total_xg else "opponent NPK-xG (penalties excluded)") if language == "en-GB" else
+                        ("xG total del rival (derivado por Atlas)" if is_total_xg else "NPK-xG del rival (sin penaltis)") if language == "es-ES" else
+                        ("xG total do adversário (derivado pelo Atlas)" if is_total_xg else "NPK-xG do adversário (sem pênaltis)"))
+            parts.append(f"{xg_label}: {xg}")
+        if opponent_shots is not None:
+            parts.append((f"{opponent_shots} opposition shots on target" if language == "en-GB" else
+                          f"{opponent_shots} tiros a puerta del rival" if language == "es-ES" else
+                          f"{opponent_shots} chutes do adversário no alvo"))
+        saves = _fact_number(outcomes.get("saves"), language, 0)
+        conceded = _fact_number(outcomes.get("goals_conceded"), language, 0)
+        if saves is not None:
+            parts.append((f"keeper saves: {saves}" if language == "en-GB" else
+                          f"paradas del portero: {saves}" if language == "es-ES" else
+                          f"defesas do goleiro: {saves}"))
+        if conceded is not None:
+            parts.append((f"goals conceded: {conceded}" if language == "en-GB" else
+                          f"goles encajados: {conceded}" if language == "es-ES" else
+                          f"gols sofridos: {conceded}"))
+        if parts:
+            add("goalkeeper", (opponent + ": " if opponent else "") + "; ".join(parts) + ".",
+                ["matchstats", "selected_match_player"] if xg is not None else ["selected_match_player"])
+        elif not keeper_context:
+            # Keep the goalkeeper report useful when opponent xG/context is unavailable;
+            # never imply a comparison that the source data cannot support.
+            saves = _fact_number(stats.get("saves"), language, 0)
+            shots_faced = _fact_number(stats.get("shots_faced"), language, 0)
+            conceded = _fact_number(stats.get("goals_conceded"), language, 0)
+            fallback_parts: list[str] = []
+            if saves is not None:
+                fallback_parts.append((f"saves: {saves}" if language == "en-GB" else
+                                       f"paradas: {saves}" if language == "es-ES" else
+                                       f"defesas: {saves}"))
+            if shots_faced is not None:
+                fallback_parts.append((f"shots faced: {shots_faced}" if language == "en-GB" else
+                                       f"tiros enfrentados: {shots_faced}" if language == "es-ES" else
+                                       f"chutes enfrentados: {shots_faced}"))
+            if conceded is not None:
+                fallback_parts.append((f"goals conceded: {conceded}" if language == "en-GB" else
+                                       f"goles encajados: {conceded}" if language == "es-ES" else
+                                       f"gols sofridos: {conceded}"))
+            if fallback_parts:
+                add("goalkeeper", "; ".join(fallback_parts) + ".")
+
+    order = {
+        "goalkeeper": ("goalkeeper", "passing", "defending", "possession"),
+        "centre_back": ("defending", "duels", "passing", "possession", "attack", "creation"),
+        "fullback": ("defending", "creation", "passing", "attack", "duels", "possession"),
+        "defensive_midfielder": ("defending", "passing", "duels", "possession", "creation", "attack"),
+        "central_midfielder": ("passing", "defending", "creation", "attack", "duels", "possession"),
+        "attacking_midfielder": ("creation", "attack", "passing", "duels", "defending", "possession"),
+        "winger": ("creation", "attack", "passing", "duels", "defending", "possession"),
+        "striker": ("attack", "creation", "passing", "duels", "defending", "possession"),
+        "unknown": ("attack", "creation", "passing", "duels", "defending", "possession"),
+    }.get(role, ("attack", "creation", "passing", "duels", "defending", "possession"))
+    return [observations[key] for key in order if key in observations][:4]
+
+
+def _deterministic_match_player_report(context: dict[str, Any],
+                                       scope: str, source_hash: str) -> dict[str, Any]:
+    summary = _deterministic_match_player_summary(context)
+    report = {
+        "summary": summary,
+        "observations": _deterministic_match_player_observations(context),
+        "recommendations": [], "strengths": [], "development_areas": [],
+        "training_suggestions": [], "information_requests": [], "formation": None,
+    }
+    report["summary"]["model_generated"] = False
+    return {
+        "available": True, "fallback": False, "cached": False,
+        "model": "Atlas · fatos determinísticos", "mode": "match_player",
+        "scope_key": scope, "report": report,
+        "fact_catalog": context.get("facts", []), "coach_context_received": False,
+        "source_hash": source_hash, "report_version": REPORT_VERSION,
+        "coverage": _report_coverage(context),
+        "validation": {"method": "deterministic source-bound match facts",
+                       "accepted_claims": 1 + len(report["observations"]),
+                       "rejected_claims": 0, "rejected_claim_details": [],
+                       "accepted_score_bindings": [],
+                       "interpretation_quality": "not applicable; no LLM interpretation"},
+        "review_required": False,
+    }
 
 
 def _deterministic_report_summary(context: dict[str, Any]) -> dict[str, Any] | None:
@@ -1743,6 +2150,12 @@ def _report_item_metric_conflict(context: dict[str, Any], item: dict[str, Any]) 
                     return True
             except (TypeError, ValueError):
                 pass
+    if has_xg:
+        opponent_xg = goalkeeper_opponent_xg_evidence(context, text)
+        if opponent_xg:
+            expected_xg = _float(opponent_xg.get("opponent_xg"))
+            if "matchstats" not in refs or expected_xg is None or not number_matches(text, expected_xg):
+                return True
     return False
 
 
@@ -1822,6 +2235,20 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
     kind = item.get("kind")
     if kind not in {"fact", "inference", "hypothesis"}:
         return reject("invalid_claim_kind")
+    if mode == "match_player":
+        if kind not in {"fact", "inference"}:
+            return reject("match_player_fact_only")
+        if section not in {None, "summary", "observations"}:
+            return reject("match_player_fact_only")
+        if _MATCH_PLAYER_ADVICE_LANGUAGE.search(item["text"]):
+            return reject("match_player_advice_not_allowed")
+        if not re.search(r"(?<!\w)\d+(?:[.,]\d+)?\s*%?", item["text"]):
+            return reject("match_player_claim_needs_metrics")
+        absolute_verdict = re.compile(
+            r"\b(?:perfeito|perfeita|perfeitos|perfeitas|incrível|incríveis|impecável|impecáveis|"
+            r"incredible|perfect|flawless|perfecto|perfecta|increíble|impecable)\b", re.IGNORECASE)
+        if absolute_verdict.search(item["text"]):
+            return reject("match_player_uncalibrated_absolute_verdict")
     if kind == "hypothesis" and (not isinstance(item.get("limitations"), str) or len(item["limitations"].strip()) < 12):
         return reject("hypothesis_missing_limitations")
     folded = item["text"].casefold()
@@ -2012,6 +2439,11 @@ def _report_selected_player_metric_conflict(context: dict[str, Any], item: dict[
         add("assists", "secondary_assist")
     if any(term in text for term in ("xg", "expected goals", "gols esperados", "goles esperados")):
         add("npk_expected_goals", "expected_goals_derived")
+        opponent_xg = goalkeeper_opponent_xg_evidence(context, text)
+        if opponent_xg and "matchstats" in refs:
+            value = _float(opponent_xg.get("opponent_xg"))
+            if value is not None:
+                allowed.append(value)
     if any(term in text for term in ("pass", "passe")):
         add("passes", "passes_completed", "passes_under_pressure", "passes_completed_under_pressure",
             "pass_accuracy_pct_derived", "pressure_pass_accuracy_pct")
@@ -2046,6 +2478,18 @@ def _report_selected_player_metric_conflict(context: dict[str, Any], item: dict[
                         "interceptions", "dribbles", "dribbles_completed", "aerial_duels_won",
                         "aerial_duels_attempted", "minutes_played"):
                 value = _float(prev_stats.get(key))
+                if value is not None:
+                    allowed.append(value)
+    if "match_player_team_comparison" in refs:
+        comparison = facts.get("match_player_team_comparison") or {}
+        for metric in (comparison.get("metrics") or {}).values():
+            if not isinstance(metric, dict):
+                continue
+            for key in ("player_value", "team_value", "difference_vs_team", "team_share_pct",
+                        "teammate_average_excluding_player", "difference_vs_teammate_average",
+                        "rank_among_exported_players", "players_with_data", "player_per90",
+                        "teammate_average_per90"):
+                value = _float(metric.get(key))
                 if value is not None:
                     allowed.append(value)
     # Only compare explicit numeric claims; qualitative interpretation is handled by other checks.
@@ -2359,6 +2803,16 @@ def get_cached_commission_report(conn: Any, career_id: int, snapshot_id: int, mo
             "source_hash": current_hash, "snapshot_id": int(row["snapshot_id"]), "generated_at": row["generated_at"], "result": value}
 
 
+def _apply_match_player_fact_contract(response_schema: dict[str, Any], claim_schema: dict[str, Any]) -> None:
+    """Allow grounded technical inference while keeping the match report concise and non-prescriptive."""
+    response_schema["properties"]["summary"]["properties"]["kind"]["enum"] = ["fact", "inference"]
+    claim_schema["properties"]["kind"]["enum"] = ["fact", "inference"]
+    response_schema["properties"]["observations"]["maxItems"] = 4
+    for key in ("recommendations", "strengths", "development_areas",
+                "training_suggestions", "information_requests"):
+        response_schema["properties"][key]["maxItems"] = 0
+
+
 def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str,
                           fixture_id: int | None = None, player_ea_id: int | None = None,
                           model: str | None = None, force_refresh: bool = False,
@@ -2400,21 +2854,21 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         "pt-BR": {
             "next_match": "Prepare a próxima partida com calendário, amostra de minutos e posições observadas. Sugira somente esquemas de allowed_formations. Separe adequação de elenco de escalação/disponibilidade.",
             "player": "Cruze radar e perfis de função já calculados com produção, eficiência por 90, recorte recente e pares da mesma posição no elenco. Compare amostras equivalentes; não infira hierarquia nem titularidade.",
-            "match_player": "Compare o desempenho desta atuação com as últimas cinco atuações válidas anteriores do jogador e com atletas da mesma posição registrados nesta partida, quando houver dados. Considere contribuição ofensiva e defensiva, não só nota e gols.",
+            "match_player": "Faça uma avaliação técnica concisa desta atuação, com opinião calibrada e sustentada pelos dados. Dê um veredito curto no resumo e até quatro observações que cruzem produção, eficiência, função/posição e comparação pré-calculada do jogador com o time e os colegas que atuaram. Destaque tanto méritos quanto limitações quando existirem; não enumere estatísticas sem explicar o que elas significam em conjunto. Interprete volume como volume, eficiência como eficiência; não trate todo número alto como qualidade. Evite elogios genéricos ou absolutos como 'perfeito', 'incrível' e 'consistente' sem evidência comparativa. Quando os dados sustentarem, diga claramente que um indicador ficou abaixo ou acima do padrão coletivo, sem inventar causas. Use posição observada somente com evidência; caso contrário identifique a posição como cadastrada. Não recomende treino nem desenvolvimento. Para goleiro, relacione o xG e os chutes no alvo do adversário com defesas e gols sofridos; avalie o resultado com cautela, sem confundir xG com defesas esperadas nem atribuir sozinho ao goleiro gols que também dependem da defesa. Se faltarem dados, qualifique a avaliação.",
             "team_identity": "Interprete tendências e recortes calculados pelo Atlas. Só proponha hipótese sobre estilo de jogo se sample_sufficient=true; caso contrário descreva apenas métricas observadas. Associação não prova causa nem instrução tática.",
             "match": "Contextualize resultado versus desempenho; compare criação/concessão, volume/qualidade, circulação, progressão e ações defensivas atuais com médias anteriores e últimas cinco partidas válidas. Compare atletas com a mesma posição observada quando registrada. Identifique desvio, padrão, impacto e acompanhamento útil, sem atribuir causa não observada.",
         },
         "en-GB": {
             "next_match": "Prepare the next fixture using the calendar, recorded minutes and observed positions. Recommend only shapes in allowed_formations. Separate squad fit from confirmed selection or availability.",
             "player": "Combine Atlas role and attribute profiles with production, per-90 efficiency, recent form and same-position squad peers. Compare samples fairly; do not infer hierarchy or starting status.",
-            "match_player": "Compare this appearance with the player's previous five valid appearances and with players recorded in the same position in this fixture where data exists. Consider attacking and defensive contribution, not only rating and goals.",
+            "match_player": "Give a concise technical assessment of this appearance, with a calibrated opinion grounded in the data. Give a short verdict in the summary and up to four observations that combine production, efficiency, role/position, and the precomputed comparison with the team and teammates who played. State both strengths and limitations when present; do not list statistics without explaining what they mean together. Treat volume as volume and efficiency as efficiency; a high count is not automatically good. Avoid generic or absolute praise such as 'perfect', 'incredible', or 'consistent' without comparative evidence. When supported, clearly say an indicator was below or above the collective pattern without inventing causes. Use observed position only when evidenced; otherwise identify the registered position. Do not recommend training or development. For a goalkeeper, relate opponent xG and shots on target to saves and goals conceded; assess cautiously, do not equate xG with expected saves, and do not assign goals solely to the keeper when the defence also matters. Qualify the assessment when data is missing.",
             "team_identity": "Interpret Atlas-calculated trends. Offer a playing-style hypothesis only when sample_sufficient=true; otherwise describe measured statistics only. Association does not prove a cause or tactical instruction.",
             "match": "Contextualise result versus performance; compare chance creation/concession, volume/quality, circulation, progression and defensive actions with prior averages and the last five valid fixtures. Compare players at the same observed position when recorded. Identify deviations, patterns, impact and useful follow-up without assigning unobserved causes.",
         },
         "es-ES": {
             "next_match": "Prepara el próximo partido con calendario, minutos y posiciones observadas. Recomienda solo esquemas de allowed_formations. Separa la compatibilidad de plantilla de una alineación o disponibilidad confirmada.",
             "player": "Cruza perfiles de función y atributos de Atlas con producción, eficiencia por 90, rendimiento reciente y compañeros de la misma posición. Compara muestras equivalentes; no infieras jerarquía ni titularidad.",
-            "match_player": "Compara esta actuación con las cinco actuaciones válidas anteriores del jugador y con jugadores registrados en la misma posición en este partido cuando haya datos. Considera aportes ofensivos y defensivos, no solo nota y goles.",
+            "match_player": "Ofrece una evaluación técnica concisa de esta actuación, con una opinión calibrada y sustentada por los datos. Da un veredicto breve en el resumen y hasta cuatro observaciones que combinen producción, eficiencia, función/posición y la comparación precalculada del jugador con el equipo y sus compañeros que jugaron. Señala méritos y limitaciones cuando existan; no enumeres estadísticas sin explicar su significado conjunto. Trata el volumen como volumen y la eficiencia como eficiencia; un valor alto no es automáticamente bueno. Evita elogios genéricos o absolutos como 'perfecto', 'increíble' o 'consistente' sin evidencia comparativa. Cuando los datos lo sustenten, indica claramente que un indicador quedó por debajo o por encima del patrón colectivo, sin inventar causas. Usa la posición observada solo si hay evidencia; si no, identifica la posición registrada. No recomiendes entrenamiento ni desarrollo. Para un portero, relaciona el xG y los tiros a puerta del rival con las paradas y los goles encajados; evalúa con cautela, no confundas xG con paradas esperadas ni atribuyas los goles solo al portero cuando la defensa también influye. Matiza la evaluación cuando falten datos.",
             "team_identity": "Interpreta tendencias calculadas por Atlas. Propón una hipótesis de estilo solo si sample_sufficient=true; de lo contrario describe únicamente métricas observadas. Una asociación no demuestra una causa ni una instrucción táctica.",
             "match": "Contextualiza resultado frente a rendimiento; compara creación/concesión, volumen/calidad, circulación, progresión y acciones defensivas con promedios previos y los últimos cinco partidos válidos. Compara jugadores en la misma posición observada cuando esté registrada. Identifica desviaciones, patrones, impacto y seguimiento útil sin atribuir causas no observadas.",
         },
@@ -2423,7 +2877,15 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
     task = language_tasks.get(mode, language_tasks["match"])
     system = build_system_prompt(language_name, task, mode)
     if mode == "match_player":
-        system += (" This is an individual report about the selected managed-team player. For current-match individual statistics, cite the exact selected_match_player fact; matchstats contains team rows. For prior performances, cite pre_match_player_context and identify them as earlier evidence. Keep observations about the selected player; use the opponent only as match context. Recommendations, strengths, development areas and training suggestions must apply to the selected player, never the opponent or a different teammate. Do not give team tactical recommendations in an individual report.")
+        system += (" Give a technical verdict, not a stat list: summary and observations may be kind=fact or kind=inference. "
+                   "Every inference must explain a relationship supported by cited facts; never invent causation. Use at most four observations. "
+                   "Return no recommendations, strengths, development areas, training suggestions or information requests. "
+                   "Use match_player_team_comparison to compare the player's exact-match efficiency and activity with the collective and teammate baseline; "
+                   "the peer average excludes the selected player and its sample size is supplied. Do not confuse count, rate, share, rank, or per-90 values. "
+                   "Cite selected_match_player for the player's own current-match values and match_player_team_comparison for comparisons; "
+                   "matchstats contains team rows. Keep the report about the selected player, not a general team review. "
+                   "For a goalkeeper, cite matchstats for opponent xG/shots and selected_match_player for keeper outcomes; xG describes chance quality, "
+                   "not expected saves, and defensive context limits attribution of conceded goals. Avoid generic or absolute verdicts without strong evidence.")
     elif mode == "player":
         system += (" This is an accumulated individual report. Keep conclusions about the selected player, their recorded position and their own comparable history. Do not convert team totals into individual contribution.")
     system += (" Ask for more context only when a specific qualitative answer from the coach could materially change the interpretation or recommendation and Atlas does not record it. Ask only about coach-only context such as intended instructions, tactical plan, or an observed adjustment. Never ask the coach to supply performance statistics, recent or historical results, player minutes, goals, xG, shots, ratings, or other figures; these are Atlas data questions, not coach-context questions. Continue with a qualified analysis when no coach-only answer is needed. Return at most two concise information_requests, each with question and reason, in the selected language; return an empty list when there is no material coach-context gap. Treat coach_context as unverified user narrative, never as an imported Atlas statistic. If coach_context is supplied, use it only for the stated context and label any use as coach-provided. If six coach answers are already present, return no more requests.")
@@ -2460,10 +2922,12 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                                       "information_requests": {"type": "array", "maxItems": 2, "items": information_request_schema},
                                       "formation": formation_schema},
                        "required": ["summary", "observations", "recommendations", "strengths", "development_areas", "training_suggestions", "formation", "information_requests"]}
+    if mode == "match_player":
+        _apply_match_player_fact_contract(response_schema, claim_schema)
     body = {"model": selected, "stream": False, "format": response_schema, "think": False,
             "messages": [{"role": "system", "content": system},
                          {"role": "user", "content": json.dumps(prompt_evidence(context), ensure_ascii=False, sort_keys=True)}],
-            "keep_alive": "10m", "options": {"temperature": 0.2, "num_predict": 4600}}
+            "keep_alive": "10m", "options": {"temperature": 0.2, "num_predict": 1200 if mode == "match_player" else 4600}}
     base = os.environ.get("ATLAS_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     req = urllib.request.Request(base + "/api/chat", data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -2483,6 +2947,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
             reason = str(request.get("reason") or "").strip()[:280]
             if question and reason and _coach_can_answer_information_request(question, reason):
                 requests.append({"question": question, "reason": reason})
+        if mode == "match_player":
+            requests = []
         if len(_normalize_report_clarifications(clarifications)) >= 6:
             requests = []
         report["information_requests"] = requests
@@ -2524,6 +2990,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         seen_claims = {claim_signature(report["summary"]["text"])} if summary_valid else set()
         for key in ("observations", "recommendations", "strengths", "development_areas", "training_suggestions"):
             values = report.get(key) if isinstance(report.get(key), list) else []
+            if mode == "match_player":
+                values = values[:4] if key == "observations" else []
             cleaned = []
             for item in values:
                 reasons: list[str] = []
@@ -2603,7 +3071,12 @@ def start_commission_report_job(career_id: int, work: Any, dedupe_key: str | Non
             existing_id = _REPORT_JOB_KEYS[dedupe_key]
             existing = _REPORT_JOBS.get(existing_id)
             if existing and int(existing.get("career_id") or -1) == int(career_id):
-                return {"job_id": existing_id, "status": str(existing.get("status") or "queued"), "deduplicated": True}
+                existing_status = str(existing.get("status") or "queued")
+                existing_result = existing.get("result")
+                if existing_status in {"queued", "running"} or (existing_status == "complete" and
+                        isinstance(existing_result, dict) and existing_result.get("available")):
+                    return {"job_id": existing_id, "status": existing_status, "deduplicated": True}
+            _REPORT_JOB_KEYS.pop(dedupe_key, None)
         _REPORT_JOBS[job_id] = {"career_id": int(career_id), "status": "queued", "result": None}
         if dedupe_key:
             _REPORT_JOB_KEYS[dedupe_key] = job_id
@@ -2632,7 +3105,8 @@ def start_commission_report_job(career_id: int, work: Any, dedupe_key: str | Non
 
 
 def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int,
-                                  snapshot_id: int | None = None) -> list[dict[str, str]]:
+                                  snapshot_id: int | None = None, *,
+                                  include_team_identity: bool = True) -> list[dict[str, str]]:
     """Queue one persisted match report and refresh the season identity after a new result is linked."""
     from .db import Database
     if not isinstance(database, Database):
@@ -2652,8 +3126,9 @@ def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int
         snapshot = conn.execute("SELECT managed_team_ea_id FROM snapshots WHERE id=? AND career_id=?",
                                 (snapshot_id, career_id)).fetchone()
         team_id = int(snapshot["managed_team_ea_id"] or -1) if snapshot else -1
-        pending: list[tuple[str, int | None, int | None]] = [("match", fixture_id, None),
-                                                            ("team_identity", None, None)]
+        pending: list[tuple[str, int | None, int | None]] = [("match", fixture_id, None)]
+        if include_team_identity:
+            pending.append(("team_identity", None, None))
         if team_id > 0:
             pending.extend(("match_player", fixture_id, player_id) for player_id in
                            _managed_player_ids_for_fixture(conn, career_id, int(snapshot_id), fixture_id, team_id))
@@ -2674,7 +3149,9 @@ def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int
                     with database.connect() as report_conn:
                         return get_commission_report(report_conn, career_id, int(snapshot_id), mode,
                                                      fixture_id=report_fixture, player_ea_id=player_id, model=selected_model)
-                scheduled.append(start_commission_report_job(career_id, work, dedupe))
+                job = start_commission_report_job(career_id, work, dedupe)
+                job.update({"mode": mode, "player_ea_id": str(player_id or "")})
+                scheduled.append(job)
             except (ValueError, sqlite3.Error):
                 continue
         return scheduled

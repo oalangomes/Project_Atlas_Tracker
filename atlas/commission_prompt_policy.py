@@ -158,11 +158,31 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
                                  "with minutes and comparable previous samples; do not invent a baseline"),
                     "position_role": role.get("role", "unknown"),
                     "available_role_metrics": role_keys,
+                    "match_rating": summary.get("rating"),
+                    "minutes": summary.get("minutes"),
                     "player_ea_id": summary.get("player_ea_id"),
                     "sample": summary.get("sample"),
                     "fact_refs": [field],
                 })
                 break
+        match_standouts = role.get("match_standouts") or []
+        if match_standouts:
+            priorities.append({
+                "question": ("Recognize the selected player's strongest deterministic match contributions, "
+                             "including role-relevant and cross-role signals. Name the metric and comparison "
+                             "sample; do not infer tactics or cause from the signal."),
+                "match_standouts": match_standouts,
+                "fact_refs": ["selected_match_player", "match_players"],
+            })
+        goalkeeper_context = role.get("goalkeeper_match_context") or {}
+        if goalkeeper_context:
+            priorities.append({
+                "question": ("For this goalkeeper, report the opponent's sourced xG beside the keeper's "
+                             "recorded saves, shots faced or goals conceded. Keep team xG distinct from "
+                             "individual keeper outcomes; state facts without assigning responsibility."),
+                "goalkeeper_match_context": goalkeeper_context,
+                "fact_refs": ["matchstats", "selected_match_player"],
+            })
         for key in ("pre_match_player_context", "player_position_peers", "player_matchstats"):
             if facts.get(key):
                 priorities.append({
@@ -240,8 +260,11 @@ REASONING_POLICY = (
     "available metrics as the primary individual analysis lens, not as new facts. "
     "Never manufacture a metric or cite role_analysis as a fact. If the position "
     "is unverified, abstain from role-specific claims. A goalkeeper must be "
-    "evaluated on recorded goalkeeping and distribution indicators, not dribbles, "
-    "xG or finalisations. A conceded goal is not proof of an individual mistake. "
+    "evaluated on recorded goalkeeping and distribution indicators, not dribbles "
+    "or finishing. In a single-match goalkeeper report only, opponent team xG may "
+    "be stated as team-level chance-quality context beside that keeper's recorded "
+    "shots faced, saves and goals conceded; it is not keeper xG and proves no "
+    "individual responsibility. A conceded goal is not proof of an individual mistake. "
     "Prefer fewer grounded, distinctive conclusions over eight interchangeable items."
 )
 
@@ -261,15 +284,38 @@ _MODE_RULES: dict[str, str] = {
         "Any tactical explanation is a bounded hypothesis with a clear limitation."
     ),
     "match_player": (
-        "INDIVIDUAL MATCH: Identify the selected managed-team player's exact "
+        "INDIVIDUAL MATCH: Give a concise technical assessment, not a statistics list. "
+        "The summary may state a calibrated verdict and observations may be facts or "
+        "evidence-based inferences. Return up to four observations and no development, "
+        "training, career or tactical recommendations. Support each opinion with exact "
+        "figures and explain how the indicators combine. "
+        "Identify the selected managed-team player's exact "
         "selected_match_player row and cite it for current figures; matchstats is team-level. "
         "Contrast with pre_match_player_context only where earlier linked matches exist. "
         "Never attribute another player or the opponent's statistic to this player. "
+        "Use match_player_team_comparison to compare player efficiency with the team rate, "
+        "and counts with exported teammate averages, minutes-normalized rates or rank; "
+        "never compare an individual raw count to the whole-team total as if they were "
+        "the same unit. State comparison cohort and sample when relevant. "
         "Use role_analysis to select relevant measured indicators instead of "
         "giving the same offensive/defensive rubric to all positions. "
+        "Interpret the match rating as a compact overall signal alongside minutes "
+        "and concrete recorded actions; it must neither erase measured strengths "
+        "nor prove their cause by itself. "
+        "When role_analysis.match_standouts contains deterministic signals, include "
+        "the strongest relevant contribution(s), whether role-relevant or cross-role, "
+        "with the comparison cohort and sample. Mention measured rates with their "
+        "attempts. Balance standout contributions against meaningful limitations. Never "
+        "infer an instruction, tactic, pressing, movement or cause from event counts. "
+        "When the list is empty, do not invent a standout. "
         "A goalkeeper needs goalkeeping and passing evidence, never outfield "
         "dribbling or finishing suggestions. Compare like positions and minutes; "
-        "do not infer error or blame from goals conceded. No starting status or "
+        "for a goalkeeper, relate the opponent's exact team xG and shots on target "
+        "to keeper saves and goals conceded when the source rows provide them. "
+        "A goals-conceded result above opponent xG may be described as an unfavorable "
+        "outcome comparison, but xG is team-level chance quality, not expected saves "
+        "and not proof of keeper error; note that defensive context also matters. "
+        "No starting status or "
         "movement pattern can be inferred from aggregate MatchStats."
     ),
     "player": (
