@@ -1,0 +1,28 @@
+name: Commission prompt contract checks
+
+on:
+  pull_request:
+    paths:
+      - 'atlas/commission.py'
+      - 'atlas/commission_prompt_policy.py'
+      - 'scripts/audit_commission_reports.py'
+      - 'tests/test_commission.py'
+      - 'tests/test_commission_prompt_policy.py'
+      - '.github/workflows/commission-prompt-contract.yml'
+  workflow_dispatch:
+
+jobs:
+  commission-policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile analytical code and tests
+        run: python -m compileall -q atlas/commission.py atlas/commission_prompt_policy.py tests/test_commission.py tests/test_commission_prompt_policy.py scripts/audit_commission_reports.py
+      - name: Unit and regression tests — Commission
+        run: python -m unittest discover -s tests -p 'test_commission*.py' -v
+      - name: Validate patch
+        run: git diff --check
