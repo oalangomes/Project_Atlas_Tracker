@@ -28,7 +28,7 @@ RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
 REPORT_VERSION = 34
-MATCH_PLAYER_REPORT_CONTRACT = 7
+MATCH_PLAYER_REPORT_CONTRACT = 8
 _MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
     r"\b(?:focar|foque|foco em|deve|devem|deveria|deveriam|precisa|precisam|"
     r"treinar|treine|priorizar|priorize|melhorar|melhore|evitar|aumentar|reduzir|"
@@ -2301,6 +2301,14 @@ def _report_item_numeric_conflict(context: dict[str, Any], item: dict[str, Any])
     for fact in context.get("facts", []):
         if fact.get("id") in cited:
             collect(fact.get("value"))
+    if (context.get("mode") == "match_player" and "selected_match_player" in cited
+            and re.search(r"\bpasses?\s+(?:perdidos?|errados?|incompletos?|misplaced|incomplete)\b",
+                          str(item.get("text") or "").casefold())):
+        selected_stats = ((_report_fact_map(context).get("selected_match_player") or {}).get("stats") or {})
+        attempts = _float(selected_stats.get("passes"))
+        completed = _float(selected_stats.get("passes_completed"))
+        if attempts is not None and completed is not None:
+            allowed.append(attempts - completed)
     for raw in re.findall(r"(?<![\w])\d+(?:[.,]\d+)?", str(item.get("text") or "")):
         token = raw.replace(",", ".")
         try:
@@ -2540,6 +2548,30 @@ def _report_selected_player_metric_conflict(context: dict[str, Any], item: dict[
     if not (refs & {"selected_match_player", "pre_match_player_context", "match_players"}):
         return True
     stats = selected.get("stats") or {}
+    shot_noun = r"(?:chutes?|finaliza(?:ção|ções|cao|coes)|shots?|remates?|tiros?)"
+    target_qualifier = r"(?:no alvo|a gol|on target|on goal|a puerta)"
+    shot_patterns = (
+        rf"(?<!\w)(?P<count>\d+)\s+{shot_noun}\b",
+        rf"\b{shot_noun}(?:\s+(?P<target>{target_qualifier}))?\s*(?::|=|foram|were|de|of)?\s*(?P<count>\d+)\b",
+    )
+    for pattern in shot_patterns:
+        for claim in re.finditer(pattern, text):
+            before = text[max(0, claim.start() - 30):claim.start()]
+            after = text[claim.end():claim.end() + 30]
+            team_subject = (re.search(r"\b(?:time|equipe|team|equipo)\s+(?:fez|teve|registrou|realizou|"
+                                      r"produziu|totalizou|had|recorded|attempted|took)?\s*$", before)
+                            or re.match(r"\s+(?:do|da|pelo|pela|of the|for the)\s+(?:time|equipe|team|equipo)\b", after))
+            if team_subject or re.match(r"\s+(?:sofridos?|recebidos?|faced|against)\b", after):
+                continue
+            on_target = bool(claim.groupdict().get("target") or re.match(rf"\s+{target_qualifier}\b", after))
+            expected = _float(stats.get("shots_on_target" if on_target else "shots"))
+            if expected is None or int(claim.group("count")) != expected:
+                return True
+    for claim in re.finditer(r"(?<!\w)(\d+)\s+passes?\s+(?:perdidos?|errados?|incompletos?|"
+                             r"misplaced|incomplete)\b", text):
+        attempts, completed = _float(stats.get("passes")), _float(stats.get("passes_completed"))
+        if attempts is None or completed is None or int(claim.group(1)) != attempts - completed:
+            return True
     # A ratio is one claim about one metric. The denominator cannot be borrowed
     # from another stat merely because the same number occurs in the fact row.
     for match in re.finditer(r"(?<!\w)(\d+)\s+(?:de|dos|das|of|out of)\s+"
@@ -2568,6 +2600,10 @@ def _report_selected_player_metric_conflict(context: dict[str, Any], item: dict[
     if any(term in text for term in ("pass", "passe")):
         add("passes", "passes_completed", "passes_under_pressure", "passes_completed_under_pressure",
             "pass_accuracy_pct_derived", "pressure_pass_accuracy_pct")
+        if re.search(r"\bpasses?\s+(?:perdidos?|errados?|incompletos?|misplaced|incomplete)\b", text):
+            attempts, completed = _float(stats.get("passes")), _float(stats.get("passes_completed"))
+            if attempts is not None and completed is not None:
+                allowed.append(attempts - completed)
     if any(term in text for term in ("shot", "chute", "finaliza", "tiro")):
         add("shots", "shots_on_target", "shots_against", "saving_shots_on_target", "npk_finishing_delta")
     if any(term in text for term in ("save", "defesa", "defendeu")):

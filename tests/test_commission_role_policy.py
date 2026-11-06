@@ -395,7 +395,7 @@ class KeeperRoleContextTests(unittest.TestCase):
         player_ctx = keeper_context("player")
         match_hash = _report_source_hash(match_ctx, 1, "match_player", "fixture:10:player:10")
         player_hash = _report_source_hash(player_ctx, 1, "player", "player:10")
-        with patch("atlas.commission.MATCH_PLAYER_REPORT_CONTRACT", 8):
+        with patch("atlas.commission.MATCH_PLAYER_REPORT_CONTRACT", 9):
             self.assertNotEqual(match_hash, _report_source_hash(
                 match_ctx, 1, "match_player", "fixture:10:player:10"))
             self.assertEqual(player_hash, _report_source_hash(player_ctx, 1, "player", "player:10"))
@@ -594,6 +594,87 @@ class KeeperRoleContextTests(unittest.TestCase):
         self.assertTrue(any("Registrou 1 passe-chave" in item["text"] for item in observations))
         self.assertIn("Ganhou a posse 7 vezes", observations[0]["text"])
         self.assertIn("maior marca entre 5 participantes", observations[0]["text"])
+
+    def test_player_shot_count_cannot_borrow_five_from_other_metrics(self):
+        context = team_leading_recoveries_context()
+        stats = fact_map(context)["selected_match_player"]["stats"]
+        stats.update({"shots": 0, "shots_on_target": 0, "dribbles": 5,
+                      "dribbles_completed": 5, "defense_duels_won": 5})
+        for text in (
+            "O jogador também contribuiu ofensivamente com 1 assist e 5 chutes.",
+            "Registrou 5 chutes no alvo nesta partida.",
+            "Os chutes: 5, apesar de não ter marcado.",
+            "Os chutes no alvo: 5 nesta partida.",
+        ):
+            with self.subTest(text=text):
+                reasons = []
+                item = {"text": text, "kind": "fact", "limitations": "",
+                        "fact_refs": ["selected_match_player", "match_player_team_comparison"]}
+                self.assertFalse(_validate_report_item(context, "match_player", item,
+                                                        {fact["id"] for fact in context["facts"]},
+                                                        section="observations", rejection_reasons=reasons))
+                self.assertIn("selected_player_metric_conflict", reasons)
+        stats.update({"shots": 2, "shots_on_target": 1})
+        for text in ("Registrou 2 chutes nesta partida.", "Registrou 1 chute no alvo nesta partida."):
+            item = {"text": text, "kind": "fact", "limitations": "", "fact_refs": ["selected_match_player"]}
+            self.assertTrue(_validate_report_item(context, "match_player", item,
+                                                  {fact["id"] for fact in context["facts"]},
+                                                  section="observations"), text)
+
+    def test_incomplete_pass_claim_uses_passes_minus_completed(self):
+        context = team_leading_recoveries_context()
+        stats = fact_map(context)["selected_match_player"]["stats"]
+        stats.update({"passes": 10, "passes_completed": 8, "possession_lost": 1})
+        valid_ids = {fact["id"] for fact in context["facts"]}
+        for count, expected in ((1, False), (2, True)):
+            item = {"text": f"Registrou {count} passes perdidos nesta partida.",
+                    "kind": "fact", "limitations": "", "fact_refs": ["selected_match_player"]}
+            reasons = []
+            self.assertEqual(_validate_report_item(context, "match_player", item, valid_ids,
+                                                   section="observations", rejection_reasons=reasons), expected)
+            if not expected:
+                self.assertIn("selected_player_metric_conflict", reasons)
+
+    def test_report_filters_wrong_shots_passes_and_score_together(self):
+        context = team_leading_recoveries_context()
+        selected = fact_map(context)["selected_match_player"]
+        selected.update({"minutes": 92, "rating": 7.9})
+        selected["stats"].update({"shots": 0, "shots_on_target": 0, "passes": 10,
+                                  "passes_completed": 8, "possession_lost": 1,
+                                  "minutes_played": 92})
+        context["facts"].append({"id": "match", "value": {
+            "fixture_id": 133020, "home": "Huddersfield Town", "away": "Plymouth Argyle",
+            "score": [2, 4], "managed_team_side": "away", "managed_team_ea_id": 1929}})
+        bad_observations = [
+            ("O jogador também contribuiu ofensivamente com 1 assist e 5 chutes.",
+             ["selected_match_player", "match_player_team_comparison"]),
+            ("Registrou apenas 1 passe perdido em 92 minutos.", ["selected_match_player"]),
+            ("Apesar da equipe ter sofrido 4 gols, o jogador foi positivo em 92 minutos.",
+             ["selected_match_player", "match"]),
+        ]
+        output = {"summary": {"text": "O jogador registrou 1 assistência na partida.",
+                              "kind": "fact", "limitations": "", "fact_refs": ["selected_match_player"]},
+                  "observations": [{"text": text, "kind": "fact", "limitations": "", "fact_refs": refs}
+                                   for text, refs in bad_observations],
+                  "recommendations": [], "strengths": [], "development_areas": [],
+                  "training_suggestions": [], "information_requests": [], "formation": None}
+        response = io.BytesIO(json.dumps({"message": {"content": json.dumps(output)}}).encode())
+        with sqlite3.connect(":memory:") as conn, \
+             patch("atlas.commission._briefing_facts", return_value=(
+                 context, [item["id"] for item in context["facts"]], "fixture:133020:player:30")), \
+             patch("atlas.commission.ollama_models", return_value={"available": True, "models": ["local"]}), \
+             patch("atlas.commission.urllib.request.urlopen", return_value=response):
+            result = get_commission_report(conn, 1, 1, "match_player", fixture_id=133020,
+                                           player_ea_id=30, model="local")
+        report_text = " ".join([result["report"]["summary"]["text"],
+                                *(item["text"] for item in result["report"]["observations"])])
+        self.assertIn("Ganhou a posse 7 vezes", report_text)
+        for bad_text, _ in bad_observations:
+            self.assertNotIn(bad_text, report_text)
+        reasons = [reason for detail in result["validation"]["rejected_claim_details"]
+                   for reason in detail["reasons"]]
+        self.assertIn("selected_player_metric_conflict", reasons)
+        self.assertIn("score_value_conflict", reasons)
 
     def test_rejected_model_claims_still_produce_a_bounded_technical_report(self):
         context = keeper_context_with_opponent_xg()

@@ -82,6 +82,15 @@ class ScoreClaimBindingTests(unittest.TestCase):
             "Joe Edwards completou 5 de 6 dribles.", False, ctx=ctx,
             refs=["match", "selected_match_player"]))
 
+    def test_selected_players_team_score_binds_generic_equipe(self):
+        ctx = context(home="Huddersfield Town", away="Plymouth Argyle", score=(2, 4))
+        ctx["facts"][0]["value"]["managed_team_ea_id"] = 1929
+        ctx["facts"][1]["value"]["team_ea_id"] = 1929
+        self.assertIn("score_value_conflict", self.check_claim(
+            "Apesar da equipe ter sofrido 4 gols, o jogador foi positivo.", False,
+            ctx=ctx, refs=["match", "selected_match_player"]))
+        self.check_claim("A equipe sofreu 2 gols.", True, ctx=ctx, refs=["match", "selected_match_player"])
+
     def test_missing_source_and_legitimate_hypothesis(self):
         self.assertIn("score_source_missing", self.check_claim("Plymouth Argyle marcou 2 gols.", False,
                                                               refs=["selected_match_player"]))
