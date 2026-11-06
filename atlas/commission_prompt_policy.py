@@ -146,11 +146,18 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
             })
     elif mode in {"player", "match_player"}:
         summary = facts.get("player_summary") or facts.get("selected_match_player") or {}
+        role = context.get("role_analysis") or {}
+        # The role profile is a prompt hint derived only from checkpoint-safe
+        # source fields; it is NOT a new independent fact to cite.
+        role_keys = list((role.get("available_metrics") or {}).keys())[:8]
         names = {"player_summary": "player_summary", "selected_match_player": "selected_match_player"}
         for key, field in names.items():
             if facts.get(key):
                 priorities.append({
-                    "question": "Identify the player's distinctive contribution versus their own recorded baseline; distinguish missing data from zero",
+                    "question": ("Prioritize recorded metrics relevant to the selected player's position, "
+                                 "with minutes and comparable previous samples; do not invent a baseline"),
+                    "position_role": role.get("role", "unknown"),
+                    "available_role_metrics": role_keys,
                     "player_ea_id": summary.get("player_ea_id"),
                     "sample": summary.get("sample"),
                     "fact_refs": [field],
@@ -229,6 +236,12 @@ REASONING_POLICY = (
     "'the team played well' without a concrete, supported distinction. "
     "Do not reuse the same observation verbatim in summary, strengths and "
     "recommendations. Do not invent minutes, score, tactical roles or availability. "
+    "When role_analysis is present, treat its verified position and actually "
+    "available metrics as the primary individual analysis lens, not as new facts. "
+    "Never manufacture a metric or cite role_analysis as a fact. If the position "
+    "is unverified, abstain from role-specific claims. A goalkeeper must be "
+    "evaluated on recorded goalkeeping and distribution indicators, not dribbles, "
+    "xG or finalisations. A conceded goal is not proof of an individual mistake. "
     "Prefer fewer grounded, distinctive conclusions over eight interchangeable items."
 )
 
@@ -252,17 +265,23 @@ _MODE_RULES: dict[str, str] = {
         "selected_match_player row and cite it for current figures; matchstats is team-level. "
         "Contrast with pre_match_player_context only where earlier linked matches exist. "
         "Never attribute another player or the opponent's statistic to this player. "
-        "Discuss attacking AND defensive contribution where measured, normalizing "
-        "comparisons for minutes and positions when possible. No starting status or "
-        "specific movement pattern can be inferred from aggregate MatchStats."
+        "Use role_analysis to select relevant measured indicators instead of "
+        "giving the same offensive/defensive rubric to all positions. "
+        "A goalkeeper needs goalkeeping and passing evidence, never outfield "
+        "dribbling or finishing suggestions. Compare like positions and minutes; "
+        "do not infer error or blame from goals conceded. No starting status or "
+        "movement pattern can be inferred from aggregate MatchStats."
     ),
     "player": (
         "ACCUMULATED PLAYER: Keep the selected player's career/season scope. "
         "Compare player_summary, last recorded matches and player_position_peers "
-        "with sample sizes, minutes and metric units. Do not mistake attribute "
-        "percentiles for recorded on-pitch match impact or nominal position for "
-        "observed tactical function. Do not convert club goals into player goals "
-        "or promote a player to starter solely from rating/OVR."
+        "only through the role_analysis position lens, with sample sizes, minutes "
+        "and units. Do not evaluate a goalkeeper as a dribbler, chance creator or "
+        "striker. Missing goalkeeper metrics are N/D; a clean sheet alone does not "
+        "prove superior goalkeeping. Do not mistake attribute percentiles for "
+        "recorded match impact or nominal position for a confirmed tactical role. "
+        "Do not convert club goals into player goals or promote a player to "
+        "starter solely from rating/OVR."
     ),
     "team_identity": (
         "TEAM IDENTITY: Team averages are measured observations, not direct "

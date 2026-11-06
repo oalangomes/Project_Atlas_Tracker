@@ -18,13 +18,14 @@ from typing import Any
 from .commission_prompt_policy import (build_system_prompt, claim_signature, compatible_formations,
                                        is_generic_claim, report_focus, report_subject)
 from .claim_binding import score_claim_bindings
+from .commission_role_policy import player_role, prompt_evidence, role_relevance_conflict
 
 MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
-REPORT_VERSION = 33
+REPORT_VERSION = 34
 _REPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="atlas-ollama-report")
 _REPORT_JOB_LOCK = Lock()
 _REPORT_JOBS: dict[str, dict[str, Any]] = {}
@@ -1229,12 +1230,19 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
         if checkpoint_date is not None:
             detailed_rows = [item for item in detailed_rows
                              if str(item.get("date") or "") < checkpoint_date or int(item.get("fixtureId") or -1) == int(fixture_id)]
+        # Keep role-relevant historical GK evidence. The previous all-player
+        # metric list contained only outfield attacking indicators and ratings.
+        player_match_keys = (("saves", "shots_against", "saving_shots_on_target",
+                              "goals_conceded", "passes", "passes_completed",
+                              "pass_accuracy_pct_derived", "clearances", "game_rating")
+                             if registered_group == "Goleiro" else
+                             ("npk_goals", "assists", "npk_expected_goals", "expected_assists",
+                              "shots", "key_passes", "tackles", "interceptions", "game_rating"))
         compact_matches = [{"date": item.get("date"), "competition": item.get("competitionName"),
                             "home": item.get("homeTeamName"), "away": item.get("awayTeamName"),
                             "score": [item.get("homeScore"), item.get("awayScore")],
-                            "stats": {key: item["stats"].get(key) for key in ("npk_goals", "assists", "npk_expected_goals", "expected_assists",
-                                       "shots", "key_passes", "tackles", "interceptions", "game_rating")
-                                      if item["stats"].get(key) is not None}}
+                            "stats": {key: (item.get("stats") or {}).get(key) for key in player_match_keys
+                                      if (item.get("stats") or {}).get(key) is not None}}
                            for item in [row for row in detailed_rows if str(row.get("date") or "") <= str(snapshot["career_date"] or "")][:10]]
         if compact_matches:
             fact("player_matchstats", "Player detail from linked MatchStats", compact_matches, "complete linked MatchStats exports; partial season coverage")
@@ -1366,6 +1374,9 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
         options = next((item.get("value") for item in facts if item["id"] == "formation_options"), [])
         context["allowed_formations"] = options
     context["report_subject"] = report_subject(context)
+    role = player_role(context)
+    if role is not None:
+        context["role_analysis"] = role
     context["analysis_focus"] = report_focus(context)
     return context, [str(item["id"]) for item in facts], scope
 
@@ -1374,7 +1385,8 @@ def _report_source_hash(context: dict[str, Any], career_id: int, mode: str, scop
     stable = {"career_id": int(career_id), "mode": mode, "scope_key": scope,
               "season_index": context.get("season_index"), "report_version": REPORT_VERSION,
               "language": context.get("language"),
-              "facts": context.get("facts", []), "allowed_formations": context.get("allowed_formations")}
+              "facts": context.get("facts", []), "allowed_formations": context.get("allowed_formations"),
+              "role_analysis": context.get("role_analysis")}
     return hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -1818,6 +1830,8 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
         return reject("unsupported_causal_inference")
     if is_generic_claim(item["text"], section):
         return reject("generic_claim")
+    if mode in {"player", "match_player"} and role_relevance_conflict(context, item["text"]):
+        return reject("irrelevant_player_role_metric")
     if section == "recommendations" and _report_recommendation_target_conflict(context, mode, item["text"]):
         return reject("recommendation_targets_opponent")
     if section == "recommendations" and _report_unavailable_metric_recommendation_conflict(context, item):
@@ -2448,7 +2462,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                        "required": ["summary", "observations", "recommendations", "strengths", "development_areas", "training_suggestions", "formation", "information_requests"]}
     body = {"model": selected, "stream": False, "format": response_schema, "think": False,
             "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": json.dumps(context, ensure_ascii=False, sort_keys=True)}],
+                         {"role": "user", "content": json.dumps(prompt_evidence(context), ensure_ascii=False, sort_keys=True)}],
             "keep_alive": "10m", "options": {"temperature": 0.2, "num_predict": 4600}}
     base = os.environ.get("ATLAS_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     req = urllib.request.Request(base + "/api/chat", data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
