@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import copy
+import io
+import json
+import sqlite3
 import unittest
 from unittest.mock import patch
 
 from atlas.commission import (REPORT_VERSION, _apply_match_player_fact_contract,
                               _deterministic_match_player_observations,
                               _match_player_team_comparison,
-                              _report_source_hash, _validate_report_item)
+                              _report_source_hash, _validate_report_item,
+                              get_commission_report)
 from atlas.commission_prompt_policy import build_system_prompt, report_focus
 from atlas.commission_role_policy import player_role, prompt_evidence, role_relevance_conflict
 
@@ -177,7 +181,7 @@ class KeeperRoleContextTests(unittest.TestCase):
         self.assertNotIn("dribbles", selected["stats"])
         self.assertNotIn("npk_expected_goals", selected["stats"])
         self.assertEqual([p["player_ea_id"] for p in fact_map(narrowed)["match_players"]],
-                         [10, 12])
+                         [10])
         self.assertEqual(fact_map(narrowed)["pre_match_player_context"][0]["stats"],
                          {"saves": 6, "passes": 18})
         self.assertEqual(fact_map(context)["selected_match_player"]["stats"]["dribbles"], 3)
@@ -372,7 +376,7 @@ class KeeperRoleContextTests(unittest.TestCase):
         player_ctx = keeper_context("player")
         match_hash = _report_source_hash(match_ctx, 1, "match_player", "fixture:10:player:10")
         player_hash = _report_source_hash(player_ctx, 1, "player", "player:10")
-        with patch("atlas.commission.MATCH_PLAYER_REPORT_CONTRACT", 6):
+        with patch("atlas.commission.MATCH_PLAYER_REPORT_CONTRACT", 7):
             self.assertNotEqual(match_hash, _report_source_hash(
                 match_ctx, 1, "match_player", "fixture:10:player:10"))
             self.assertEqual(player_hash, _report_source_hash(player_ctx, 1, "player", "player:10"))
@@ -390,17 +394,15 @@ class KeeperRoleContextTests(unittest.TestCase):
         self.assertNotIn("pass_accuracy_pct_derived", [item["metric_key"] for item in signals],
                          "12/12 attempts do not meet the 15-pass comparison minimum")
 
-    def test_cross_role_signal_preserves_auditable_managed_team_cohort_only(self):
+    def test_cross_role_signal_keeps_full_audit_cohort_out_of_model_input(self):
         ctx = striker_match_context()
         narrowed = prompt_evidence(ctx)
         self.assertIn("interceptions", fact_map(narrowed)["selected_match_player"]["stats"])
         cohort = fact_map(narrowed)["match_players"]
-        self.assertEqual(len(cohort), 5)
+        self.assertEqual(len(cohort), 1)
         self.assertEqual({row["team_ea_id"] for row in cohort}, {1929})
-        allowed = set(player_role(ctx)["priority_metrics"]) | {"interceptions"}
-        self.assertTrue(all(set(row["stats"]).issubset(allowed) for row in cohort))
-        self.assertTrue(all(set(row["stats"]) <= {"interceptions"} for row in cohort
-                            if row["player_ea_id"] != 20))
+        self.assertEqual(cohort[0]["player_ea_id"], 20)
+        self.assertEqual(len(fact_map(ctx)["match_players"]), 6)
         focus = report_focus({**ctx, "role_analysis": player_role(ctx)})
         standout_focus = next(item for item in focus if "match_standouts" in item)
         self.assertEqual(standout_focus["match_standouts"][0]["metric_key"], "interceptions")
@@ -531,6 +533,32 @@ class KeeperRoleContextTests(unittest.TestCase):
         self.assertTrue(_validate_report_item(context, "match_player", claim,
                                               {fact["id"] for fact in context["facts"]},
                                               section="observations", rejection_reasons=reasons), reasons)
+
+    def test_rejected_model_claims_still_produce_a_bounded_technical_report(self):
+        context = keeper_context_with_opponent_xg()
+        fact_map(context)["selected_match_player"].update({"rating": 5.0})
+        context["role_analysis"] = player_role(context)
+        output = {"summary": {"text": "Partida incrível e perfeita: 4 defesas.",
+                              "kind": "inference", "limitations": "",
+                              "fact_refs": ["selected_match_player"]},
+                  "observations": [{"text": "O goleiro completou 124/133 dribles.",
+                                    "kind": "fact", "limitations": "",
+                                    "fact_refs": ["selected_match_player"]}],
+                  "recommendations": [], "strengths": [], "development_areas": [],
+                  "training_suggestions": [], "information_requests": [], "formation": None}
+        response = io.BytesIO(json.dumps({"message": {"content": json.dumps(output)}}).encode())
+        with sqlite3.connect(":memory:") as conn, \
+             patch("atlas.commission._briefing_facts", return_value=(
+                 context, [item["id"] for item in context["facts"]], "fixture:1:player:10")), \
+             patch("atlas.commission.ollama_models", return_value={"available": True, "models": ["local"]}), \
+             patch("atlas.commission.urllib.request.urlopen", return_value=response):
+            result = get_commission_report(conn, 1, 1, "match_player", fixture_id=1, player_ea_id=10,
+                                           model="local")
+        self.assertTrue(result["available"])
+        self.assertEqual(result["report"]["summary"]["kind"], "inference")
+        self.assertFalse(result["report"]["summary"]["model_generated"])
+        self.assertGreaterEqual(len(result["report"]["observations"]), 2)
+        self.assertGreaterEqual(result["validation"]["rejected_claims"], 2)
 
     def test_team_report_does_not_filter_goalkeeper_statistics_from_matchstats(self):
         ctx = keeper_context()

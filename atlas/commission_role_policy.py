@@ -434,29 +434,17 @@ def prompt_evidence(context: dict[str, Any]) -> dict[str, Any]:
                         if isinstance(previous.get(metric_key), dict):
                             previous[metric_key] = filter_metrics(previous[metric_key])
         elif key == "match_players" and isinstance(value, list) and context.get("mode") == "match_player":
-            # Keep role peers by default. A deterministic cross-role signal needs
-            # its exact managed-team comparison cohort, but only for the signalled
-            # metric fields; opponent rows remain excluded.
-            target_team = (_fact_map(context).get("selected_match_player") or {}).get("team_ea_id")
-            cross_signals = role.get("cross_role_standouts") or []
-            peers = []
-            for participant in value:
-                if not isinstance(participant, dict):
-                    continue
-                pid = participant.get("player_ea_id")
-                same_player = str(pid) == str(selected_id)
-                if not same_player:
-                    same_team = target_team is not None and str(participant.get("team_ea_id")) == str(target_team)
-                    if not same_team:
-                        continue
-                    same_role = _role_for_match_player(participant) == role["role"]
-                    if not same_role and not cross_signals:
-                        continue
-                participant["stats"] = filter_metrics(participant.get("stats") or {})
-                peers.append(participant)
-                if len(peers) >= 16:
-                    break
-            item["value"] = peers
+            # Team and peer comparisons are already calculated in a compact fact.
+            # Repeating every participant's raw row confuses small local models.
+            item["value"] = [participant for participant in value
+                             if isinstance(participant, dict)
+                             and str(participant.get("player_ea_id")) == str(selected_id)]
+        elif key == "match_player_team_comparison" and isinstance(value, dict):
+            priority = allowed | {"game_rating", "goals_derived", "assists", "saves",
+                                  "goals_conceded", "shots_against", "pass_accuracy_pct_derived",
+                                  "passes", "passes_completed", "possession_lost"}
+            value["metrics"] = {metric: row for metric, row in (value.get("metrics") or {}).items()
+                                if metric in priority}
     return projected
 
 

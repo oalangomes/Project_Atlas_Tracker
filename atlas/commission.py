@@ -28,7 +28,7 @@ RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
 REPORT_VERSION = 34
-MATCH_PLAYER_REPORT_CONTRACT = 5
+MATCH_PLAYER_REPORT_CONTRACT = 6
 _MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
     r"\b(?:focar|foque|foco em|deve|devem|deveria|deveriam|precisa|precisam|"
     r"treinar|treine|priorizar|priorize|melhorar|melhore|evitar|aumentar|reduzir|"
@@ -1636,6 +1636,97 @@ def _deterministic_match_player_summary(context: dict[str, Any]) -> dict[str, An
             "fact_refs": ["selected_match_player"], "model_generated": False}
 
 
+def _technical_match_player_fallback_summary(context: dict[str, Any]) -> dict[str, Any]:
+    """Give a bounded match verdict when every model verdict fails validation."""
+    facts = _report_fact_map(context)
+    player = facts.get("selected_match_player") or {}
+    stats = player.get("stats") or {}
+    comparison = (facts.get("match_player_team_comparison") or {}).get("metrics") or {}
+    role = (context.get("role_analysis") or {}).get("role")
+    language = str(context.get("language") or "pt-BR")
+    rating = _float(player.get("rating"))
+    rating_text = _fact_number(rating, language, 1) or "N/D"
+    name = str(player.get("name") or "Jogador")
+    labels = {
+        "pt-BR": {"goal": ("gol", "gols"), "assist": ("assistência", "assistências"),
+                  "shots": "chutes", "conceded": "gols sofridos", "saves": "defesas",
+                  "opponent_xg": "xG adversário", "duels": "duelos defensivos",
+                  "passes": "passes certos ante", "team": "do time", "rating": "nota",
+                  "low": "atuação abaixo do esperado", "mixed": "atuação de resultado misto",
+                  "positive": "atuação positiva", "decisive": "atuação decisiva",
+                  "caveat": " O xG descreve as chances do adversário e não atribui sozinho os gols ao goleiro.",
+                  "limit": "Uma partida isolada não confirma tendência."},
+        "en-GB": {"goal": ("goal", "goals"), "assist": ("assist", "assists"),
+                  "shots": "shots", "conceded": "goals conceded", "saves": "saves",
+                  "opponent_xg": "opponent xG", "duels": "defensive duels",
+                  "passes": "pass accuracy versus", "team": "for the team", "rating": "rating",
+                  "low": "below-par display", "mixed": "mixed display",
+                  "positive": "positive display", "decisive": "decisive display",
+                  "caveat": " Opponent xG describes chance quality and cannot assign goals solely to the keeper.",
+                  "limit": "One match does not establish a trend."},
+        "es-ES": {"goal": ("gol", "goles"), "assist": ("asistencia", "asistencias"),
+                  "shots": "tiros", "conceded": "goles encajados", "saves": "paradas",
+                  "opponent_xg": "xG rival", "duels": "duelos defensivos",
+                  "passes": "precisión de pase frente a", "team": "del equipo", "rating": "nota",
+                  "low": "actuación por debajo de lo esperado", "mixed": "actuación mixta",
+                  "positive": "actuación positiva", "decisive": "actuación decisiva",
+                  "caveat": " El xG describe las ocasiones del rival y no atribuye los goles solo al portero.",
+                  "limit": "Un partido no confirma una tendencia."},
+    }.get(language, {})
+    refs = ["selected_match_player"]
+    signals: list[str] = []
+    goals = _float(stats.get("goals_derived")) or _float(stats.get("npk_goals")) or 0
+    assists = _float(stats.get("assists")) or 0
+    if role == "goalkeeper":
+        conceded = _float(stats.get("goals_conceded"))
+        saves = _float(stats.get("saves"))
+        opponent = (context.get("role_analysis") or {}).get("goalkeeper_match_context") or {}
+        opponent_xg = _float(opponent.get("opponent_xg"))
+        if conceded is not None:
+            signals.append(f"{_fact_number(conceded, language, 0)} {labels['conceded']}")
+        if saves is not None:
+            signals.append(f"{_fact_number(saves, language, 0)} {labels['saves']}")
+        if opponent_xg is not None:
+            signals.append(f"{labels['opponent_xg']} {_fact_number(opponent_xg, language, 2)}")
+            refs.append("matchstats")
+        verdict = labels["low"] if rating is not None and rating < 6.5 else labels["mixed"]
+        caveat = labels["caveat"] if opponent_xg is not None else ""
+    else:
+        if goals:
+            signals.append(f"{_fact_number(goals, language, 0)} {labels['goal'][0 if goals == 1 else 1]}")
+            shots = _float(stats.get("shots"))
+            xg = _float(stats.get("npk_expected_goals"))
+            if shots:
+                signals.append(f"{_fact_number(shots, language, 0)} {labels['shots']}")
+            if xg:
+                signals.append(f"NPK-xG {_fact_number(xg, language, 2)}")
+        if assists:
+            signals.append(f"{_fact_number(assists, language, 0)} {labels['assist'][0 if assists == 1 else 1]}")
+        attempts = _float(stats.get("defense_duels_attempted"))
+        won = _float(stats.get("defense_duels_won"))
+        if role in {"centre_back", "fullback", "defensive_midfielder"} and attempts and won is not None:
+            signals.append(f"{_fact_number(won, language, 0)}/{_fact_number(attempts, language, 0)} {labels['duels']}")
+        passing = comparison.get("pass_accuracy_pct_derived") or {}
+        rate, team_rate = _float(passing.get("player_value")), _float(passing.get("team_value"))
+        if rate is not None and team_rate is not None and abs(rate - team_rate) >= 12:
+            signals.append(f"{_fact_number(rate, language, 1)}% {labels['passes']} {_fact_number(team_rate, language, 1)}% {labels['team']}")
+            refs.append("match_player_team_comparison")
+        if goals >= 2 or rating is not None and rating >= 8.5:
+            verdict = labels["decisive"]
+        elif rating is not None and rating < 6.5:
+            verdict = labels["low"]
+        elif goals or assists or rating is not None and rating >= 7.4:
+            verdict = labels["positive"]
+        else:
+            verdict = labels["mixed"]
+        caveat = ""
+    if not signals:
+        signals.append(f"{labels['rating']} {rating_text}")
+    text = f"{name}: {verdict} ({labels['rating']} {rating_text}); " + ", ".join(signals[:3]) + "." + caveat
+    return {"text": text, "kind": "inference", "limitations": labels["limit"],
+            "fact_refs": list(dict.fromkeys(refs)), "model_generated": False}
+
+
 def _deterministic_match_player_observations(context: dict[str, Any]) -> list[dict[str, Any]]:
     """Select up to four concise, source-bound match facts without LLM ranking."""
     facts = _report_fact_map(context)
@@ -2492,6 +2583,11 @@ def _report_selected_player_metric_conflict(context: dict[str, Any], item: dict[
                 value = _float(metric.get(key))
                 if value is not None:
                     allowed.append(value)
+    # A sentence may combine several valid player metrics. The source-bound
+    # numeric validator below checks each cited number; keep this guard from
+    # rejecting a correct dribble or cross rate because the sentence also
+    # mentions passing, goals, or the match rating.
+    allowed.extend(value for raw in stats.values() if (value := _float(raw)) is not None)
     # Only compare explicit numeric claims; qualitative interpretation is handled by other checks.
     claims = [_float(token.replace(",", ".")) for token in re.findall(r"(?<![\w])\d+(?:[.,]\d+)?", text)]
     claims = [value for value in claims if value is not None]
@@ -2959,7 +3055,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                         "team_identity": ["team_statistical_profile", "opponent_profiles"],
                         "next_match": ["match", "squad", "formation_options", "previous_fixture", "following_fixture"]}
         safe_default_refs = [item for item in default_refs.get(mode, []) if item in valid_ids]
-        deterministic_summary = _deterministic_report_summary(context)
+        deterministic_summary = (_technical_match_player_fallback_summary(context) if mode == "match_player"
+                                 else _deterministic_report_summary(context))
         summary = report.get("summary")
         rejected_details: list[dict[str, Any]] = []
         accepted_score_bindings: list[dict[str, Any]] = []
@@ -3020,6 +3117,18 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         if mode not in {"player", "match_player"}:
             for key in ("strengths", "development_areas", "training_suggestions"):
                 report[key] = []
+        if mode == "match_player" and len(report["observations"]) < 2:
+            for fallback_item in _deterministic_match_player_observations(context):
+                signature = claim_signature(fallback_item["text"])
+                if signature in seen_claims:
+                    continue
+                report["observations"].append(fallback_item)
+                seen_claims.add(signature)
+                if len(report["observations"]) >= 3:
+                    break
+        if mode == "match_player" and report["summary"]["kind"] != "inference" and not any(
+                item["kind"] == "inference" for item in report["observations"]):
+            report["summary"] = _technical_match_player_fallback_summary(context)
         accepted_claims += sum(len(report.get(key) or []) for key in ("observations", "recommendations", "strengths", "development_areas", "training_suggestions"))
         deterministic_note = _commission_note(context)
         if deterministic_note:
