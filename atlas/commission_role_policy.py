@@ -76,8 +76,14 @@ _ROLE_QUESTIONS = {
 # Recommendation-like discussion of outfield attacking metrics about a goalkeeper is
 # a priority error even when such a number happens to exist in the raw export.
 _GK_OUTFIELD = re.compile(
-    r"\b(?:dribl\w*|dribb\w*|xg|xg\+xa|expected goals|gols esperados|goles esperados|"
-    r"finaliz\w*|shots per 90|chutes por 90)\b", re.IGNORECASE
+    r"\b(?:dribl\w*|dribb\w*|regat\w*|xg|xg\+xa|expected goals|gols esperados|"
+    r"goles esperados|shots per 90|chutes por 90)\b", re.IGNORECASE
+)
+_GK_FINISHING = re.compile(r"\bfinaliz\w*\b", re.IGNORECASE)
+_GK_FACED_SHOTS = re.compile(
+    r"(?:finaliz\w*.{0,45}(?:sofrid\w*|enfrentad\w*|recebid\w*|adversari\w*|oponent\w*)|"
+    r"(?:sofrid\w*|enfrentad\w*|recebid\w*|adversari\w*|oponent\w*).{0,45}finaliz\w*)",
+    re.IGNORECASE,
 )
 
 
@@ -207,5 +213,11 @@ def role_relevance_conflict(context: dict[str, Any], text: str) -> bool:
     their diverse duties do not support a safe lexical prohibition.
     """
     role = context.get("role_analysis") or player_role(context)
-    return bool(role and role.get("role") == "goalkeeper"
-                and _GK_OUTFIELD.search(_fold(text)))
+    if not role or role.get("role") != "goalkeeper":
+        return False
+    folded = _fold(text)
+    if _GK_OUTFIELD.search(folded):
+        return True
+    # "Finalizações sofridas pelo goleiro" means shots *faced*, not
+    # outfield finishing. Do not reject this legitimate GK observation.
+    return bool(_GK_FINISHING.search(folded) and not _GK_FACED_SHOTS.search(folded))
