@@ -35,7 +35,15 @@ called `RemoveEventHandler` with only a handler ID while replacing the prior
 monitor. Live Editor v26.3.5 requires both the event name and handler ID, as
 confirmed by its bundled `lua/libs/v2/tests/event_handlers_test.lua`.
 
-AutoCapture is now v1.1.3 internally and passes `pre__CareerModeEvent` or
-`post__CareerModeEvent` with each ID, including its embedded MatchStats copy.
-The standalone MatchStats script uses the same corrected calls. Five automated
-source-contract tests pass; they do not execute Live Editor or FC26.
+The next capture at 10:46:22 local completed successfully, but the log showed
+two more removal errors at final-candidate handling. Its package has
+`MATCH_READY`, 30 participant rows, `complete_participant_export`, an empty
+`98_errors.csv`, and was moved to `MatchStats/imported`. The remaining issue was
+that handler IDs taken from `AddEventHandler` were not guaranteed to be Lua
+integers. The included Live Editor event-handler test obtains IDs from
+`GetEventHandlers` before calling the removal API.
+
+AutoCapture is now v1.1.4 internally; embedded and standalone MatchStats obtain
+new handler IDs from `GetEventHandlers`, normalize them with `math.tointeger`,
+and remove only those integer IDs. The follow-up source-contract tests check this
+contract. They do not execute Live Editor or FC26.

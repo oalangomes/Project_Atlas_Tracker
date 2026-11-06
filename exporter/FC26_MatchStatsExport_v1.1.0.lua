@@ -17,7 +17,7 @@ assert(type(AddEventHandler) == 'function',
     'Live Editor CareerModeEvent API is unavailable.')
 assert(type(GetPlugin) == 'function', 'GetPlugin is unavailable.')
 
-local VERSION = '1.1.0'
+local VERSION = '1.1.1'
 local CSV_BOM = '\239\187\191'
 local EXPORT_DIAGNOSTICS = false
 local STATE_KEY = 'FC26_EXPORT_MATCH_STATS_AUTOMATIC_PLAYER_EXPORTER_STATE'
@@ -358,6 +358,18 @@ local GETTER_SIGNATURES = {
 local existing_state = rawget(_G, STATE_KEY)
 if type(existing_state) == 'table' and existing_state.active then
     error('Automatic Player Stats Exporter ' .. tostring(existing_state.version or 'legacy') .. ' is already running.')
+end
+if type(existing_state) == 'table' then
+    local pre_numeric_id = tonumber(existing_state.pre_handler)
+    local pre_handler_id = pre_numeric_id and math.tointeger(pre_numeric_id) or nil
+    if pre_handler_id and type(RemoveEventHandler) == 'function' then
+        pcall(RemoveEventHandler, 'pre__CareerModeEvent', pre_handler_id)
+    end
+    local post_numeric_id = tonumber(existing_state.post_handler)
+    local post_handler_id = post_numeric_id and math.tointeger(post_numeric_id) or nil
+    if post_handler_id and type(RemoveEventHandler) == 'function' then
+        pcall(RemoveEventHandler, 'post__CareerModeEvent', post_handler_id)
+    end
 end
 
 local function safe_tostring(value)
@@ -3740,12 +3752,8 @@ local function stop_probe(reason)
     if not state.active then return end
     state.active = false
     log_progress('stopping', reason or '')
-    if state.pre_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, 'pre__CareerModeEvent', state.pre_handler)
-    end
-    if state.post_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, 'post__CareerModeEvent', state.post_handler)
-    end
+    if state.pre_handler then state.remove_event_handler('pre__CareerModeEvent', state.pre_handler) end
+    if state.post_handler then state.remove_event_handler('post__CareerModeEvent', state.post_handler) end
     local latest_tracker = state.latest_tracker_capture_id and
         state.tracker_snapshot_data[state.latest_tracker_capture_id] or nil
     local summary = open_unbuffered(output_dir .. '\\99_summary.txt', 'wb')
@@ -3914,36 +3922,69 @@ end
 
 sample_lifecycle('startup_hub', 'startup', nil, nil)
 
+state.event_handler_ids = function(event_name)
+    if type(GetEventHandlers) ~= 'function' then return nil end
+    local ok, handlers = pcall(GetEventHandlers, event_name)
+    if not ok or type(handlers) ~= 'table' then return nil end
+    local ids = {}
+    for i = 1, #handlers do
+        local handler = handlers[i]
+        local numeric_id = type(handler) == 'table' and tonumber(handler.id) or nil
+        local id = numeric_id and math.tointeger(numeric_id) or nil
+        if id then ids[id] = true end
+    end
+    return ids
+end
+state.added_event_handler_id = function(event_name, before)
+    local after = state.event_handler_ids(event_name)
+    if not after then return nil end
+    for id in pairs(after) do if not before[id] then return id end end
+    return nil
+end
+state.remove_event_handler = function(event_name, raw_id)
+    if type(RemoveEventHandler) ~= 'function' then return false end
+    local numeric_id = tonumber(raw_id)
+    local id = numeric_id and math.tointeger(numeric_id) or nil
+    if id == nil then return false end
+    return pcall(RemoveEventHandler, event_name, id)
+end
+
 -- Keep registration temporaries on the persistent state table instead of declaring
 -- more top-level locals. Live Editor's Lua runtime caps active locals in the main
 -- chunk at 200; v0.41.2/v0.41.3 crossed that limit before either handler could arm.
+state._pre_handlers_before = state.event_handler_ids('pre__CareerModeEvent') or {}
 state._register_ok, state._register_result = pcall(
     AddEventHandler, 'pre__CareerModeEvent',
     function(a, b, c) on_event('pre', a, b, c) end)
 if state._register_ok then
-    state.pre_handler = state._register_result
+    state.pre_handler = state.added_event_handler_id('pre__CareerModeEvent', state._pre_handlers_before)
+    if not state.pre_handler then
+        log_error('event_registration', 'pre__CareerModeEvent', 'handler_id_not_found')
+    end
 else
     log_error('event_registration', 'pre__CareerModeEvent', state._register_result)
     state.pre_handler = nil
 end
+state._pre_handlers_before = nil
+state._post_handlers_before = state.event_handler_ids('post__CareerModeEvent') or {}
 state._register_ok, state._register_result = pcall(
     AddEventHandler, 'post__CareerModeEvent',
     function(a, b, c) on_event('post', a, b, c) end)
 if state._register_ok then
-    state.post_handler = state._register_result
+    state.post_handler = state.added_event_handler_id('post__CareerModeEvent', state._post_handlers_before)
+    if not state.post_handler then
+        log_error('event_registration', 'post__CareerModeEvent', 'handler_id_not_found')
+    end
 else
     log_error('event_registration', 'post__CareerModeEvent', state._register_result)
     state.post_handler = nil
 end
+state._post_handlers_before = nil
 state._register_ok = nil
 state._register_result = nil
 if not state.pre_handler or not state.post_handler then
-    if state.pre_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, 'pre__CareerModeEvent', state.pre_handler)
-    end
-    if state.post_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, 'post__CareerModeEvent', state.post_handler)
-    end
+    if state.pre_handler then state.remove_event_handler('pre__CareerModeEvent', state.pre_handler) end
+    if state.post_handler then state.remove_event_handler('post__CareerModeEvent', state.post_handler) end
     state.active = false
     close_files()
     error('Could not register both CareerModeEvent handlers.')
