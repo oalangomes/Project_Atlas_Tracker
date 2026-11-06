@@ -1,0 +1,26 @@
+name: P0 Match Center frontend checks
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/src/**'
+      - 'atlas/static/app.js'
+      - 'atlas/static/styles.css'
+      - '.github/workflows/p0-frontend.yml'
+  workflow_dispatch:
+
+jobs:
+  contract-ui-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify TypeScript (strict)
+        run: npx --yes --package=typescript@5.8.3 tsc --noEmit --project frontend/tsconfig.json
+      - name: Verify deployed JavaScript syntax
+        run: node --check atlas/static/app.js
+      - name: Validate patch formatting
+        run: git diff --check
