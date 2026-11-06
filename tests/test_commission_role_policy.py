@@ -141,15 +141,19 @@ class KeeperRoleContextTests(unittest.TestCase):
     def test_english_and_spanish_outfield_priorities_rejected(self):
         ctx = keeper_context("player")
         for text in ("Improve the goalkeeper's dribbling.",
-                     "El portero debería priorizar los regates y los goles esperados.",
+                     "El portero debería priorizar los regates.",
                      "Goleiro deve focar em finalizações.",
                      "O goleiro deve melhorar o xG."):
-            # Regates is not a supported dribble synonym; xG is covered by
-            # goalkeeping context. Other labels remain protected by prompt rules.
-            if "regates" in text:
+            with self.subTest(text=text):
                 self.assertTrue(role_relevance_conflict(ctx, text))
-            else:
-                self.assertTrue(role_relevance_conflict(ctx, text))
+
+    def test_legitimate_shots_faced_are_not_treated_as_outfield_finishing(self):
+        ctx = keeper_context()
+        for text in ("O goleiro enfrentou 5 finalizações do adversário.",
+                     "As finalizações sofridas exigiram 4 defesas.",
+                     "O goleiro completou 17 passes e fez 4 defesas."):
+            with self.subTest(text=text):
+                self.assertFalse(role_relevance_conflict(ctx, text))
 
     def test_unverified_position_is_not_guessed(self):
         ctx = keeper_context("player")
