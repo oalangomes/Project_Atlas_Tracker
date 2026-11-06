@@ -28,7 +28,7 @@ RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 3
 REPORT_VERSION = 34
-MATCH_PLAYER_REPORT_CONTRACT = 6
+MATCH_PLAYER_REPORT_CONTRACT = 7
 _MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
     r"\b(?:focar|foque|foco em|deve|devem|deveria|deveriam|precisa|precisam|"
     r"treinar|treine|priorizar|priorize|melhorar|melhore|evitar|aumentar|reduzir|"
@@ -1945,6 +1945,36 @@ def _deterministic_match_player_observations(context: dict[str, Any]) -> list[di
     return [observations[key] for key in order if key in observations][:4]
 
 
+def _team_possession_standout(context: dict[str, Any]) -> dict[str, Any] | None:
+    """Preserve a team-leading ball-recovery contribution regardless of outfield role."""
+    role = (context.get("role_analysis") or {}).get("role")
+    if not role or role == "goalkeeper":
+        return None
+    facts = _report_fact_map(context)
+    selected = facts.get("selected_match_player") or {}
+    value = _float((selected.get("stats") or {}).get("possession_won"))
+    comparison = ((facts.get("match_player_team_comparison") or {}).get("metrics") or {}).get("possession_won") or {}
+    rank = _float(comparison.get("rank_among_exported_players"))
+    count = _float(comparison.get("players_with_data"))
+    share = _float(comparison.get("team_share_pct"))
+    total = _float(comparison.get("team_value"))
+    if value is None or value < 4 or rank != 1 or count is None or count < 5 or share is None or share < 20:
+        return None
+    language = str(context.get("language") or "pt-BR")
+    won = _fact_number(value, language, 0)
+    team_total = _fact_number(total, language, 0)
+    percentage = _fact_number(share, language, 1)
+    cohort = _fact_number(count, language, 0)
+    if language == "en-GB":
+        text = f"Won possession {won} times ({percentage}% of the team's {team_total}); the highest count among {cohort} exported players. A standout defensive contribution in this match."
+    elif language == "es-ES":
+        text = f"Recuperó la posesión {won} veces ({percentage}% de las {team_total} del equipo); la cifra más alta entre {cohort} jugadores exportados. Un aporte defensivo destacado en este partido."
+    else:
+        text = f"Ganhou a posse {won} vezes ({percentage}% das {team_total} recuperações do time); maior marca entre {cohort} participantes. Foi um destaque defensivo nesta partida."
+    return {"text": text, "kind": "inference", "limitations": "Comparação limitada a esta partida e aos participantes exportados.",
+            "fact_refs": ["selected_match_player", "match_player_team_comparison"], "model_generated": False}
+
+
 def _deterministic_match_player_report(context: dict[str, Any],
                                        scope: str, source_hash: str) -> dict[str, Any]:
     summary = _deterministic_match_player_summary(context)
@@ -3126,6 +3156,22 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                 seen_claims.add(signature)
                 if len(report["observations"]) >= 3:
                     break
+        if mode == "match_player":
+            standout = _team_possession_standout(context)
+            if standout:
+                selected_stats = ((_report_fact_map(context).get("selected_match_player") or {}).get("stats") or {})
+                recorded = str(int(_float(selected_stats.get("possession_won")) or 0))
+                all_items = [report["summary"], *report["observations"]]
+                already_covered = any(
+                    re.search(rf"(?<!\d){recorded}(?![\d,])", str(item.get("text") or ""))
+                    and any(term in str(item.get("text") or "").casefold()
+                            for term in ("posse", "recuper", "possession", "recover"))
+                    and any(term in str(item.get("text") or "").casefold()
+                            for term in ("maior marca", "líder", "mais do time", "highest", "team leader", "cifra más alta"))
+                    for item in all_items)
+                if not already_covered and _validate_report_item(context, mode, standout, valid_ids,
+                                                                  section="observations"):
+                    report["observations"] = [standout, *report["observations"]][:4]
         if mode == "match_player" and report["summary"]["kind"] != "inference" and not any(
                 item["kind"] == "inference" for item in report["observations"]):
             report["summary"] = _technical_match_player_fallback_summary(context)

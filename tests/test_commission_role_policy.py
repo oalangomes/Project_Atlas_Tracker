@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 from atlas.commission import (REPORT_VERSION, _apply_match_player_fact_contract,
+                              _team_possession_standout,
                               _deterministic_match_player_observations,
                               _match_player_team_comparison,
                               _report_source_hash, _validate_report_item,
@@ -141,6 +142,24 @@ def winger_match_context():
             {"id": "match_players", "value": [selected, *peers]},
         ],
     }
+
+
+def team_leading_recoveries_context():
+    context = winger_match_context()
+    selected = fact_map(context)["selected_match_player"]
+    selected["registered_position"] = "CB"
+    selected["stats"]["possession_won"] = 7
+    peers = [{"player_ea_id": 31 + index, "team_ea_id": 1929, "minutes": 90,
+              "registered_position": "CM", "stats": {"possession_won": value}}
+             for index, value in enumerate((1, 2, 0, 1))]
+    context["facts"].extend([
+        {"id": "match_players", "value": [selected, *peers]},
+        {"id": "matchstats", "value": [{"team_ea_id": 1929, "stats": {"possession_won": 25}}]},
+    ])
+    comparison = _match_player_team_comparison(context["facts"], 1929)
+    context["facts"].append({"id": "match_player_team_comparison", "value": comparison})
+    context["role_analysis"] = player_role(context)
+    return context
 
 
 def keeper_context_with_opponent_xg():
@@ -376,7 +395,7 @@ class KeeperRoleContextTests(unittest.TestCase):
         player_ctx = keeper_context("player")
         match_hash = _report_source_hash(match_ctx, 1, "match_player", "fixture:10:player:10")
         player_hash = _report_source_hash(player_ctx, 1, "player", "player:10")
-        with patch("atlas.commission.MATCH_PLAYER_REPORT_CONTRACT", 7):
+        with patch("atlas.commission.MATCH_PLAYER_REPORT_CONTRACT", 8):
             self.assertNotEqual(match_hash, _report_source_hash(
                 match_ctx, 1, "match_player", "fixture:10:player:10"))
             self.assertEqual(player_hash, _report_source_hash(player_ctx, 1, "player", "player:10"))
@@ -533,6 +552,48 @@ class KeeperRoleContextTests(unittest.TestCase):
         self.assertTrue(_validate_report_item(context, "match_player", claim,
                                               {fact["id"] for fact in context["facts"]},
                                               section="observations", rejection_reasons=reasons), reasons)
+
+    def test_defender_team_leading_ball_recoveries_survive_report_selection(self):
+        context = team_leading_recoveries_context()
+        selected = fact_map(context)["selected_match_player"]
+        item = _team_possession_standout(context)
+        self.assertEqual(context["role_analysis"]["role"], "centre_back")
+        self.assertIn("Ganhou a posse 7 vezes", item["text"])
+        self.assertIn("28%", item["text"])
+        self.assertTrue(_validate_report_item(context, "match_player", item,
+                                              {fact["id"] for fact in context["facts"]},
+                                              section="observations"))
+        selected["registered_position"] = "ST"
+        context["role_analysis"] = player_role(context)
+        self.assertEqual(context["role_analysis"]["role"], "striker")
+        self.assertTrue(_validate_report_item(context, "match_player", _team_possession_standout(context),
+                                              {fact["id"] for fact in context["facts"]},
+                                              section="observations"))
+
+    def test_team_leading_recoveries_appear_even_with_other_valid_model_observations(self):
+        context = team_leading_recoveries_context()
+        output = {"summary": {"text": "O jogador registrou 1 assistência na partida.",
+                              "kind": "fact", "limitations": "", "fact_refs": ["selected_match_player"]},
+                  "observations": [
+                      {"text": "Completou 6 de 7 passes nesta partida.", "kind": "fact",
+                       "limitations": "", "fact_refs": ["selected_match_player"]},
+                      {"text": "Registrou 1 passe-chave nesta partida.", "kind": "fact",
+                       "limitations": "", "fact_refs": ["selected_match_player"]}],
+                  "recommendations": [], "strengths": [], "development_areas": [],
+                  "training_suggestions": [], "information_requests": [], "formation": None}
+        response = io.BytesIO(json.dumps({"message": {"content": json.dumps(output)}}).encode())
+        with sqlite3.connect(":memory:") as conn, \
+             patch("atlas.commission._briefing_facts", return_value=(
+                 context, [item["id"] for item in context["facts"]], "fixture:1:player:30")), \
+             patch("atlas.commission.ollama_models", return_value={"available": True, "models": ["local"]}), \
+             patch("atlas.commission.urllib.request.urlopen", return_value=response):
+            result = get_commission_report(conn, 1, 1, "match_player", fixture_id=1, player_ea_id=30,
+                                           model="local")
+        observations = result["report"]["observations"]
+        self.assertTrue(any("Completou 6 de 7 passes" in item["text"] for item in observations))
+        self.assertTrue(any("Registrou 1 passe-chave" in item["text"] for item in observations))
+        self.assertIn("Ganhou a posse 7 vezes", observations[0]["text"])
+        self.assertIn("maior marca entre 5 participantes", observations[0]["text"])
 
     def test_rejected_model_claims_still_produce_a_bounded_technical_report(self):
         context = keeper_context_with_opponent_xg()

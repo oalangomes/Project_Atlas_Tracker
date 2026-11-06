@@ -44,7 +44,7 @@ _ROLE_METRICS: dict[str, tuple[str, ...]] = {
     "winger": _COMMON + _CREATION + _ATTACK + _PASSING + ("possession_won",),
     "striker": _COMMON + _ATTACK + ("key_passes", "passes", "passes_completed",
                                   "aerial_duels_won", "aerial_duels_attempted",
-                                  "aerial_duel_success_pct_derived"),
+                                  "aerial_duel_success_pct_derived", "possession_won"),
 }
 _POSITION_ROLE = {
     "GK": "goalkeeper", "GOALKEEPER": "goalkeeper",
@@ -95,9 +95,9 @@ _ROLE_QUESTIONS = {
                   "Compare the keeper only with keepers and compatible samples. "
                   "Neither a conceded goal nor a clean sheet proves individual responsibility; "
                   "do not infer positioning, mistakes, handling or distribution quality from the score.",
-    "centre_back": "Prioritize duels, clearances, interceptions and passing where measured. "
+    "centre_back": "Prioritize ball recoveries, duels, clearances, interceptions and passing where measured. "
                    "Do not infer positioning or responsibility for a goal from event totals.",
-    "fullback": "Balance recorded defensive duels/interceptions with passing and wide contribution; "
+    "fullback": "Balance ball recoveries and recorded defensive duels/interceptions with passing and wide contribution; "
                 "do not infer overlaps or runs from aggregate counts.",
     "defensive_midfielder": "Prioritize ball recoveries, defensive work and circulation where measured; "
                             "tackle totals alone do not prove defensive positioning.",
