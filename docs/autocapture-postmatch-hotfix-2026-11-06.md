@@ -26,3 +26,16 @@ The second package, `FC26_MatchStats_pmc_20261106_085443_eb275c69.partial`, is a
 The automated tests check source contracts for the hotfix branch only. They do not run Live Editor, exercise the native memory API, prove the AV cannot recur, or homologate post-match capture in FC26. Keep automatic capture paused until a saved-career real-environment validation is performed.
 
 No running game or Live Editor instance, save, SQLite database, or `.partial` package was modified. The capture scripts were not executed.
+
+## Follow-up: Live Editor event-handler API
+
+The next Live Editor log showed a separate Lua API error at 09:35:33 local:
+`Expected integer at argument 2 @ ... lua_RemoveEventHandler`. The v1.1.2 hotfix
+called `RemoveEventHandler` with only a handler ID while replacing the prior
+monitor. Live Editor v26.3.5 requires both the event name and handler ID, as
+confirmed by its bundled `lua/libs/v2/tests/event_handlers_test.lua`.
+
+AutoCapture is now v1.1.3 internally and passes `pre__CareerModeEvent` or
+`post__CareerModeEvent` with each ID, including its embedded MatchStats copy.
+The standalone MatchStats script uses the same corrected calls. Five automated
+source-contract tests pass; they do not execute Live Editor or FC26.

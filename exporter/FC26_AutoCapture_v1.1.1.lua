@@ -1,4 +1,4 @@
--- FC26 AutoCapture v1.1.2 hotfix
+-- FC26 AutoCapture v1.1.3 hotfix
 -- Single-file career monitor with full snapshot + detailed MatchStats exporters embedded.
 -- Run once after loading a career. This hotfix creates a startup snapshot and arms
 -- MatchStats. After a completed match it publishes MatchStats, then pauses automatic
@@ -12,7 +12,7 @@ require 'imports/career_mode/helpers'
 
 assert(IsInCM(), "FC26 AutoCapture must be executed while a career is loaded")
 
-local VERSION = "1.1.2"
+local VERSION = "1.1.3"
 local EMBEDDED_EXPORTER_VERSION = "1.1.0"
 local EMBEDDED_MATCH_STATS_VERSION = "1.1.0"
 local STATE_KEY = "FC26_EXPORT_AUTO_CAPTURE_STATE"
@@ -5857,10 +5857,10 @@ local function stop_probe(reason)
     end
     log_progress('stopping', reason or '')
     if state.pre_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.pre_handler)
+        pcall(RemoveEventHandler, 'pre__CareerModeEvent', state.pre_handler)
     end
     if state.post_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.post_handler)
+        pcall(RemoveEventHandler, 'post__CareerModeEvent', state.post_handler)
     end
     local latest_tracker = state.latest_tracker_capture_id and
         state.tracker_snapshot_data[state.latest_tracker_capture_id] or nil
@@ -6040,10 +6040,10 @@ state._register_ok = nil
 state._register_result = nil
 if not state.pre_handler or not state.post_handler then
     if state.pre_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.pre_handler)
+        pcall(RemoveEventHandler, 'pre__CareerModeEvent', state.pre_handler)
     end
     if state.post_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.post_handler)
+        pcall(RemoveEventHandler, 'post__CareerModeEvent', state.post_handler)
     end
     state.active = false
     close_files()
@@ -6300,7 +6300,7 @@ if existing and existing.active then
         return
     end
     if existing.handler_id and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, existing.handler_id)
+        pcall(RemoveEventHandler, 'post__CareerModeEvent', existing.handler_id)
     end
     existing.active = false
     append_log({os.date("%Y-%m-%d %H:%M:%S"),
@@ -6348,8 +6348,8 @@ local function match_stats_active()
         return true, ms_state
     end
     if type(RemoveEventHandler) == 'function' then
-        if ms_state.pre_handler then pcall(RemoveEventHandler, ms_state.pre_handler) end
-        if ms_state.post_handler then pcall(RemoveEventHandler, ms_state.post_handler) end
+        if ms_state.pre_handler then pcall(RemoveEventHandler, 'pre__CareerModeEvent', ms_state.pre_handler) end
+        if ms_state.post_handler then pcall(RemoveEventHandler, 'post__CareerModeEvent', ms_state.post_handler) end
     end
     ms_state.active = false
     append_log({os.date("%Y-%m-%d %H:%M:%S"), "matchstats_version_replaced",

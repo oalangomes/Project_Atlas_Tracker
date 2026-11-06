@@ -17,7 +17,7 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
 
     def test_hotfix_suppresses_sync_postmatch_snapshot_and_rearm(self):
         source = self.autocapture
-        self.assertIn("local VERSION = \"1.1.2\"", source)
+        self.assertIn("local VERSION = \"1.1.3\"", source)
         self.assertIn("state.post_match_export_suppressed = true", source)
         self.assertIn("if state.post_match_export_suppressed then return end", source)
         self.assertIn("auto_capture_state.post_match_candidate_finalized = true", source)
@@ -58,6 +58,17 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
             with self.subTest(copy=name):
                 self.assertIn('"teamlongform"', source)
                 self.assertNotIn('"Teamlongform"', source)
+
+    def test_event_handler_removal_uses_live_editor_event_name_and_id(self):
+        for name, source in (("autocapture", self.autocapture), ("standalone matchstats", self.matchstats)):
+            with self.subTest(copy=name):
+                calls = [line.strip() for line in source.splitlines() if "pcall(RemoveEventHandler," in line]
+                self.assertTrue(calls)
+                for call in calls:
+                    self.assertRegex(
+                        call,
+                        r"pcall\(RemoveEventHandler,\s*'(?:pre|post)__CareerModeEvent',\s*[^,)]+\)",
+                    )
 
 
 if __name__ == "__main__":

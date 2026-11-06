@@ -3741,10 +3741,10 @@ local function stop_probe(reason)
     state.active = false
     log_progress('stopping', reason or '')
     if state.pre_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.pre_handler)
+        pcall(RemoveEventHandler, 'pre__CareerModeEvent', state.pre_handler)
     end
     if state.post_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.post_handler)
+        pcall(RemoveEventHandler, 'post__CareerModeEvent', state.post_handler)
     end
     local latest_tracker = state.latest_tracker_capture_id and
         state.tracker_snapshot_data[state.latest_tracker_capture_id] or nil
@@ -3939,10 +3939,10 @@ state._register_ok = nil
 state._register_result = nil
 if not state.pre_handler or not state.post_handler then
     if state.pre_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.pre_handler)
+        pcall(RemoveEventHandler, 'pre__CareerModeEvent', state.pre_handler)
     end
     if state.post_handler and type(RemoveEventHandler) == 'function' then
-        pcall(RemoveEventHandler, state.post_handler)
+        pcall(RemoveEventHandler, 'post__CareerModeEvent', state.post_handler)
     end
     state.active = false
     close_files()
