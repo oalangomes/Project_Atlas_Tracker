@@ -3,6 +3,7 @@ import unittest
 import json
 import sqlite3
 import tempfile
+from contextlib import closing
 from pathlib import Path
 
 from scripts.audit_commission_reports import audit_database, evaluate_report
@@ -229,7 +230,7 @@ class StoredReportAuditTests(unittest.TestCase):
     def test_database_audit_is_read_only(self):
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "atlas.sqlite3"
-            with sqlite3.connect(path) as conn:
+            with closing(sqlite3.connect(path)) as conn, conn:
                 conn.execute("""CREATE TABLE technical_commission_report_cache(
                     career_id INTEGER, snapshot_id INTEGER, mode TEXT, scope_key TEXT,
                     payload_json TEXT)""")

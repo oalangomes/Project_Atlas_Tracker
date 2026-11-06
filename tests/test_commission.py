@@ -16,6 +16,7 @@ from atlas.commission import (analyze_players, assess_sample, get_commission, ge
                               _report_item_metric_conflict, _prior_match_context,
                               _normalize_report_clarifications, _coach_can_answer_information_request,
                               _historical_report_tasks, _ensure_replay_schema,
+                              _run_retroactive_commission_reports_guarded,
                               run_retroactive_commission_reports, get_retroactive_commission_report_job,
                               REPORT_VERSION)
 
@@ -101,6 +102,33 @@ class CommissionReplayQueueTests(unittest.TestCase):
             attempts = conn.execute("SELECT attempts FROM technical_commission_replay_tasks WHERE sequence=1").fetchone()[0]
         self.assertEqual(attempts, 2)
         self.assertEqual(get_retroactive_commission_report_job(self.database, 1, 'job')['status'], 'complete')
+
+    def test_unexpected_worker_error_is_persisted_instead_of_sticking_running(self):
+        with patch('atlas.commission.run_retroactive_commission_reports',
+                   side_effect=RuntimeError('unexpected startup failure')):
+            _run_retroactive_commission_reports_guarded(self.database, 1, 'job', 'pt-BR', 'local')
+        progress = get_retroactive_commission_report_job(self.database, 1, 'job')
+        self.assertEqual(progress['status'], 'failed')
+        self.assertIn('unexpected startup failure', progress['errors'][-1]['message'])
+
+    def test_missing_historical_player_checkpoint_is_skipped_and_queue_continues(self):
+        success = {'available': True, 'source_hash': 'facts', 'report': {}, 'review_required': False}
+        with patch('atlas.commission.ollama_models', return_value={'available': True, 'models': ['local']}), \
+             patch('atlas.commission.get_cached_commission_report',
+                   side_effect=[ValueError('Selected player is not in the current professional squad.'),
+                                {'state': 'missing'}]), \
+             patch('atlas.commission.get_commission_report', return_value=success.copy()) as generate:
+            run_retroactive_commission_reports(self.database, 1, 'job', 'pt-BR', 'local')
+        progress = get_retroactive_commission_report_job(self.database, 1, 'job')
+        self.assertEqual(progress['status'], 'complete_with_warnings')
+        self.assertEqual(progress['skipped_missing_data'], 1)
+        self.assertEqual(progress['generated'], 1)
+        self.assertEqual(progress['failed'], 0)
+        self.assertEqual(generate.call_count, 1)
+        with self.database.connect() as conn:
+            statuses = [row[0] for row in conn.execute(
+                "SELECT status FROM technical_commission_replay_tasks WHERE job_id='job' ORDER BY sequence")]
+        self.assertEqual(statuses, ['skipped_missing_data', 'completed'])
 
 
 class CommissionMetricTests(unittest.TestCase):
@@ -544,8 +572,14 @@ class CommissionMetricTests(unittest.TestCase):
             "summary": {"text": "Plymouth scored four from 3.1 recorded NPK-xG; the score alone does not establish territorial dominance.",
                         "kind": "inference", "limitations": "No spatial or possession data is exported.",
                         "fact_refs": ["match", "matchstats"]},
-            "observations": [{"text": "The result was 4–0, while recorded NPK-xG was 3.1 for Plymouth.",
-                              "kind": "fact", "limitations": "", "fact_refs": ["match", "matchstats"]}],
+            "observations": [
+                {"text": "The result was 4–0, while recorded NPK-xG was 3.1 for Plymouth.",
+                 "kind": "fact", "limitations": "", "fact_refs": ["match", "matchstats"]},
+                {"text": "Plymouth Argyle conceded 4 goals.", "kind": "fact", "limitations": "",
+                 "fact_refs": ["match"]},
+                {"text": "Plymouth Argyle scored 4 goals.", "kind": "fact", "limitations": "",
+                 "fact_refs": ["match"]},
+            ],
             "recommendations": [{"text": "Review finishing decisions across the next few matches before changing the attacking approach.",
                                  "kind": "hypothesis", "limitations": "One match cannot establish a persistent finishing pattern.",
                                  "fact_refs": ["matchstats"]}],
@@ -562,6 +596,12 @@ class CommissionMetricTests(unittest.TestCase):
         self.assertEqual(first["report"]["summary"]["fact_refs"], ["match", "matchstats"])
         self.assertIn("does not establish territorial dominance", first["report"]["summary"]["text"])
         self.assertEqual(first["report"]["observations"][0]["kind"], "fact")
+        self.assertTrue(any(item["text"] == "Plymouth Argyle scored 4 goals."
+                            for item in first["report"]["observations"]))
+        self.assertFalse(any(item["text"] == "Plymouth Argyle conceded 4 goals."
+                             for item in first["report"]["observations"]))
+        self.assertTrue(any("score_value_conflict" in item["reasons"]
+                            for item in first["validation"]["rejected_claim_details"]))
         self.assertEqual(first["report"]["recommendations"][0]["kind"], "hypothesis")
         self.assertEqual(first["report"]["recommendations"][0]["limitations"], "One match cannot establish a persistent finishing pattern.")
         self.assertEqual(first["report"]["information_requests"], content["information_requests"])

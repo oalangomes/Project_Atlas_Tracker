@@ -107,7 +107,7 @@ class WorkspaceManager:
     def _workspace_stats(self, item: dict[str, Any]) -> dict[str, Any]:
         workspace_id = str(item.get("id"))
         data_dir = workspace_data_dir(workspace_id)
-        db_path = data_dir / "atlas_core.sqlite3"
+        db_path = data_dir / "atlas_tracker.sqlite3"
         careers = snapshots = 0
         career_row = latest_row = None
         if db_path.is_file() and db_path.stat().st_size:
@@ -173,7 +173,7 @@ class WorkspaceManager:
         relative_dir = Path("workspaces") / workspace_id
         target_dir = app_data_dir() / relative_dir
         target_dir.mkdir(parents=True, exist_ok=False)
-        target_db = target_dir / "atlas_core.sqlite3"
+        target_db = target_dir / "atlas_tracker.sqlite3"
         try:
             Database(target_db).initialize()
         except Exception:
@@ -230,7 +230,7 @@ class WorkspaceManager:
         relative_dir = Path("workspaces") / workspace_id
         target_dir = app_data_dir() / relative_dir
         target_dir.mkdir(parents=True, exist_ok=False)
-        target_db = target_dir / "atlas_core.sqlite3"
+        target_db = target_dir / "atlas_tracker.sqlite3"
 
         source = sqlite3.connect(self.database_path, timeout=30.0)
         destination = sqlite3.connect(target_db, timeout=30.0)
