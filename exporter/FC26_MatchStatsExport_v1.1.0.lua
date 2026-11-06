@@ -3896,6 +3896,16 @@ local function on_event(phase, _, event_id, _)
     if should_sample then
         sample_lifecycle(trigger, phase, event_id, capture_mode)
     end
+    -- Event 137 is the final candidate observed to follow a played match. Once its
+    -- one-shot export attempt has completed, detach both handlers immediately so
+    -- the lifecycle monitor performs no singleton/object reads during the hub
+    -- transition. A complete participant package is atomically published here;
+    -- an incomplete one remains marked incomplete for review.
+    if phase == 'post' and FINAL_CANDIDATE_EVENTS[event_id] and
+       state.match_started then
+        stop_probe('final_candidate_event_' .. tostring(event_id))
+        return
+    end
     if state.match_started and phase == 'post' and
        event_id == EVENT_ENTERED_HUB then
         stop_probe('entered_career_hub_after_match')

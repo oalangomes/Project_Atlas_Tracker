@@ -1,0 +1,28 @@
+# AutoCapture post-match stability hotfix (2026-11-06)
+
+## Finding
+
+The available evidence confirms an FC26 process access violation while Live Editor v26.3.5 was injected. It does not prove that a specific Lua call caused the native fault because the dump has no usable symbolized call stack.
+
+- `FC26_MatchStats_pmc_20261106_082055_3db9f60d.partial/20_match_export_summary.csv` reports `complete_participant_export`, 26 participant rows, and trigger `late_match_candidate_event_137.0` at 08:46:22. Its `98_errors.csv` contains only the header.
+- The progress log then records repeated `singleton_static_slot` and `singleton_plus_0xAF0` reads through 08:47:03.
+- `auto_capture_monitor.csv` detects the completed fixture at 08:47:07. The AutoCapture `post__CareerModeEvent` callback synchronously invokes the full snapshot exporter; the Live Editor log shows it exporting 21,363 players and other career tables from 08:47:08 to 08:47:17. After snapshot success, the same callback immediately rearms MatchStats and performs another offset/memory validation.
+- The FC26 minidump is timestamped 08:47:18 local and reports exception `0xC0000005` at `FCLiveEditor.DLL+0x52670C`. This is one second after the monitor reports snapshot completion, during the post-match callback's rearm path.
+- The same sequence appears in prior incidents: on 2026-10-19 AutoCapture logged `matchstats_armed; reason=career_event_rearm` at 08:19:25 and an FC26 minidump reports `0xC0000005` at 08:19:26; on 2026-10-28 the monitor logged the same rearm at 17:55:47 and the FC26 minidump has the same exception at 17:55:47. These tight correlations make transition-time MatchStats rearming the leading likely trigger.
+- Live Editor reports v26.3.5 and game build `1.0.139.20381`; AutoCapture logged successful core and optional offset validation. There is no evidence in these artifacts of a wrong build or failed offset check.
+
+The strongest current hypothesis is that MatchStats offset validation/rearming occurs in the match-return callback while FC26 is changing career state; the repeated singleton polling and full snapshot callback add work in the same window. The repeated one-second rearm/crash correlations make this the leading likely cause, but the dump cannot distinguish which native API call faulted. It is not a symbolized root-cause proof.
+
+The second package, `FC26_MatchStats_pmc_20261106_085443_eb275c69.partial`, is a new armed capture after restart: it has only startup validation and no final-match summary. Its partial state is expected until another match is captured; it is not evidence that the 08:46 export failed.
+
+## Hotfix behavior
+
+- MatchStats detaches its lifecycle handlers immediately after the final-candidate event 137 capture attempt. A complete package is published atomically then; an incomplete one stays marked incomplete. No repeated singleton reads continue through the hub transition.
+- Embedded MatchStats signals the outer monitor at event 137. AutoCapture then suppresses the synchronous post-match full snapshot and automatic MatchStats rearm for the rest of that monitor session, without waiting for the fixture count to update at the hub. Save/confirm the career first; then re-run AutoCapture from the stable hub to start a new session and take a startup snapshot.
+- The embedded and standalone snapshot exporters now request `teamlongform` with the same lowercase spelling used by the neighboring fields. The Live Editor log had reported `no field Teamlongform` once per league-team row.
+
+## Validation boundary
+
+The automated tests check source contracts for the hotfix branch only. They do not run Live Editor, exercise the native memory API, prove the AV cannot recur, or homologate post-match capture in FC26. Keep automatic capture paused until a saved-career real-environment validation is performed.
+
+No running game or Live Editor instance, save, SQLite database, or `.partial` package was modified. The capture scripts were not executed.

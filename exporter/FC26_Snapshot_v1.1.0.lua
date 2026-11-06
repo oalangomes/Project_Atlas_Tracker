@@ -755,7 +755,7 @@ local function run_export()
                     unbeaten_all_comps = get_field("leagueteamlinks", tbl, record, "unbeatenallcomps", ""),
                     last_game_result = get_field("leagueteamlinks", tbl, record, "lastgameresult", ""),
                     actual_vs_expectations = get_field("leagueteamlinks", tbl, record, "actualvsexpectations", ""),
-                    team_long_form = get_field("leagueteamlinks", tbl, record, "Teamlongform", ""),
+                    team_long_form = get_field("leagueteamlinks", tbl, record, "teamlongform", ""),
                     team_short_form = get_field("leagueteamlinks", tbl, record, "teamshortform", ""),
                     team_form = get_field("leagueteamlinks", tbl, record, "teamform", ""),
                     grouping = get_field("leagueteamlinks", tbl, record, "grouping", ""),
