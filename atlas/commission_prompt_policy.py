@@ -144,6 +144,13 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
                 "question": "Distinguish the managed club's chance creation, conversion and defensive events from its opponent, using each side's own rows",
                 "fact_refs": ["match", "matchstats"],
             })
+        competitive = facts.get("pre_match_competitive_context") or {}
+        if competitive.get("available"):
+            priorities.insert(0, {
+                "question": "Qualify the sporting reading with verified pre-match opponent division and full-squad strength; never invent table rank or cup round",
+                "opponent_overall_gap": competitive.get("opponent_overall_gap"),
+                "fact_refs": ["pre_match_competitive_context"],
+            })
     elif mode in {"player", "match_player"}:
         summary = facts.get("player_summary") or facts.get("selected_match_player") or {}
         role = context.get("role_analysis") or {}
@@ -189,6 +196,12 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
                     "question": "Compare relevant individual evidence only if positions, periods, minutes and provenance are compatible",
                     "fact_refs": [key],
                 })
+        competitive = facts.get("pre_match_competitive_context") or {}
+        if mode == "match_player" and competitive.get("available"):
+            priorities.append({
+                "question": "Qualify this appearance with verified pre-match opponent strength without attributing the team result to this player",
+                "fact_refs": ["pre_match_competitive_context"],
+            })
     elif mode == "team_identity":
         profile = facts.get("team_statistical_profile") or {}
         priorities.append({
@@ -199,6 +212,12 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
         })
     elif mode == "next_match":
         options = context.get("allowed_formations") or []
+        competitive = facts.get("pre_match_competitive_context") or {}
+        if competitive.get("available"):
+            priorities.append({
+                "question": "Use the prior-snapshot opponent division and squad mean as bounded preparation context",
+                "fact_refs": ["pre_match_competitive_context"],
+            })
         priorities.append({
             "question": "Evaluate registered-position coverage of permitted shapes; state that fitness, tactical instructions and confirmed starting eleven are unknown",
             "allowed_formations": options,
@@ -277,6 +296,11 @@ _MODE_RULES: dict[str, str] = {
         "Use match_comparisons only for the managed team's current-versus-prior differences, "
         "respect reference_samples and interpretation_direction. The historical 'against' "
         "baseline is pooled across earlier opponents, NOT a trend for the current named opponent. "
+        "Use pre_match_competitive_context to qualify fixture difficulty only when its "
+        "prior-snapshot division or current-save squad averages are available. The overall "
+        "mean is an available-roster reference, not the starting XI or match performance. "
+        "Do not invent league-table rank or cup round when unavailable. Never multiply "
+        "recorded match metrics by an arbitrary difficulty weight. "
         "Explain chance volume versus finishing from goals-minus-xG only, never from xG volume. "
         "No match event timing, possession share, attacking corridors, press intensity, "
         "line height or player movement is available unless a fact explicitly supplies it. "
@@ -297,6 +321,9 @@ _MODE_RULES: dict[str, str] = {
         "and counts with exported teammate averages, minutes-normalized rates or rank; "
         "never compare an individual raw count to the whole-team total as if they were "
         "the same unit. State comparison cohort and sample when relevant. "
+        "Use verified pre_match_competitive_context as match difficulty context, without "
+        "treating opponent squad overall as proof of individual performance. Do not invent "
+        "a league position or knockout round when unavailable. "
         "For any outfield player, prioritize a possession_won count that leads the whole team "
         "with a substantial share of recorded team recoveries, even when there are too "
         "few same-position peers for role_analysis.match_standouts. "
@@ -342,7 +369,8 @@ _MODE_RULES: dict[str, str] = {
         "detailed evidence is inadequate instead of writing generic praise."
     ),
     "next_match": (
-        "UPCOMING MATCH: Use only the managed squad and fixture calendar; "
+        "UPCOMING MATCH: Use the managed squad, fixture calendar and verified "
+        "pre_match_competitive_context; do not invent opponent rank or cup round. "
         "opponent style is unknown unless documented independently in this context. "
         "allowed_formations are candidates from conservative registered-position "
         "matching with distinct players, NOT proof of fitness, tactical fit or "

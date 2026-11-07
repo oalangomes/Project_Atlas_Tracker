@@ -29,6 +29,7 @@ RELIABLE_GAMES = 5
 METRIC_VERSION = 3
 REPORT_VERSION = 34
 MATCH_PLAYER_REPORT_CONTRACT = 8
+MATCH_CONTEXT_REPORT_CONTRACT = 1
 _MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
     r"\b(?:focar|foque|foco em|deve|devem|deveria|deveriam|precisa|precisam|"
     r"treinar|treine|priorizar|priorize|melhorar|melhore|evitar|aumentar|reduzir|"
@@ -929,6 +930,14 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
             match["managed_score"] = row["home_score"] if managed_is_home else row["away_score"]
             match["opponent_score"] = row["away_score"] if managed_is_home else row["home_score"]
         fact("match", "Fixture", match, "Atlas fixture calendar")
+        if row["date"] and opponent_id > 0:
+            from .match_competitive_context import pre_match_competitive_context
+            competitive = pre_match_competitive_context(
+                conn, career_id, snapshot, str(row["date"]), team_id, opponent_id,
+                row["raw_json"] if "raw_json" in row.keys() else None)
+            fact("pre_match_competitive_context", "Verified opponent context before this fixture",
+                 competitive, "same-career, same-season save snapshot strictly before fixture date; "
+                              "available roster mean and league identity; table rank only from complete prior fixtures")
         if mode in {"match", "match_player"} and completed and opponent_id > 0:
             prior_snapshot = conn.execute(
                 "SELECT id FROM snapshots WHERE career_id=? AND season_index=? AND import_sequence<=? ORDER BY import_sequence DESC,id DESC LIMIT 1",
@@ -1406,6 +1415,8 @@ def _report_source_hash(context: dict[str, Any], career_id: int, mode: str, scop
               "role_analysis": context.get("role_analysis")}
     if mode == "match_player":
         stable["mode_contract_version"] = MATCH_PLAYER_REPORT_CONTRACT
+    if mode in {"match", "match_player", "next_match"}:
+        stable["match_context_contract_version"] = MATCH_CONTEXT_REPORT_CONTRACT
     return hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -1975,6 +1986,78 @@ def _team_possession_standout(context: dict[str, Any]) -> dict[str, Any] | None:
             "fact_refs": ["selected_match_player", "match_player_team_comparison"], "model_generated": False}
 
 
+def _competitive_match_observation(context: dict[str, Any]) -> dict[str, Any] | None:
+    """Make verified opponent strength, division, rank and phase visible in the team report."""
+    fact = _report_fact_map(context).get("pre_match_competitive_context") or {}
+    if not fact.get("available"):
+        return None
+    managed, opponent = fact.get("managed_team") or {}, fact.get("opponent") or {}
+    gap = _float(fact.get("opponent_overall_gap"))
+    own = _float(managed.get("squad_average_overall"))
+    rival = _float(opponent.get("squad_average_overall"))
+    material_gap = gap is not None and own is not None and rival is not None and abs(gap) >= 5
+    own_level, rival_level = managed.get("league_level"), opponent.get("league_level")
+    different_divisions = (fact.get("league_levels_comparable") and own_level is not None
+                           and rival_level is not None and own_level != rival_level)
+    phase = fact.get("competition_phase")
+    rank = fact.get("opponent_table_position")
+    table = opponent.get("league_table") or {}
+    if not (material_gap or different_divisions or phase or rank):
+        return None
+    language = str(context.get("language") or "pt-BR")
+    own_name = str(managed.get("team_name") or context.get("managed_team") or "equipe")
+    opponent_name = str(opponent.get("team_name") or "adversário")
+    own_value, rival_value = _fact_number(own, language, 1), _fact_number(rival, language, 1)
+    difference = _fact_number(abs(gap), language, 1) if gap is not None else None
+    own_league = str(managed.get("league_name") or "")
+    rival_league = str(opponent.get("league_name") or "")
+    parts: list[str] = []
+    if language == "en-GB":
+        if material_gap:
+            parts.append(f"Before the match, {opponent_name}'s available squad averaged {rival_value} overall "
+                         f"against {own_name}'s {own_value}, a gap of {difference} points")
+        if different_divisions:
+            parts.append(f"Recorded divisions: {rival_league} (level {rival_level}) and "
+                         f"{own_league} (level {own_level})")
+        if phase:
+            parts.append(f"Recorded competition phase: {phase}")
+        if rank:
+            parts.append(f"From recorded prior league results, {opponent_name} ranked "
+                         f"{rank} of {table['team_count']} after {table['matches_played']} matches")
+        text = ". ".join(parts) + ". This is pre-match context, not a measure of performance on the pitch."
+        limitations = "Context from the last prior snapshot; overall averages available squad players, not the starting XI."
+    elif language == "es-ES":
+        if material_gap:
+            parts.append(f"Antes del partido, la plantilla disponible de {opponent_name} promediaba {rival_value} "
+                         f"de overall frente a {own_value} de {own_name}, una diferencia de {difference} puntos")
+        if different_divisions:
+            parts.append(f"Divisiones registradas: {rival_league} (nivel {rival_level}) y "
+                         f"{own_league} (nivel {own_level})")
+        if phase:
+            parts.append(f"Fase registrada de la competición: {phase}")
+        if rank:
+            parts.append(f"Según los resultados previos de liga, {opponent_name} ocupaba el "
+                         f"puesto {rank} de {table['team_count']} tras {table['matches_played']} partidos")
+        text = ". ".join(parts) + ". Es contexto previo, no una medida del rendimiento en el campo."
+        limitations = "Contexto del último snapshot previo; el overall promedia la plantilla disponible, no el once inicial."
+    else:
+        if material_gap:
+            parts.append(f"Antes da partida, o elenco disponível de {opponent_name} tinha overall médio "
+                         f"{rival_value} contra {own_value} de {own_name}, diferença de {difference} pontos")
+        if different_divisions:
+            parts.append(f"Divisões registradas: {rival_league} (nível {rival_level}) e "
+                         f"{own_league} (nível {own_level})")
+        if phase:
+            parts.append(f"Fase registrada da competição: {phase}")
+        if rank:
+            parts.append(f"Pelos resultados anteriores da liga, {opponent_name} ocupava a posição "
+                         f"{rank} de {table['team_count']} após {table['matches_played']} jogos")
+        text = ". ".join(parts) + ". É contexto pré-jogo, não medida da atuação em campo."
+        limitations = "Contexto do último snapshot anterior; overall é média do elenco disponível, não do XI."
+    return {"text": text, "kind": "fact", "limitations": limitations,
+            "fact_refs": ["pre_match_competitive_context"], "model_generated": False}
+
+
 def _deterministic_match_player_report(context: dict[str, Any],
                                        scope: str, source_hash: str) -> dict[str, Any]:
     summary = _deterministic_match_player_summary(context)
@@ -2322,6 +2405,63 @@ def _report_item_numeric_conflict(context: dict[str, Any], item: dict[str, Any])
     return False
 
 
+def _unverified_competitive_claim(context: dict[str, Any], item: dict[str, Any]) -> bool:
+    """Do not let a league level or match score masquerade as table rank or cup round."""
+    fact = _report_fact_map(context).get("pre_match_competitive_context")
+    if not isinstance(fact, dict):
+        return False
+    text = str(item.get("text") or "").casefold()
+    table_rank = (r"\b\d+\s*[ºª°]?\s*(?:lugar|colocado|posição|place|position|puesto)\b|"
+                  r"\b(?:posição|lugar|rank|place|position|puesto)\s+(?:na tabela\s+|in the table\s+)?\d+\b|"
+                  r"\b(?:líder|leader)\s+(?:da tabela|do campeonato|of the league)\b")
+    phase = (r"\b(?:oitavas|quartas|semifinal|semi-final|quarter-final|quarterfinal|"
+             r"round of 16|octavos|cuartos|semifinales)\b|"
+             r"\b(?:na|a|the|la)\s+final\s+(?:da|do|de|of the)\b")
+    managed, opponent = fact.get("managed_team") or {}, fact.get("opponent") or {}
+    club_names = [str(club.get("team_name") or "").casefold() for club in (managed, opponent)]
+    rank_context = (any(term in text for term in ("tabela", "liga", "campeonato", "league", "standings",
+                                               "classificação", "classification"))
+                    or any(name and name in text for name in club_names))
+    if rank_context and fact.get("opponent_table_position") is None and re.search(table_rank, text):
+        return True
+    if fact.get("competition_phase") is None and re.search(phase, text):
+        return True
+    if re.search(r"\b(?:overall médio|média de overall|average overall|squad overall)\b", text):
+        if "pre_match_competitive_context" not in (item.get("fact_refs") or []):
+            return True
+    if re.search(r"\b(?:overall|ovr)\b", text):
+        for club in (fact.get("managed_team") or {}, fact.get("opponent") or {}):
+            name = str(club.get("team_name") or "").casefold()
+            expected_overall = _float(club.get("squad_average_overall"))
+            if not name:
+                continue
+            escaped = re.escape(name)
+            patterns = (
+                rf"\b{escaped}\b.{{0,45}}?\b(?:overall|ovr)\b[^\d]{{0,15}}(\d+(?:[.,]\d+)?)",
+                rf"\b(?:overall|ovr)\b[^\d]{{0,15}}(\d+(?:[.,]\d+)?)\s+(?:de|do|da|of|for)\s+{escaped}\b",
+            )
+            for pattern in patterns:
+                for value in re.findall(pattern, text):
+                    if expected_overall is None or abs(float(value.replace(",", ".")) - expected_overall) > 0.051:
+                        return True
+    rank_values = re.finditer(
+        r"\b(?:posição|lugar|rank|place|position|puesto)\s+(\d+)\b|"
+        r"\b(\d+)\s*[ºª°]\s*(?:lugar|colocado|posição|place|position|puesto)\b", text)
+    for claim in rank_values:
+        if not rank_context:
+            continue
+        before = text[max(0, claim.start() - 100):claim.start()]
+        own_name = str(managed.get("team_name") or "").casefold()
+        rival_name = str(opponent.get("team_name") or "").casefold()
+        own_index = before.rfind(own_name) if own_name else -1
+        rival_index = before.rfind(rival_name) if rival_name else -1
+        expected = ((managed.get("league_table") or {}).get("position") if own_index > rival_index
+                    else fact.get("opponent_table_position"))
+        if expected is None or int(claim.group(1) or claim.group(2)) != int(expected):
+            return True
+    return False
+
+
 def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, Any], valid_ids: set[str],
                           section: str | None = None, rejection_reasons: list[str] | None = None) -> bool:
     def reject(reason: str) -> bool:
@@ -2334,6 +2474,8 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
     refs = item.get("fact_refs")
     if not isinstance(refs, list) or not refs or not set(refs).issubset(valid_ids):
         return reject("missing_or_invalid_fact_refs")
+    if mode in {"match", "match_player", "next_match"} and _unverified_competitive_claim(context, item):
+        return reject("unverified_competitive_context")
     if mode in {"match", "match_player"}:
         _, score_issues = score_claim_bindings(context, item)
         if score_issues:
@@ -3208,6 +3350,16 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                 if not already_covered and _validate_report_item(context, mode, standout, valid_ids,
                                                                   section="observations"):
                     report["observations"] = [standout, *report["observations"]][:4]
+        if mode == "match":
+            competitive_item = _competitive_match_observation(context)
+            covered = any(
+                "pre_match_competitive_context" in item.get("fact_refs", [])
+                and any(term in str(item.get("text") or "").casefold()
+                        for term in ("overall", "posição", "colocado", "rank", "place", "puesto", "fase", "phase"))
+                for item in [report["summary"], *report["observations"]])
+            if competitive_item and not covered and _validate_report_item(
+                    context, mode, competitive_item, valid_ids, section="observations"):
+                report["observations"] = [competitive_item, *report["observations"]][:8]
         if mode == "match_player" and report["summary"]["kind"] != "inference" and not any(
                 item["kind"] == "inference" for item in report["observations"]):
             report["summary"] = _technical_match_player_fallback_summary(context)
