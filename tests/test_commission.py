@@ -423,10 +423,54 @@ class CommissionMetricTests(unittest.TestCase):
         player = {**match, "mode": "match_player"}
         before_match = _report_source_hash(match, 1, "match", "fixture:20")
         before_player = _report_source_hash(player, 1, "match_player", "fixture:20:player:1")
-        with patch("atlas.commission.MATCH_REPORT_CONTRACT", 2):
+        with patch("atlas.commission.MATCH_REPORT_CONTRACT", 3):
             self.assertNotEqual(before_match, _report_source_hash(match, 1, "match", "fixture:20"))
             self.assertEqual(before_player, _report_source_hash(
                 player, 1, "match_player", "fixture:20:player:1"))
+
+    def test_match_report_rejects_reversed_comparison_and_wrong_metric_owner(self):
+        context = {"mode": "match", "language": "pt-BR", "managed_team": "Plymouth Argyle",
+                   "managed_team_ea_id": 1929, "facts": [
+            {"id": "match", "value": {"managed_team_ea_id": 1929, "opponent_ea_id": 9,
+                                       "managed_team_side": "away", "home": "Liverpool",
+                                       "away": "Plymouth Argyle", "score": [2, 4],
+                                       "managed_score": 4, "opponent_score": 2}},
+            {"id": "matchstats", "value": [
+                {"team_ea_id": 9, "team_name": "Liverpool", "stats": {"xg_per_shot": 0.481}},
+                {"team_ea_id": 1929, "team_name": "Plymouth Argyle",
+                 "stats": {"interceptions": 16, "xg_per_shot": 0.329}}]},
+            {"id": "match_comparisons", "value": [
+                {"metric_key": "goals_for", "current_match": 4, "season_average": 3.105,
+                 "difference_vs_season": 0.895},
+                {"metric_key": "passes", "current_match": 124, "last_five_average": 147.2,
+                 "difference_vs_last_five": -23.2},
+                {"metric_key": "interceptions", "current_match": 16,
+                 "last_five_average": 8.2, "difference_vs_last_five": 7.8}]},
+        ]}
+        valid_ids = {fact["id"] for fact in context["facts"]}
+        cases = (
+            ("O time teve 0,895 gols a mais do que a média da temporada (3,105 vs 4,0).",
+             ["match_comparisons"], "comparison_direction_conflict"),
+            ("O time sofreu 16 interceptações, aumento de 7,8 frente à média das últimas cinco partidas (8,2).",
+             ["matchstats", "match_comparisons"], "match_metric_ownership_conflict"),
+            ("O goleiro sofreu 2 gols, com xG adversário de 0,329 por chute.",
+             ["match", "matchstats"], "match_metric_ownership_conflict"),
+        )
+        for text, refs, expected_reason in cases:
+            with self.subTest(text=text):
+                reasons = []
+                self.assertFalse(_validate_report_item(context, "match", {
+                    "text": text, "kind": "fact", "limitations": "", "fact_refs": refs,
+                }, valid_ids, section="observations", rejection_reasons=reasons))
+                self.assertIn(expected_reason, reasons)
+        valid_reduction = {"text": "O time teve 124 passes, redução de 23,2 frente à média das últimas cinco partidas (147,2).",
+                           "kind": "fact", "limitations": "", "fact_refs": ["match_comparisons"]}
+        self.assertTrue(_validate_report_item(context, "match", valid_reduction, valid_ids,
+                                              section="observations"))
+        valid_opponent_xg = {"text": "O xG adversário foi de 0,481 por chute.",
+                             "kind": "fact", "limitations": "", "fact_refs": ["matchstats"]}
+        self.assertTrue(_validate_report_item(context, "match", valid_opponent_xg, valid_ids,
+                                              section="observations"))
 
     def test_match_recommendations_cannot_assign_work_to_an_opponent_player(self):
         context = {"mode": "match", "facts": [

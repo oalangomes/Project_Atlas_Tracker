@@ -30,7 +30,7 @@ METRIC_VERSION = 3
 REPORT_VERSION = 34
 MATCH_PLAYER_REPORT_CONTRACT = 8
 MATCH_CONTEXT_REPORT_CONTRACT = 1
-MATCH_REPORT_CONTRACT = 1
+MATCH_REPORT_CONTRACT = 2
 _MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
     r"\b(?:focar|foque|foco em|deve|devem|deveria|deveriam|precisa|precisam|"
     r"treinar|treine|priorizar|priorize|melhorar|melhore|evitar|aumentar|reduzir|"
@@ -2423,6 +2423,14 @@ def _report_item_numeric_conflict(context: dict[str, Any], item: dict[str, Any])
     for fact in context.get("facts", []):
         if fact.get("id") in cited:
             collect(fact.get("value"))
+            if fact.get("id") == "match_comparisons":
+                for comparison in fact.get("value") or []:
+                    if not isinstance(comparison, dict):
+                        continue
+                    for key in ("difference_vs_last_five", "difference_vs_season"):
+                        difference = _float(comparison.get(key))
+                        if difference is not None:
+                            allowed.append(abs(difference))
     if (context.get("mode") == "match_player" and "selected_match_player" in cited
             and re.search(r"\bpasses?\s+(?:perdidos?|errados?|incompletos?|misplaced|incomplete)\b",
                           str(item.get("text") or "").casefold())):
@@ -2583,6 +2591,8 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
         return reject("player_summary_metric_conflict")
     if mode in {"match", "match_player"} and _report_missing_metric_source_conflict(context, item):
         return reject("metric_source_missing")
+    if mode == "match" and _report_match_metric_ownership_conflict(context, item):
+        return reject("match_metric_ownership_conflict")
     if mode == "team_identity" and _report_unfounded_team_style_conflict(context, item):
         return reject("unfounded_team_style")
     if mode in {"match", "match_player"} and _report_uncompared_dominance_conflict(context, item):
@@ -2932,7 +2942,7 @@ def _report_missing_metric_source_conflict(context: dict[str, Any], item: dict[s
           "volume of chances", "oportunidades criadas", "chances created"), {"matchstats", "match_players", "selected_match_player", "player_matchstats", "match_comparisons", "pre_match_team_context", "pre_match_player_context"}),
         (("shot", "finaliza", "chute", "tiro", "shots"), {"matchstats", "match_players", "selected_match_player", "player_matchstats", "match_comparisons", "pre_match_team_context", "pre_match_player_context"}),
         (("pass", "passe", "circula", "circulation", "progressão", "progression", "criação"), {"matchstats", "match_players", "selected_match_player", "player_matchstats", "match_comparisons", "pre_match_team_context", "pre_match_player_context"}),
-        (("duel", "duelo", "duelos", "tackle", "desarme", "recuperaç", "recoveries", "interception", "interceptação"), {"matchstats", "match_players", "selected_match_player", "player_matchstats", "pre_match_team_context", "pre_match_player_context"}),
+        (("duel", "duelo", "duelos", "tackle", "desarme", "recuperaç", "recoveries", "interception", "interceptação", "interceptações"), {"matchstats", "match_players", "selected_match_player", "player_matchstats", "match_comparisons", "pre_match_team_context", "pre_match_player_context"}),
     )
     for terms, allowed in groups:
         if any(term in text for term in terms) and not (refs & allowed):
@@ -3026,16 +3036,18 @@ def _report_item_comparison_direction_conflict(context: dict[str, Any], mode: st
     if not isinstance(comparison_fact, list):
         return False
     text = str(item.get("text") or "").casefold()
-    lower_terms = ("abaixo da média", "inferior à média", "menor que a média", "lower than average", "below the average", "below average", "less than average", "por debajo de la media", "inferior a la media")
-    higher_terms = ("acima da média", "superior à média", "maior que a média", "higher than average", "above the average", "above average", "more than average", "por encima de la media", "superior a la media")
+    lower_terms = ("abaixo da média", "inferior à média", "menor que a média", "redução", "queda", "diminuição", "lower than average", "below the average", "below average", "less than average", "reduction", "decrease", "por debajo de la media", "inferior a la media")
+    higher_terms = ("acima da média", "superior à média", "maior que a média", "aumento", "elevação", "higher than average", "above the average", "above average", "more than average", "increase", "por encima de la media", "superior a la media")
     has_lower, has_higher = any(term in text for term in lower_terms), any(term in text for term in higher_terms)
     direction = "lower" if has_lower and not has_higher else "higher" if has_higher and not has_lower else None
     positive = bool(re.search(
         r"\b(?:melhoria|melhora|melhorou|improvement|improved|mejora|mejoró|mejoro)\b|"
+        r"\b(?:solidez defensiva|defesa mais sólida|defensive solidity)\b|"
         r"\b(?:desvio positivo|positive deviation|positive delta)\b", text))
     negative = bool(re.search(
         r"\b(?:piora|piorou|agravamento|worsened|deterioration|empeoró|empeoro)\b", text))
-    if direction is None and positive == negative:
+    has_pair = bool(re.search(r"\(\s*-?\d+(?:[.,]\d+)?\s+(?:vs\.?|versus)\s+-?\d+(?:[.,]\d+)?\s*\)", text))
+    if direction is None and positive == negative and not has_pair:
         return False
     reference_keys = []
     if any(term in text for term in ("últimas cinco", "últimos cinco", "last five", "últimas 5", "últimos 5")):
@@ -3048,10 +3060,13 @@ def _report_item_comparison_direction_conflict(context: dict[str, Any], mode: st
         (("finalizações no alvo", "chutes no alvo", "shots on target", "tiros a puerta"), "shots_on_target"),
         (("gols sofridos", "sofreu", "concedeu", "concedido", "conceded", "goals conceded",
           "goals against", "encajó"), "goals_against"),
+        (("xg", "gols esperados", "expected goals"), "expected_goals_derived"),
         (("gols marcados", "gols", "marcou", "goals scored", "scored"), "goals_for"),
         (("precisão de passe", "pass accuracy", "precisión de pase"), "pass_accuracy_pct_derived"),
+        (("passe", "passes", "pass volume", "volume de passes"), "passes"),
         (("finalizações", "chutes", "shots", "tiros"), "shots"),
-        (("xg", "gols esperados", "expected goals"), "expected_goals_derived"),
+        (("desarmes", "tackles", "entradas"), "tackles"),
+        (("interceptações", "interceptou", "interceptions", "interceptaciones"), "interceptions"),
     )
     metric_key = next((key for terms, key in metric_terms if any(term in text for term in terms)), None)
     if metric_key is None:
@@ -3070,12 +3085,44 @@ def _report_item_comparison_direction_conflict(context: dict[str, Any], mode: st
         reference = _float(comparison.get(reference_key))
         if reference is None:
             continue
+        # Parenthetical comparisons in the report use current match vs prior
+        # average. A reversed pair is misleading even if both values exist.
+        pair = re.search(r"\(\s*(-?\d+(?:[.,]\d+)?)\s+(?:vs\.?|versus)\s+(-?\d+(?:[.,]\d+)?)\s*\)", text)
+        if pair:
+            first = float(pair.group(1).replace(",", "."))
+            second = float(pair.group(2).replace(",", "."))
+            if (abs(first - reference) <= 0.051 and abs(second - current) <= 0.051
+                    and abs(current - reference) > 0.051):
+                return True
         if direction == "lower" and current >= reference or direction == "higher" and current <= reference:
             return True
         if positive != negative and favorable:
             improved = current < reference if favorable == "lower_is_favorable" else current > reference
             if (positive and not improved) or (negative and improved) or current == reference:
                 return True
+    return False
+
+
+def _report_match_metric_ownership_conflict(context: dict[str, Any], item: dict[str, Any]) -> bool:
+    """Reject claims that turn recorded actions into actions suffered by the team."""
+    text = str(item.get("text") or "").casefold()
+    if re.search(r"\b(?:time|equipe|team|equipo)\b.{0,35}\b(?:sofreu|recebeu|concedeu|suffered|conceded)\s+\d+\s+"
+                 r"(?:intercepta(?:ções|coes)|interceptions|intercepciones)\b", text):
+        return True
+    per_shot = re.search(
+        r"\b(?:xg\s+(?:adversário|adversario|contra|opponent)|opponent\s+xg)\s*(?:foi\s+de|de|of|was|:)?\s*"
+        r"(\d+(?:[.,]\d+)?)\s+(?:por\s+chute|per\s+shot)\b", text)
+    if per_shot:
+        facts = _report_fact_map(context)
+        opponent_id = (facts.get("match") or {}).get("opponent_ea_id")
+        if "matchstats" not in (item.get("fact_refs") or []):
+            return True
+        opponent = next((row for row in (facts.get("matchstats") or [])
+                         if row.get("team_ea_id") == opponent_id), None)
+        expected = _float((opponent or {}).get("stats", {}).get("xg_per_shot"))
+        claimed = float(per_shot.group(1).replace(",", "."))
+        if expected is None or abs(claimed - expected) > 0.001:
+            return True
     return False
 
 
