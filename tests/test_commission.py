@@ -334,8 +334,10 @@ class CommissionMetricTests(unittest.TestCase):
     def test_report_requires_causal_match_claims_to_be_labelled_as_hypotheses(self):
         context = {"mode": "match", "facts": [{"id": "matchstats", "value": {"npk_expected_goals": 3.1}}]}
         inference = {"text": "A natural consequence of Plymouth's 3.1 xG.", "kind": "inference", "limitations": "", "fact_refs": ["matchstats"]}
+        fact = {**inference, "kind": "fact"}
         hypothesis = {**inference, "kind": "hypothesis", "limitations": "The data cannot establish that the chances caused the score."}
         self.assertFalse(_validate_report_item(context, "match", inference, {"matchstats"}))
+        self.assertFalse(_validate_report_item(context, "match", fact, {"matchstats"}))
         self.assertTrue(_validate_report_item(context, "match", hypothesis, {"matchstats"}))
         tactical = {"text": "The Exeter defence was vulnerable to direct attacks.", "kind": "inference", "limitations": "", "fact_refs": ["matchstats"]}
         self.assertFalse(_validate_report_item(context, "match", tactical, {"matchstats"}))
@@ -439,6 +441,8 @@ class CommissionMetricTests(unittest.TestCase):
                 {"team_ea_id": 9, "team_name": "Liverpool", "stats": {"xg_per_shot": 0.481}},
                 {"team_ea_id": 1929, "team_name": "Plymouth Argyle",
                  "stats": {"interceptions": 16, "xg_per_shot": 0.329}}]},
+            {"id": "match_players", "value": [
+                {"name": "Conor Hazard", "team_ea_id": 1929, "observed_position": "GK"}]},
             {"id": "match_comparisons", "value": [
                 {"metric_key": "goals_for", "current_match": 4, "season_average": 3.105,
                  "difference_vs_season": 0.895},
@@ -455,6 +459,8 @@ class CommissionMetricTests(unittest.TestCase):
              ["matchstats", "match_comparisons"], "match_metric_ownership_conflict"),
             ("O goleiro sofreu 2 gols, com xG adversário de 0,329 por chute.",
              ["match", "matchstats"], "match_metric_ownership_conflict"),
+            ("Verificar se o goleiro Conor Hazard lidou bem com chances de xG mais baixo (0,329 por chute).",
+             ["matchstats"], "match_metric_ownership_conflict"),
         )
         for text, refs, expected_reason in cases:
             with self.subTest(text=text):

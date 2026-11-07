@@ -2571,7 +2571,7 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
         return reject("hypothesis_missing_limitations")
     folded = item["text"].casefold()
     causal_or_tactical_language = ("consequência natural", "natural consequence", "natural result of", "devido ao ritmo", "due to the tempo", "higher tempo", "ritmo mais alto", "pressão ofensiva", "intense attacking pressure", "presión ofensiva", "intensidade na circulação", "maintain intensity in circulation", "intensidad de circulación", "vulnerável a ataques diretos", "vulnerable to direct attacks", "vulnerable to direct attack")
-    if mode in {"match", "match_player"} and kind == "inference" and any(term in folded for term in causal_or_tactical_language):
+    if mode in {"match", "match_player"} and kind in {"fact", "inference"} and any(term in folded for term in causal_or_tactical_language):
         return reject("unsupported_causal_inference")
     if is_generic_claim(item["text"], section):
         return reject("generic_claim")
@@ -3112,9 +3112,19 @@ def _report_match_metric_ownership_conflict(context: dict[str, Any], item: dict[
     per_shot = re.search(
         r"\b(?:xg\s+(?:adversário|adversario|contra|opponent)|opponent\s+xg)\s*(?:foi\s+de|de|of|was|:)?\s*"
         r"(\d+(?:[.,]\d+)?)\s+(?:por\s+chute|per\s+shot)\b", text)
+    keeper = None
+    if per_shot is None and any(term in text for term in ("goleiro", "goalkeeper", "portero")):
+        players = _report_fact_map(context).get("match_players") or []
+        keeper = next((player for player in players if player.get("name")
+                       and str(player["name"]).casefold() in text
+                       and (player.get("observed_position") or player.get("registered_position")) == "GK"), None)
+        if keeper:
+            per_shot = re.search(r"\bxg\b.{0,60}?\b(\d+(?:[.,]\d+)?)\s+(?:por\s+chute|per\s+shot)\b", text)
     if per_shot:
         facts = _report_fact_map(context)
-        opponent_id = (facts.get("match") or {}).get("opponent_ea_id")
+        match = facts.get("match") or {}
+        opponent_id = (match.get("managed_team_ea_id") if keeper and keeper.get("team_ea_id") != match.get("managed_team_ea_id")
+                       else match.get("opponent_ea_id"))
         if "matchstats" not in (item.get("fact_refs") or []):
             return True
         opponent = next((row for row in (facts.get("matchstats") or [])
