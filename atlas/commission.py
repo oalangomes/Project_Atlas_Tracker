@@ -30,6 +30,7 @@ METRIC_VERSION = 3
 REPORT_VERSION = 34
 MATCH_PLAYER_REPORT_CONTRACT = 8
 MATCH_CONTEXT_REPORT_CONTRACT = 1
+MATCH_REPORT_CONTRACT = 1
 _MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
     r"\b(?:focar|foque|foco em|deve|devem|deveria|deveriam|precisa|precisam|"
     r"treinar|treine|priorizar|priorize|melhorar|melhore|evitar|aumentar|reduzir|"
@@ -1417,6 +1418,8 @@ def _report_source_hash(context: dict[str, Any], career_id: int, mode: str, scop
         stable["mode_contract_version"] = MATCH_PLAYER_REPORT_CONTRACT
     if mode in {"match", "match_player", "next_match"}:
         stable["match_context_contract_version"] = MATCH_CONTEXT_REPORT_CONTRACT
+    if mode == "match":
+        stable["match_report_contract_version"] = MATCH_REPORT_CONTRACT
     return hashlib.sha256(json.dumps(stable, ensure_ascii=False, sort_keys=True, default=str).encode()).hexdigest()
 
 
@@ -2056,6 +2059,42 @@ def _competitive_match_observation(context: dict[str, Any]) -> dict[str, Any] | 
         limitations = "Contexto do último snapshot anterior; overall é média do elenco disponível, não do XI."
     return {"text": text, "kind": "fact", "limitations": limitations,
             "fact_refs": ["pre_match_competitive_context"], "model_generated": False}
+
+
+def _conceded_goals_baseline_observation(context: dict[str, Any]) -> dict[str, Any] | None:
+    """Preserve a clear defensive decline when goals conceded exceed usable baselines."""
+    facts = _report_fact_map(context)
+    match = facts.get("match") or {}
+    rows = facts.get("match_comparisons") or []
+    comparison = next((row for row in rows if row.get("metric_key") == "goals_against"), None)
+    if not comparison or match.get("opponent_score") is None:
+        return None
+    current = _float(comparison.get("current_match"))
+    if current is None or current != _float(match.get("opponent_score")):
+        return None
+    samples = comparison.get("reference_samples") or {}
+    refs = []
+    for key, sample_key in (("last_five_average", "last_five"), ("season_average", "season")):
+        baseline = _float(comparison.get(key))
+        if baseline is not None and current > baseline and int(samples.get(sample_key) or 0) >= 3:
+            refs.append((key, baseline))
+    if not refs:
+        return None
+    language = str(context.get("language") or "pt-BR")
+    conceded = _fact_number(current, language, 0)
+    labels = {"pt-BR": ("últimas cinco partidas", "temporada"),
+              "en-GB": ("last five matches", "season"),
+              "es-ES": ("últimos cinco partidos", "temporada")}.get(language, ("últimas cinco partidas", "temporada"))
+    comparisons = [f"{_fact_number(value, language, 2)} ({labels[0 if key == 'last_five_average' else 1]})"
+                   for key, value in refs]
+    if language == "en-GB":
+        text = f"The team conceded {conceded} goals, above its prior average of {' and '.join(comparisons)}. This was a defensive decline against those baselines."
+    elif language == "es-ES":
+        text = f"El equipo encajó {conceded} goles, por encima de la media previa de {' y '.join(comparisons)}. Fue un retroceso defensivo frente a esas referencias."
+    else:
+        text = f"A equipe sofreu {conceded} gols, acima da média anterior de {' e '.join(comparisons)}. Foi uma piora defensiva frente a essas referências."
+    return {"text": text, "kind": "inference", "limitations": "Comparação somente com partidas anteriores registradas.",
+            "fact_refs": ["match", "match_comparisons"], "model_generated": False}
 
 
 def _deterministic_match_player_report(context: dict[str, Any],
@@ -2979,12 +3018,11 @@ def _report_unavailable_metric_recommendation_conflict(context: dict[str, Any], 
 
 
 def _report_item_comparison_direction_conflict(context: dict[str, Any], mode: str, item: dict[str, Any]) -> bool:
-    """Check explicit up/down claims against Atlas-computed same-metric comparisons."""
+    """Check up/down and improvement claims against same-metric comparisons."""
     if mode != "match":
         return False
-    cited = set(item.get("fact_refs") or [])
     comparison_fact = next((fact.get("value") for fact in context.get("facts", [])
-                            if fact.get("id") == "match_comparisons" and fact.get("id") in cited), None)
+                            if fact.get("id") == "match_comparisons"), None)
     if not isinstance(comparison_fact, list):
         return False
     text = str(item.get("text") or "").casefold()
@@ -2992,17 +3030,24 @@ def _report_item_comparison_direction_conflict(context: dict[str, Any], mode: st
     higher_terms = ("acima da média", "superior à média", "maior que a média", "higher than average", "above the average", "above average", "more than average", "por encima de la media", "superior a la media")
     has_lower, has_higher = any(term in text for term in lower_terms), any(term in text for term in higher_terms)
     direction = "lower" if has_lower and not has_higher else "higher" if has_higher and not has_lower else None
-    if direction is None:
+    positive = bool(re.search(
+        r"\b(?:melhoria|melhora|melhorou|improvement|improved|mejora|mejoró|mejoro)\b|"
+        r"\b(?:desvio positivo|positive deviation|positive delta)\b", text))
+    negative = bool(re.search(
+        r"\b(?:piora|piorou|agravamento|worsened|deterioration|empeoró|empeoro)\b", text))
+    if direction is None and positive == negative:
         return False
+    reference_keys = []
     if any(term in text for term in ("últimas cinco", "últimos cinco", "last five", "últimas 5", "últimos 5")):
-        reference_key = "last_five_average"
-    elif any(term in text for term in ("temporada", "season", "temporada")):
-        reference_key = "season_average"
-    else:
+        reference_keys.append("last_five_average")
+    if any(term in text for term in ("temporada", "season")):
+        reference_keys.append("season_average")
+    if not reference_keys:
         return False
     metric_terms = (
         (("finalizações no alvo", "chutes no alvo", "shots on target", "tiros a puerta"), "shots_on_target"),
-        (("gols sofridos", "sofreu", "goals conceded", "goals against", "encajó"), "goals_against"),
+        (("gols sofridos", "sofreu", "concedeu", "concedido", "conceded", "goals conceded",
+          "goals against", "encajó"), "goals_against"),
         (("gols marcados", "gols", "marcou", "goals scored", "scored"), "goals_for"),
         (("precisão de passe", "pass accuracy", "precisión de pase"), "pass_accuracy_pct_derived"),
         (("finalizações", "chutes", "shots", "tiros"), "shots"),
@@ -3014,12 +3059,24 @@ def _report_item_comparison_direction_conflict(context: dict[str, Any], mode: st
     comparison = next((row for row in comparison_fact if row.get("metric_key") == metric_key), None)
     if not comparison:
         return False
-    current, reference = _float(comparison.get("current_match")), _float(comparison.get(reference_key))
-    if current is None or reference is None:
+    current = _float(comparison.get("current_match"))
+    if current is None:
         return False
-    if metric_key == "goals_against" and any(term in text for term in ("desvio positivo", "positive deviation", "positive delta", "desvio favorable", "favorable deviation")):
-        return current > reference
-    return current >= reference if direction == "lower" else current <= reference
+    favorable = comparison.get("interpretation_direction")
+    if favorable not in {"lower_is_favorable", "higher_is_favorable", "higher_is_more_accurate"}:
+        favorable = ("lower_is_favorable" if metric_key == "goals_against" else
+                     "higher_is_favorable" if metric_key == "goals_for" else None)
+    for reference_key in reference_keys:
+        reference = _float(comparison.get(reference_key))
+        if reference is None:
+            continue
+        if direction == "lower" and current >= reference or direction == "higher" and current <= reference:
+            return True
+        if positive != negative and favorable:
+            improved = current < reference if favorable == "lower_is_favorable" else current > reference
+            if (positive and not improved) or (negative and improved) or current == reference:
+                return True
+    return False
 
 
 def _report_coverage(context: dict[str, Any]) -> dict[str, Any]:
@@ -3351,6 +3408,16 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                                                                   section="observations"):
                     report["observations"] = [standout, *report["observations"]][:4]
         if mode == "match":
+            defensive_item = _conceded_goals_baseline_observation(context)
+            defense_covered = any(
+                any(term in str(item.get("text") or "").casefold()
+                    for term in ("gols sofridos", "sofreu", "concedeu", "goals conceded", "conceded", "encajó"))
+                and any(term in str(item.get("text") or "").casefold()
+                        for term in ("piora", "acima da média", "defensive decline", "above its prior average", "retroceso"))
+                for item in [report["summary"], *report["observations"]])
+            if defensive_item and not defense_covered and _validate_report_item(
+                    context, mode, defensive_item, valid_ids, section="observations"):
+                report["observations"] = [defensive_item, *report["observations"]][:8]
             competitive_item = _competitive_match_observation(context)
             covered = any(
                 "pre_match_competitive_context" in item.get("fact_refs", [])

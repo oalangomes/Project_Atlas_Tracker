@@ -18,7 +18,8 @@ from atlas.commission import (analyze_players, assess_sample, get_commission, ge
                               _historical_report_tasks, _ensure_replay_schema,
                               _run_retroactive_commission_reports_guarded,
                               run_retroactive_commission_reports, get_retroactive_commission_report_job,
-                              REPORT_VERSION)
+                              _conceded_goals_baseline_observation,
+                              _report_source_hash, REPORT_VERSION)
 
 
 class _ReplayTestDatabase:
@@ -351,6 +352,81 @@ class CommissionMetricTests(unittest.TestCase):
         self.assertFalse(_validate_report_item(context, "match", wrong, refs))
         self.assertTrue(_validate_report_item(context, "match", correct, refs))
         self.assertFalse(_validate_report_item(context, "match", positive_goals_against, refs))
+
+    def test_conceding_two_above_both_baselines_is_not_an_improvement(self):
+        context = {"mode": "match", "managed_team": "Plymouth Argyle", "facts": [
+            {"id": "match", "value": {"managed_team_side": "home", "home": "Plymouth Argyle",
+                                      "away": "Everton", "managed_score": 3, "opponent_score": 2,
+                                      "score": [3, 2]}},
+            {"id": "match_comparisons", "value": [{"metric_key": "goals_against",
+                "current_match": 2, "last_five_average": 0.4, "season_average": 0.63,
+                "interpretation_direction": "lower_is_favorable",
+                "reference_samples": {"last_five": 5, "season": 12}}]},
+            {"id": "pre_match_team_context", "value": {
+                "last_five_reference": {"goals_against_per_match": 0.4},
+                "season_to_date_reference": {"goals_against_per_match": 0.63}}},
+        ]}
+        refs = {"match", "match_comparisons", "pre_match_team_context"}
+        for text in (
+            "A equipe concedeu dois gols, uma melhoria substancial em relação à média das últimas cinco partidas (0.4) e da temporada (0.63).",
+            "Plymouth sofreu 2 gols, uma melhora em relação à média das últimas cinco partidas de 0,4.",
+            "Plymouth conceded 2 goals, a substantial improvement over the season average of 0.63.",
+        ):
+            with self.subTest(text=text):
+                item = {"text": text, "kind": "inference", "limitations": "",
+                        "fact_refs": ["match", "match_comparisons"]}
+                reasons = []
+                self.assertFalse(_validate_report_item(context, "match", item, refs,
+                                                        section="observations", rejection_reasons=reasons))
+                self.assertIn("comparison_direction_conflict", reasons)
+        alternate_refs = {"text": "A equipe concedeu dois gols, uma melhoria substancial em relação à média das últimas cinco partidas (0.4) e da temporada (0.63).",
+                          "kind": "inference", "limitations": "",
+                          "fact_refs": ["match", "pre_match_team_context"]}
+        reasons = []
+        self.assertFalse(_validate_report_item(context, "match", alternate_refs, refs,
+                                                section="observations", rejection_reasons=reasons))
+        self.assertIn("comparison_direction_conflict", reasons)
+        correction = _conceded_goals_baseline_observation(context)
+        self.assertIn("Foi uma piora defensiva", correction["text"])
+        self.assertTrue(_validate_report_item(context, "match", correction, refs,
+                                              section="observations"))
+        correct = {"text": "Plymouth sofreu 2 gols, uma piora frente à média de 0,4 das últimas cinco partidas.",
+                   "kind": "inference", "limitations": "", "fact_refs": ["match", "match_comparisons"]}
+        self.assertTrue(_validate_report_item(context, "match", correct, refs,
+                                              section="observations"))
+        output = {"summary": {"text": "Plymouth Argyle venceu Everton por 3–2.",
+                              "kind": "fact", "limitations": "", "fact_refs": ["match"]},
+                  "observations": [alternate_refs], "recommendations": [], "strengths": [],
+                  "development_areas": [], "training_suggestions": [],
+                  "information_requests": [], "formation": None}
+        response = io.BytesIO(json.dumps({"message": {"content": json.dumps(output)}}).encode())
+        with sqlite3.connect(":memory:") as cache, \
+             patch("atlas.commission._briefing_facts", return_value=(
+                 context, [fact["id"] for fact in context["facts"]], "fixture:20")), \
+             patch("atlas.commission.ollama_models", return_value={"available": True, "models": ["local"]}), \
+             patch("atlas.commission.urllib.request.urlopen", return_value=response):
+            generated = get_commission_report(cache, 1, 1, "match", fixture_id=20, model="local")
+        self.assertTrue(any("Foi uma piora defensiva" in item["text"]
+                            for item in generated["report"]["observations"]))
+        self.assertFalse(any("melhoria substancial" in item["text"]
+                             for item in generated["report"]["observations"]))
+        context["facts"][0]["value"].update({"opponent_score": 0, "score": [3, 0]})
+        context["facts"][1]["value"][0]["current_match"] = 0
+        real_improvement = {"text": "Plymouth sofreu 0 gols, uma melhoria frente à média de 0,4 das últimas cinco partidas.",
+                            "kind": "inference", "limitations": "",
+                            "fact_refs": ["match", "match_comparisons"]}
+        self.assertTrue(_validate_report_item(context, "match", real_improvement, refs,
+                                              section="observations"))
+
+    def test_match_report_contract_refreshes_only_match_cache(self):
+        match = {"mode": "match", "season_index": 1, "language": "pt-BR", "facts": []}
+        player = {**match, "mode": "match_player"}
+        before_match = _report_source_hash(match, 1, "match", "fixture:20")
+        before_player = _report_source_hash(player, 1, "match_player", "fixture:20:player:1")
+        with patch("atlas.commission.MATCH_REPORT_CONTRACT", 2):
+            self.assertNotEqual(before_match, _report_source_hash(match, 1, "match", "fixture:20"))
+            self.assertEqual(before_player, _report_source_hash(
+                player, 1, "match_player", "fixture:20:player:1"))
 
     def test_match_recommendations_cannot_assign_work_to_an_opponent_player(self):
         context = {"mode": "match", "facts": [

@@ -296,6 +296,8 @@ _MODE_RULES: dict[str, str] = {
         "Use match_comparisons only for the managed team's current-versus-prior differences, "
         "respect reference_samples and interpretation_direction. The historical 'against' "
         "baseline is pooled across earlier opponents, NOT a trend for the current named opponent. "
+        "Conceding more goals than the prior average is a defensive deterioration, never an improvement, "
+        "even when the team wins; check every cited reference period before praising a change. "
         "Use pre_match_competitive_context to qualify fixture difficulty only when its "
         "prior-snapshot division or current-save squad averages are available. The overall "
         "mean is an available-roster reference, not the starting XI or match performance. "

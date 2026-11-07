@@ -17,7 +17,7 @@ _NUMBER_WORDS = {
 _NUMBER = r"(?:\d{1,2}|" + "|".join(sorted(_NUMBER_WORDS, key=len, reverse=True)) + r")"
 _GOALS = r"(?:gols?|goals?|goles?)"
 _SCORED = r"(?:marcou|marcaram|marcado|marc[oó]|anotou|anot[oó]|fez|fizeram|scored|score|netted|hizo|hicieron)"
-_CONCEDED = r"(?:sofreu|sofreram|sofrido|concedido|conceded|concede|allowed|encaj[oó]|encajaron|recibi[oó]|recibieron)"
+_CONCEDED = r"(?:sofreu|sofreram|sofrido|concedeu|concedido|conceded|concede|allowed|encaj[oó]|encajaron|recibi[oó]|recibieron)"
 _ACTION = rf"(?P<action>{_SCORED}|{_CONCEDED})"
 _FILLER = r"(?:\s+(?:que|who|that|ha|had|has|have|tem|ter|tinha|tambem|also|ja|ya)){0,3}"
 
@@ -93,9 +93,11 @@ def score_claim_bindings(context: dict[str, Any], item: dict[str, Any]) -> tuple
     text = _fold(item.get("text"))
     refs = set(item.get("fact_refs") or [])
     aliases = _aliases(match, selected)
-    if (context.get("mode") == "match_player" and match.get("managed_team_side") in {"home", "away"}
-            and selected.get("team_ea_id") is not None and match.get("managed_team_ea_id") is not None
-            and str(selected["team_ea_id"]) == str(match["managed_team_ea_id"])):
+    selected_is_managed = (selected.get("team_ea_id") is not None
+                           and match.get("managed_team_ea_id") is not None
+                           and str(selected["team_ea_id"]) == str(match["managed_team_ea_id"]))
+    if (match.get("managed_team_side") in {"home", "away"}
+            and (context.get("mode") == "match" or context.get("mode") == "match_player" and selected_is_managed)):
         for alias in ("a equipe", "o time", "equipe", "time", "the team", "team", "el equipo", "equipo"):
             aliases[alias] = match["managed_team_side"]
     if not aliases:
