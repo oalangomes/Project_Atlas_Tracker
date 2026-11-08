@@ -47,3 +47,22 @@ AutoCapture is now v1.1.4 internally; embedded and standalone MatchStats obtain
 new handler IDs from `GetEventHandlers`, normalize them with `math.tointeger`,
 and remove only those integer IDs. The follow-up source-contract tests check this
 contract. They do not execute Live Editor or FC26.
+
+## Follow-up: 2026-11-08 capture and intermittent ReadShort error
+
+At 00:34:47 local, MatchStats v1.1.1 completed and published capture
+`pmc_20261108_001137_d21e36d0` with 30 participants, two team rows and zero
+errors. The Atlas importer accepted it as export ID 21 but left it `ambiguous`
+because the latest snapshot (ID 57, made at 00:11 before the match) has only 22
+completed managed-team fixtures. At 00:34:53 the monitor logged
+`post_match_export_suppressed_hotfix`; this is the deliberate safety hold, not
+an export exception. After the career is saved, rerun AutoCapture from the stable
+Career Hub to create a new startup snapshot. The Atlas watcher will then retry
+linking pending MatchStats exports. No game script was run during this audit.
+
+A separate `fixture_check_failed` was logged at 19:02:20 on 2026-11-06:
+Live Editor's `MEMORY:ReadShort` wrapper tried to call the global `ReadShort`,
+which had become a number. The writer of that global is unidentified. AutoCapture
+v1.1.5 captures the native function at startup and uses that binding for fixture
+checks and its embedded snapshot. This mitigates a later global reassignment;
+the source-contract tests do not establish native runtime behavior.

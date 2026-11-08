@@ -17,12 +17,21 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
 
     def test_hotfix_suppresses_sync_postmatch_snapshot_and_rearm(self):
         source = self.autocapture
-        self.assertIn("local VERSION = \"1.1.4\"", source)
+        self.assertIn("local VERSION = \"1.1.5\"", source)
         self.assertIn("state.post_match_export_suppressed = true", source)
         self.assertIn("if state.post_match_export_suppressed then return end", source)
         self.assertIn("auto_capture_state.post_match_candidate_finalized = true", source)
         self.assertIn('suppress_post_match_auto_export(state.last_count,', source)
         self.assertIn("not existing.post_match_export_suppressed then", source)
+
+    def test_read_short_binding_survives_global_reassignment(self):
+        source = self.autocapture
+        binding = source.index("local native_read_short = ReadShort")
+        wrapper = source.index("function MEMORY:ReadShort(addr)")
+        embedded_snapshot = source.index("local EMBEDDED_EXPORTER_SOURCE = [====[")
+        self.assertLess(binding, wrapper)
+        self.assertLess(wrapper, embedded_snapshot)
+        self.assertIn("return native_read_short(addr)", source[binding:embedded_snapshot])
 
         start = source.index("local function check_for_new_completed_match()")
         end = source.index("function FC26ExportAutoCapture_PostCareerModeEvent", start)

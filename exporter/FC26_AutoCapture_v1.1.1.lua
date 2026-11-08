@@ -1,4 +1,4 @@
--- FC26 AutoCapture v1.1.4 hotfix
+-- FC26 AutoCapture v1.1.5 hotfix
 -- Single-file career monitor with full snapshot + detailed MatchStats exporters embedded.
 -- Run once after loading a career. This hotfix creates a startup snapshot and arms
 -- MatchStats. After a completed match it publishes MatchStats, then pauses automatic
@@ -6,13 +6,21 @@
 -- Read-only: game database and memory are only read; no game data is modified.
 
 local MEMORY = require 'imports/core/memory'
+-- Live Editor's MEMORY:ReadShort wrapper looks up the mutable global ReadShort
+-- on every call. Preserve its native function before other Lua code can replace
+-- that global during a long-running career session.
+local native_read_short = ReadShort
+assert(type(native_read_short) == 'function', 'Live Editor ReadShort API is unavailable')
+function MEMORY:ReadShort(addr)
+    return native_read_short(addr)
+end
 require 'imports/other/helpers'
 require 'imports/services/enums'
 require 'imports/career_mode/helpers'
 
 assert(IsInCM(), "FC26 AutoCapture must be executed while a career is loaded")
 
-local VERSION = "1.1.4"
+local VERSION = "1.1.5"
 local EMBEDDED_EXPORTER_VERSION = "1.1.0"
 local EMBEDDED_MATCH_STATS_VERSION = "1.1.1"
 local STATE_KEY = "FC26_EXPORT_AUTO_CAPTURE_STATE"
