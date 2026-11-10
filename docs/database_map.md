@@ -56,6 +56,19 @@ Installation-scoped key/value settings used by the server.
 - `groq` → `llama-3.1-8b-instant`, with fallback through
   `llama-3.3-70b-versatile` → `openai/gpt-oss-20b`.
 
+## Cross-provider failover
+- The provider saved in `llm_config.provider` is always tried first.
+- If it is out of quota, unreachable, or returns unusable JSON, the same report is
+  retried with the other cloud provider **when that key is saved**. Ollama is never
+  used as a failover target, so a cloud outage never loads the local GPU.
+- The report stores and displays the model that actually answered, and the stored
+  payload includes `provider_note` when a switch happened. `llm_config.provider`
+  is never rewritten, so the next report starts from the configured provider again.
+- The total deadline is shared: every backup provider keeps at least five seconds
+  of the remaining budget, so a stalled primary cannot consume the whole window.
+- Cached reports are provider-agnostic: switching provider reuses the existing
+  report (labelled with its original model) instead of regenerating it.
+
 ## Runtime limits for AI reports
 - `ATLAS_CLOUD_REPORT_DEADLINE_SECONDS` (default `100`): hard cap for one cloud
   report, covering the whole model-fallback chain. When the budget runs out the
