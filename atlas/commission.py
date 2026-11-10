@@ -3297,8 +3297,9 @@ def _cooldown_label() -> str:
 
 
 def _cloud_report_payload(provider: str, api_key: str, model: str, system: str,
-                          prompt_text: str, schema: dict[str, Any], _timeout: float) -> dict[str, Any]:
-    """Call Gemini or Groq in JSON mode and return the parsed report object.
+                          prompt_text: str, schema: dict[str, Any], _timeout: float,
+                          deadline: float | None = None) -> tuple[dict[str, Any], str]:
+    """Call Gemini or Groq in JSON mode and return (report, model that answered).
 
     Every report has a hard total deadline: cloud aliases rotate quickly and free tiers
     throttle, so the fallback chain must give up fast instead of queueing for minutes.
@@ -3307,7 +3308,8 @@ def _cloud_report_payload(provider: str, api_key: str, model: str, system: str,
     budget, attempt_budget = _cloud_budget()
     # Cloud reports use their own budget; the Ollama timeout must not shrink it.
     budget = max(10.0, budget)
-    deadline = time.monotonic() + budget
+    started = time.monotonic()
+    deadline = deadline if deadline is not None else started + budget
     schema_hint = (" Respond with a single valid JSON object and nothing else. "
                    "It must follow this JSON Schema: " + json.dumps(schema, ensure_ascii=False))
 
@@ -3402,17 +3404,76 @@ def _cloud_report_payload(provider: str, api_key: str, model: str, system: str,
             last_error = f"{candidate}: resposta vazia"
             continue
         try:
-            return _extract_json_object(text_out)
+            return _extract_json_object(text_out), candidate
         except ValueError:
             last_error = f"{candidate}: JSON inválido"
             continue
 
+    window = int(max(5.0, deadline - started))
     if remaining() <= 2.0:
-        raise ValueError(f"{provider_label} excedeu o prazo de {int(budget)}s ({last_error}).")
+        raise ValueError(f"{provider_label} excedeu o prazo de {window}s ({last_error}).")
     if "429" in last_error:
         raise ValueError(f"{provider_label} sem quota disponível agora ({last_error}). "
                          f"Próxima tentativa em {_cooldown_label()}.")
     raise ValueError(f"{provider_label} não respondeu ({last_error}).")
+
+
+CLOUD_PROVIDER_ORDER = ("gemini", "groq")
+CLOUD_PROVIDER_LABELS = {"gemini": "Gemini", "groq": "Groq"}
+
+
+def _cloud_provider_plan(conn: Any, provider: str, model: str,
+                         api_key: str) -> list[tuple[str, str, str]]:
+    """Configured provider first, then any other cloud provider with a saved key.
+
+    Failover never changes the saved configuration: it only gives the current report
+    a second chance when the primary provider is out of quota or unreachable. Ollama
+    is intentionally excluded so a cloud outage never quietly loads the local GPU.
+    """
+    if provider not in CLOUD_PROVIDER_ORDER:
+        return [(provider, model, api_key)]
+    plan = [(provider, model, api_key)]
+    config = read_llm_config(conn)
+    for name in CLOUD_PROVIDER_ORDER:
+        if name == provider:
+            continue
+        key = str(config["keys"].get(name) or "")
+        if key:
+            plan.append((name, CLOUD_DEFAULT_MODELS[name], key))
+    return plan
+
+
+def _cloud_report_with_failover(plan: list[tuple[str, str, str]], system: str,
+                                prompt_text: str, schema: dict[str, Any],
+                                timeout: float) -> tuple[dict[str, Any], str, str]:
+    """Try each provider in order and return (report, provider, model) of the winner.
+
+    Time is reserved for the fallback provider so a primary that stalls on network
+    errors cannot consume the whole deadline before the other provider is tried.
+    """
+    budget, _ = _cloud_budget()
+    end = time.monotonic() + max(10.0, budget)
+    errors: list[str] = []
+    for index, (provider, model, api_key) in enumerate(plan):
+        left = end - time.monotonic()
+        if left <= 2.0:
+            break
+        share = left if index == len(plan) - 1 else max(15.0, left / (len(plan) - index))
+        try:
+            report, used_model = _cloud_report_payload(
+                provider, api_key, model, system, prompt_text, schema, timeout,
+                deadline=min(end, time.monotonic() + share))
+            return report, provider, used_model
+        except ValueError as exc:
+            errors.append(str(exc))
+    raise ValueError(" | ".join(errors) or "sem resposta")
+
+
+def _provider_failover_note(primary: str, used: str, model: str) -> str:
+    """Short user-facing note when a report came from the backup provider."""
+    primary_label = CLOUD_PROVIDER_LABELS.get(primary, primary)
+    used_label = CLOUD_PROVIDER_LABELS.get(used, used)
+    return f"{primary_label} indisponível; análise gerada por {used_label} ({model})."
 
 
 def _payload_version_ok(payload_json: Any) -> bool:
@@ -3643,6 +3704,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
     if mode == "match_player":
         _apply_match_player_fact_contract(response_schema, claim_schema)
     prompt_text = json.dumps(prompt_evidence(context), ensure_ascii=False, sort_keys=True)
+    failover_note = ""
     try:
         timeout = min(300.0, max(20.0, float(os.environ.get("ATLAS_OLLAMA_TIMEOUT_SECONDS", "240"))))
         if provider == "ollama":
@@ -3658,8 +3720,14 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                     raw = json.loads(response.read().decode("utf-8"))
             report = json.loads(raw.get("message", {}).get("content", "{}"))
         else:
-            report = _cloud_report_payload(provider, api_key, selected, system, prompt_text,
-                                           response_schema, timeout)
+            primary_provider = provider
+            report, used_provider, used_model = _cloud_report_with_failover(
+                _cloud_provider_plan(conn, provider, selected, api_key),
+                system, prompt_text, response_schema, timeout)
+            selected = used_model
+            provider = used_provider
+            if used_provider != primary_provider:
+                failover_note = _provider_failover_note(primary_provider, used_provider, used_model)
         if not isinstance(report, dict):
             raise ValueError("schema inválido")
         requests = []
@@ -3824,6 +3892,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                   "source_hash": source_hash, "report_version": REPORT_VERSION,
                   "coverage": _report_coverage(context), "validation": validation,
                   "review_required": rejected_claims > 0}
+        if failover_note:
+            result["provider_note"] = failover_note
         conn.execute("""INSERT INTO technical_commission_report_cache(career_id,snapshot_id,mode,scope_key,model,source_hash,payload_json)
             VALUES(?,?,?,?,?,?,?) ON CONFLICT(career_id,snapshot_id,mode,scope_key,model) DO UPDATE SET
             source_hash=excluded.source_hash,payload_json=excluded.payload_json,generated_at=CURRENT_TIMESTAMP""",
