@@ -3458,7 +3458,11 @@ def _cloud_report_with_failover(plan: list[tuple[str, str, str]], system: str,
         left = end - time.monotonic()
         if left <= 2.0:
             break
-        share = left if index == len(plan) - 1 else max(15.0, left / (len(plan) - index))
+        backups = len(plan) - index - 1
+        share = left if not backups else max(5.0, left / (backups + 1))
+        if backups:
+            # Always leave at least five seconds per remaining provider.
+            share = min(share, max(5.0, left - 5.0 * backups))
         try:
             report, used_model = _cloud_report_payload(
                 provider, api_key, model, system, prompt_text, schema, timeout,
