@@ -134,6 +134,8 @@ interface AtlasState {
   manualDraftCompetitionId: number | null;
   manualQuickEntry: boolean;
   pendingLiveRender: boolean;
+  llmProvider: string;
+  llmKeys: Record<string, string>;
 }
 
 interface TableHeader { label: string; cls?: string; sortable?: boolean; }

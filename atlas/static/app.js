@@ -13,15 +13,25 @@ const state = {
     compareFrom: null, compareTo: null,
     competitionTab: "results", chronologyType: "all", chronologyQuery: "", loanScope: "club", transferScope: "club",
     movementSeasonIndex: null, movementEditKind: null, movementEditId: null,
-    analysisSeasonIndex: null, recordsSeasonIndex: -1, seasonReportSeasonIndex: null, seasonReportTab: "overview", analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
+    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "overview", analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
     mediaType: "all", mediaStatus: "all", mediaSources: null,
     manualSeasonId: null, manualTab: "competitions", manualEditKind: null, manualEditId: null, manualDraftCompetitionId: null, manualQuickEntry: false,
     pendingLiveRender: false,
+    llmProvider: "ollama", llmKeys: {},
 };
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 const content = $("#content");
 const toastEl = $("#toast");
+function toast(message) {
+    if (!toastEl)
+        return;
+    toastEl.textContent = message;
+    toastEl.classList.add("visible");
+    setTimeout(() => {
+        toastEl.classList.remove("visible");
+    }, 3000);
+}
 const careerSelect = $("#careerSelect");
 const snapshotSelect = $("#snapshotSelect");
 const searchPalette = $("#searchPalette");
@@ -62,11 +72,11 @@ function applyIcons(root = document) {
 const ATLAS_TEXT = {
     "pt-BR": { navOverview: "Visão geral", navChronology: "Linha do tempo", navManual: "Dados históricos", navMatches: "Central de partidas", navSchedule: "Calendário", navResults: "Resultados", navCompetitions: "Competições", navSquad: "Elenco", navContracts: "Contratos", navTransfers: "Transferências", navLoans: "Empréstimos", navYouth: "Base FC26", navCommission: "Comissão técnica", navAnalysis: "Análises", navRecords: "Recordes", navSeasonReport: "Relatório da temporada", navCompare: "Comparar snapshots", navSnapshots: "Snapshots", navImports: "Importações", navMedia: "Biblioteca de mídia", navSetup: "Configurações", crumbOverview: "Visão geral", crumbCommission: "Comissão técnica", crumbAnalysis: "Análises", crumbMatches: "Partidas", crumbMatch: "Partida", crumbSquad: "Elenco", crumbPlayer: "Perfil do jogador", crumbSetup: "Configurações", setupLanguage: "Idioma do Atlas", setupLanguageHelp: "Define o idioma da interface principal e das análises da Comissão Técnica.", saveLanguage: "Salvar idioma", languageSaved: "Idioma do Atlas atualizado.", commissionNote: "Nota da comissão", claimFact: "Fato observado", claimInference: "Inferência baseada em evidências", claimHypothesis: "Hipótese esportiva", claimLimit: "Limite da evidência", claimsFiltered: "Afirmações filtradas", interpretationNotScored: "Qualidade interpretativa não avaliada independentemente", reportOnDemand: "Análises sob demanda", generateReport: "Gerar análise", retroTitle: "Analisar histórico da carreira", retroHelp: "Gera relatórios da temporada selecionada em ordem cronológica. Atualiza partidas, jogadores e avaliações acumuladas; retoma após interrupções e sinaliza dados ausentes.", retroStart: "Gerar análises históricas", retroResume: "Retomar análises históricas", retroWorking: "Processando análises históricas", retroPaused: "Pausado: Ollama indisponível. O progresso foi salvo; clique em retomar.", retroFailed: "Concluído com falhas ou dados ausentes", retroDone: "Análises históricas concluídas", retroBackup: "Backup criado antes da geração" },
     "en-GB": { navOverview: "Overview", navChronology: "Career timeline", navManual: "Historical data", navMatches: "Match Centre", navSchedule: "Schedule", navResults: "Results", navCompetitions: "Competitions", navSquad: "Squad", navContracts: "Contracts", navTransfers: "Transfer history", navLoans: "Loans", navYouth: "FC26 youth", navCommission: "Technical commission", navAnalysis: "Analysis", navRecords: "Records", navSeasonReport: "Season report", navCompare: "Snapshot comparison", navSnapshots: "Snapshots", navImports: "Imports", navMedia: "Media library", navSetup: "Settings", crumbOverview: "Overview", crumbCommission: "Technical commission", crumbAnalysis: "Analysis", crumbMatches: "Matches", crumbMatch: "Match", crumbSquad: "Squad", crumbPlayer: "Player profile", crumbSetup: "Settings", setupLanguage: "Atlas language", setupLanguageHelp: "Sets the main interface and Technical Commission analysis language.", saveLanguage: "Save language", languageSaved: "Atlas language updated.", commissionNote: "Commission note", claimFact: "Observed fact", claimInference: "Evidence-based inference", claimHypothesis: "Sports hypothesis", claimLimit: "Evidence limitation", claimsFiltered: "Claims filtered", interpretationNotScored: "Interpretation quality not independently scored", reportOnDemand: "On-demand analysis", generateReport: "Generate analysis", retroTitle: "Analyse career history", retroHelp: "Generate reports for the selected season in chronological order. Update match, player and accumulated assessments; resume after interruptions and flag missing data.", retroStart: "Generate historical reports", retroResume: "Resume historical reports", retroWorking: "Processing historical reports", retroPaused: "Paused: Ollama is unavailable. Progress is saved; select resume to continue.", retroFailed: "Completed with failures or missing data", retroDone: "Historical reports complete", retroBackup: "Backup created before generation" },
-    "es-ES": { navOverview: "Resumen", navChronology: "Cronología", navManual: "Datos históricos", navMatches: "Centro de partidos", navSchedule: "Calendario", navResults: "Resultados", navCompetitions: "Competiciones", navSquad: "Plantilla", navContracts: "Contratos", navTransfers: "Historial de traspasos", navLoans: "Cesiones", navYouth: "Cantera FC26", navCommission: "Comisión técnica", navAnalysis: "Análisis", navRecords: "Récords", navSeasonReport: "Informe de temporada", navCompare: "Comparar snapshots", navSnapshots: "Snapshots", navImports: "Importaciones", navMedia: "Biblioteca multimedia", navSetup: "Ajustes", crumbOverview: "Resumen", crumbCommission: "Comisión técnica", crumbAnalysis: "Análisis", crumbMatches: "Partidos", crumbMatch: "Partido", crumbSquad: "Plantilla", crumbPlayer: "Perfil del jugador", crumbSetup: "Ajustes", setupLanguage: "Idioma de Atlas", setupLanguageHelp: "Define el idioma de la interfaz principal y de los análisis de la Comisión Técnica.", saveLanguage: "Guardar idioma", languageSaved: "Idioma de Atlas actualizado.", commissionNote: "Nota de la comisión", claimFact: "Hecho observado", claimInference: "Inferencia basada en evidencias", claimHypothesis: "Hipótesis deportiva", claimLimit: "Límite de la evidencia", claimsFiltered: "Afirmaciones filtradas", interpretationNotScored: "Calidad interpretativa no evaluada de forma independiente", reportOnDemand: "Análisis bajo demanda", generateReport: "Generar análisis", retroTitle: "Analizar el historial de la carrera", retroHelp: "Genera informes para la temporada seleccionada en orden cronológico. Actualiza partidos, jugadores y valoraciones acumuladas; reanuda después de interrupciones y señala datos ausentes.", retroStart: "Generar informes históricos", retroResume: "Reanudar informes históricos", retroWorking: "Procesando informes históricos", retroPaused: "Pausado: Ollama no está disponible. El progreso está guardado; pulse reanudar.", retroFailed: "Terminado con fallos o datos ausentes", retroDone: "Informes históricos terminados", retroBackup: "Copia de seguridad creada antes de generar" }
+    "es-ES": { navOverview: "Resumen", navChronology: "Cronología", navManual: "Datos históricos", navMatches: "Centro de partidos", navSchedule: "Calendário", navResults: "Resultados", navCompetitions: "Competiciones", navSquad: "Plantilla", navContracts: "Contratos", navTransfers: "Historial de traspasos", navLoans: "Cesiones", navYouth: "Cantera FC26", navCommission: "Comisión técnica", navAnalysis: "Análisis", navRecords: "Récords", navSeasonReport: "Informe de temporada", navCompare: "Comparar snapshots", navSnapshots: "Snapshots", navImports: "Importaciones", navMedia: "Biblioteca multimedia", navSetup: "Ajustes", crumbOverview: "Resumen", crumbCommission: "Comisión técnica", crumbAnalysis: "Análise", crumbMatches: "Partidos", crumbMatch: "Partido", crumbSquad: "Plantilla", crumbPlayer: "Perfil del jugador", crumbSetup: "Ajustes", setupLanguage: "Idioma de Atlas", setupLanguageHelp: "Define el idioma de la interfaz principal y de los análisis de la Comisión Técnica.", saveLanguage: "Guardar idioma", languageSaved: "Idioma de Atlas actualizado.", commissionNote: "Nota de la comisión", claimFact: "Hecho observado", claimInference: "Inferencia basada en evidencias", claimHypothesis: "Hipótesis deportiva", claimLimit: "Límite de la evidencia", claimsFiltered: "Afirmaciones filtradas", interpretationNotScored: "Calidad interpretativa no evaluada de forma independiente", reportOnDemand: "Análisis bajo demanda", generateReport: "Generar análisis", retroTitle: "Analizar el historial de la carrera", retroHelp: "Genera informes para la temporada seleccionada em ordem cronológica. Actualiza partidos, jugadores y valoraciones acumuladas; reanuda después de interrupciones y señala datos ausentes.", retroStart: "Generar informes históricos", retroResume: "Reanudar informes históricos", retroWorking: "Procesando informes históricos", retroPaused: "Pausado: Ollama no está disponible. El progreso está guardado; pulse reanudar.", retroFailed: "Terminado con fallos o datos ausentes", retroDone: "Informes históricos terminados", retroBackup: "Copia de seguridad creada antes de gen..." },
 };
 Object.assign(ATLAS_TEXT["pt-BR"], { moreContextTitle: "A comissão pediu mais contexto", moreContextHelp: "Responda apenas o que souber. Sua resposta será enviada separada das estatísticas importadas.", yourContext: "Sua resposta", sendContext: "Enviar contexto à comissão", contextSent: "Contexto enviado ao Ollama; atualizando a análise…" });
 Object.assign(ATLAS_TEXT["en-GB"], { moreContextTitle: "The commission needs more context", moreContextHelp: "Answer only what you know. Your response is sent separately from imported statistics.", yourContext: "Your answer", sendContext: "Send context to the commission", contextSent: "Context sent to Ollama; refreshing the analysis…" });
-Object.assign(ATLAS_TEXT["es-ES"], { moreContextTitle: "La comisión necesita más contexto", moreContextHelp: "Responde solo lo que sepas. Tu respuesta se envía por separado de las estadísticas importadas.", yourContext: "Tu respuesta", sendContext: "Enviar contexto a la comisión", contextSent: "Contexto enviado a Ollama; actualizando el análisis…" });
+Object.assign(ATLAS_TEXT["es-ES"], { moreContextTitle: "La comisión necesita más contexto", moreContextHelp: "Responde solo lo que sepas. Tu respuesta se envía por separado de las estatísticas importadas.", yourContext: "Tu respuesta", sendContext: "Enviar contexto a la comisión", contextSent: "Contexto enviado a Ollama; atualizando el análisis…" });
 function atlasLanguage() { const selected = String(state.status?.settings?.language || "pt-BR"); return ATLAS_TEXT[selected] ? selected : "pt-BR"; }
 function tr(key) { return ATLAS_TEXT[atlasLanguage()][key] || ATLAS_TEXT["en-GB"][key] || key; }
 function applyAtlasLanguage() { const language = atlasLanguage(); document.documentElement.lang = language; $$("[data-nav-key]").forEach(item => { const key = String(item.dataset.navKey || ""); if (key)
@@ -257,19 +267,22 @@ function bindSortableTables() {
                     indicator.textContent = direction === "asc" ? "↑" : "↓";
                 const rows = [...tbody.rows];
                 rows.sort((a, b) => {
-                    const av = parseSortValue(a.cells[column]), bv = parseSortValue(b.cells[column]);
+                    const av = parseSortValue(a.cells[column]);
+                    const bv = parseSortValue(b.cells[column]);
                     if (av.type === "empty" && bv.type === "empty")
                         return 0;
                     if (av.type === "empty")
                         return 1;
                     if (bv.type === "empty")
                         return -1;
-                    let result = 0;
-                    if (av.type === "number" && bv.type === "number")
-                        result = Number(av.value) - Number(bv.value);
-                    else
-                        result = String(av.value).localeCompare(String(bv.value), "en", { numeric: true, sensitivity: "base" });
-                    return direction === "asc" ? result : -result;
+                    let res = 0;
+                    if (av.type === "number" && bv.type === "number") {
+                        res = Number(av.value) - Number(bv.value);
+                    }
+                    else {
+                        res = String(av.value).localeCompare(String(bv.value), "en", { numeric: true, sensitivity: "base" });
+                    }
+                    return direction === "asc" ? res : -res;
                 });
                 rows.forEach((row) => tbody.appendChild(row));
             };
@@ -315,7 +328,20 @@ async function api(path, options) {
         throw error;
     }
 }
-function toast(message) { toastEl.textContent = message; toastEl.classList.add("show"); setTimeout(() => toastEl.classList.remove("show"), 2600); }
+function setLLMProvider(provider) {
+    state.llmProvider = provider;
+}
+function setLLMKey(provider, key) {
+    state.llmKeys[provider] = key;
+}
+function getLLMConfig() {
+    return {
+        provider: state.llmProvider,
+        keys: state.llmKeys
+    };
+}
+function loadLLMConfig() {
+}
 function setLoading() { content.innerHTML = `<div class="content-inner"><div class="grid metrics">${Array.from({ length: 5 }, () => '<div class="card metric-card skeleton"></div>').join("")}</div><div class="card skeleton" style="height:300px"></div></div>`; }
 async function bootstrap() {
     const initialView = new URLSearchParams(location.search).get("view");
@@ -330,6 +356,11 @@ async function bootstrap() {
     setLoading();
     try {
         state.status = await api("/api/status");
+        const llmConfig = await api("/api/llm/config");
+        if (llmConfig) {
+            state.llmProvider = llmConfig.provider || "ollama";
+            state.llmKeys = llmConfig.keys || {};
+        }
         applyAtlasLanguage();
         state.careers = await api("/api/careers");
         if (state.careers.length) {
@@ -2411,6 +2442,12 @@ function startMediaProgressPolling() {
     refreshMediaProgress();
     mediaProgressTimer = setInterval(refreshMediaProgress, 900);
 }
+function updateLLMKeyPanel(provider) {
+    const panel = document.getElementById("llmKeysPanel");
+    if (panel) {
+        panel.style.display = provider === "ollama" ? "none" : "block";
+    }
+}
 async function renderMedia() {
     const status = await api("/api/media/status");
     const params = new URLSearchParams();
@@ -2479,6 +2516,7 @@ async function renderSetup() {
       <section class="card pad"><h3 class="card-title">Media status</h3><div class="list"><div class="list-row"><div class="list-main"><strong>Sources</strong></div><b>${num(media.sources?.filter((s) => s.enabled).length)}</b></div><div class="list-row"><div class="list-main"><strong>Assigned assets</strong></div><b>${num(media.counts?.assigned || 0)}</b></div><div class="list-row"><div class="list-main"><strong>Conflicts / unknown</strong></div><b>${num((media.counts?.conflict || 0) + (media.counts?.unknown || 0))}</b></div></div><div class="page-actions"><button class="button" data-route="media">Manage sources</button><button class="button primary" data-action="scan-media">Scan media</button></div></section>
       <section class="card pad"><h3 class="card-title">${tr("setupLanguage")}</h3><p class="muted">${tr("setupLanguageHelp")}</p><label class="page-filter"><span>${tr("setupLanguage")}</span><select data-atlas-language><option value="pt-BR" ${state.status?.settings?.language === "pt-BR" ? "selected" : ""}>Português (Brasil)</option><option value="en-GB" ${state.status?.settings?.language === "en-GB" ? "selected" : ""}>English (UK)</option><option value="es-ES" ${state.status?.settings?.language === "es-ES" ? "selected" : ""}>Español</option></select></label><div class="page-actions"><button class="button primary" data-save-atlas-language>${tr("saveLanguage")}</button></div></section>
       <section class="card pad"><h3 class="card-title">Visibility</h3><p class="muted">This filter applies across search, views and world simulation. Imported snapshot data is never changed.</p><label class="setting-toggle"><input type="checkbox" data-hide-womens-football ${state.status?.settings?.hideWomensFootball ? "checked" : ""}><span><strong>Hide women’s football</strong><small>Hide women’s competitions, teams and players from Tracker views.</small></span></label></section>
+      <section class="card pad"><h3 class="card-title">AI Analysis Engine</h3><p class="muted">Choose the model used for Technical Commission reports. Cloud models free up GPU for the game.</p><label class="page-filter"><span>Provider</span><select data-llm-provider onchange="updateLLMKeyPanel(this.value)"><option value="ollama" ${state.llmProvider === "ollama" ? "selected" : ""}>Ollama (Local)</option><option value="gemini" ${state.llmProvider === "gemini" ? "selected" : ""}>Google Gemini (Cloud)</option><option value="groq" ${state.llmProvider === "groq" ? "selected" : ""}>Groq (Cloud)</option></select></label><div id="llmKeysPanel" class="llm-keys-panel" style="${state.llmProvider === "ollama" ? "display:none" : ""}"><label class="page-filter"><span>API Key</span><input class="filter-input" data-llm-key value="${esc(state.llmKeys[state.llmProvider] || "")}" placeholder="Enter API Key..."></label></div><div class="page-actions"><button class="button primary" data-save-llm-config>Save Configuration</button></div></section>
       <section class="card pad"><h3 class="card-title">System status</h3><div class="list"><div class="list-row"><div class="list-main"><strong>Database</strong></div><span class="mono muted">${esc(state.status?.databasePath || "–")}</span></div><div class="list-row"><div class="list-main"><strong>App data</strong></div><span class="mono muted">${esc(state.status?.appDataPath || "–")}</span></div><div class="list-row"><div class="list-main"><strong>Ready snapshots</strong></div><b>${num(state.status?.readyCount)}</b></div><div class="list-row"><div class="list-main"><strong>Last import</strong></div><b>${esc(state.status?.lastImportAt || "–")}</b></div></div></section>
     </div></div>`;
 }
@@ -2594,8 +2632,25 @@ function bindContent() {
     $$('[data-workspace-archive]', content).forEach(button => button.onclick = async () => { const workspaceId = String(button.dataset.workspaceArchive || ''), name = String(button.dataset.workspaceName || 'Career'); if (!workspaceId || !confirm(`Archive “${name}”? Its data will be retained.`))
         return; await api('/api/workspaces/archive', { method: 'POST', body: JSON.stringify({ workspaceId, archived: true }) }); toast(`“${name}” archived`); await refreshSetup(); });
     $$('[data-workspace-restore]', content).forEach(button => button.onclick = async () => { const workspaceId = String(button.dataset.workspaceRestore || ''), name = String(button.dataset.workspaceName || 'Career'); await api('/api/workspaces/archive', { method: 'POST', body: JSON.stringify({ workspaceId, archived: false }) }); toast(`“${name}” restored`); await refreshSetup(); });
-    $$('[data-workspace-delete]', content).forEach(button => button.onclick = async () => { const workspaceId = String(button.dataset.workspaceDelete || ''), name = String(button.dataset.workspaceName || 'Branch'); if (!workspaceId || !confirm(`Permanently delete branch “${name}”? The source career save is not affected.`))
-        return; await api('/api/workspaces/delete', { method: 'POST', body: JSON.stringify({ workspaceId }) }); toast(`“${name}” deleted`); await refreshSetup(); });
+    $$('[data-save-llm-config]', content).forEach(button => button.onclick = async () => {
+        const provider = $('[data-llm-provider]', content)?.value;
+        const key = $('[data-llm-key]', content)?.value;
+        if (!provider)
+            return;
+        const payload = { provider, keys: { [provider]: key || "" } };
+        try {
+            await api('/api/llm/config', { method: 'POST', body: JSON.stringify(payload) });
+            state.llmProvider = provider;
+            state.llmKeys = { ...state.llmKeys, [provider]: key || "" };
+            toast("AI configuration saved to database");
+        }
+        catch (error) {
+            toast(`Error saving configuration: ${error.message}`);
+        }
+        await renderSetup();
+        applyIcons(content);
+        bindContent();
+    });
     $$('[data-route]', content).forEach((n) => n.onclick = (e) => { e.stopPropagation(); navigate(n.dataset.route); });
     $$('[data-player]', content).forEach((n) => n.onclick = (e) => { e.stopPropagation(); navigate('player', { id: Number(n.dataset.player), tab: 'commission' }); });
     $$('[data-club]', content).forEach((n) => n.onclick = (e) => { e.stopPropagation(); navigate('club', { id: Number(n.dataset.club) }); });

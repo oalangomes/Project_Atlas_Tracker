@@ -12,6 +12,14 @@ async function bootstrap() {
     setLoading();
     try {
         state.status = await api<StatusResponse>("/api/status");
+        
+        // Load LLM configuration from DB
+        const llmConfig = await api<JsonRecord>("/api/llm/config");
+        if (llmConfig) {
+            state.llmProvider = llmConfig.provider || "ollama";
+            state.llmKeys = llmConfig.keys || {};
+        }
+
         applyAtlasLanguage();
         state.careers = await api<CareerSummary[]>("/api/careers");
         if (state.careers.length) {

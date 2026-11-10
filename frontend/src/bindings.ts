@@ -77,7 +77,27 @@ function bindContent() {
     $$<HTMLButtonElement>('[data-workspace-bind-cancel]',content).forEach(button=>button.onclick=async()=>{await api('/api/workspaces/binding/cancel',{method:'POST',body:JSON.stringify({workspaceId:String(button.dataset.workspaceBindCancel||'')})});toast('Detected assignment discarded');await refreshSetup();});
     $$<HTMLButtonElement>('[data-workspace-archive]',content).forEach(button=>button.onclick=async()=>{const workspaceId=String(button.dataset.workspaceArchive||''),name=String(button.dataset.workspaceName||'Career');if(!workspaceId||!confirm(`Archive “${name}”? Its data will be retained.`))return;await api('/api/workspaces/archive',{method:'POST',body:JSON.stringify({workspaceId,archived:true})});toast(`“${name}” archived`);await refreshSetup();});
     $$<HTMLButtonElement>('[data-workspace-restore]',content).forEach(button=>button.onclick=async()=>{const workspaceId=String(button.dataset.workspaceRestore||''),name=String(button.dataset.workspaceName||'Career');await api('/api/workspaces/archive',{method:'POST',body:JSON.stringify({workspaceId,archived:false})});toast(`“${name}” restored`);await refreshSetup();});
-    $$<HTMLButtonElement>('[data-workspace-delete]',content).forEach(button=>button.onclick=async()=>{const workspaceId=String(button.dataset.workspaceDelete||''),name=String(button.dataset.workspaceName||'Branch');if(!workspaceId||!confirm(`Permanently delete branch “${name}”? The source career save is not affected.`))return;await api('/api/workspaces/delete',{method:'POST',body:JSON.stringify({workspaceId})});toast(`“${name}” deleted`);await refreshSetup();});
+    $$<HTMLButtonElement>('[data-save-llm-config]', content).forEach(button => button.onclick = async () => {
+        const provider = $<HTMLSelectElement>('[data-llm-provider]', content)?.value;
+        const key = $<HTMLInputElement>('[data-llm-key]', content)?.value;
+        if (!provider) return;
+        
+        const payload = { provider, keys: { [provider]: key || "" } };
+        try {
+            await api('/api/llm/config', { method: 'POST', body: JSON.stringify(payload) });
+            
+            state.llmProvider = provider;
+            state.llmKeys = { ...state.llmKeys, [provider]: key || "" };
+            
+            toast("AI configuration saved to database");
+        } catch (error: any) {
+            toast(`Error saving configuration: ${error.message}`);
+        }
+        
+        await renderSetup();
+        applyIcons(content);
+        bindContent();
+    });
 
     $$('[data-route]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate(n.dataset.route);});
     $$('[data-player]', content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();navigate('player',{id:Number(n.dataset.player),tab:'commission'});});

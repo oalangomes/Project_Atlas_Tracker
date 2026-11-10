@@ -108,6 +108,22 @@ def write_runtime_state(url: str, pid: int) -> None:
     os.replace(temp, path)
 
 
+def build_frontend():
+    """Try to compile TypeScript frontend to JavaScript."""
+    try:
+        # Use powershell to bypass execution policy and run tsc in the frontend folder
+        subprocess.run(
+            ["powershell", "-ExecutionPolicy", "Bypass", "-Command", "cd frontend; ./tsc"],
+            capture_output=True, text=True, check=True
+        )
+        return True
+    except subprocess.CalledProcessError as exc:
+        # We log it but don't stop the server, as tsc might fail if node_modules are missing
+        # but the previous build might still be usable.
+        return False
+    except Exception:
+        return False
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Project Atlas Tracker")
     parser.add_argument("--port", type=int, default=8765)
@@ -144,6 +160,13 @@ def main() -> int:
         log(f"Project Atlas Tracker v{__version__}")
         log(f"Workspace: {workspace_id}")
         log(f"Python: {sys.version.split()[0]} · {sys.executable}")
+        
+        # Auto-compile frontend before starting the server
+        if build_frontend():
+            log("Frontend compiled successfully.")
+        else:
+            log("Frontend compilation skipped or failed (Check if Node.js/npm is installed).")
+
         db, importer = build_core()
         if args.import_snapshot:
             result = importer.import_folder(args.import_snapshot, move_after=False)

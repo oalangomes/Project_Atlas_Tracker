@@ -4,6 +4,59 @@ let lastMediaProgressPhase: string | null = null;
 let lastMediaPending: number | null = null;
 let mediaRefreshPending = false;
 const apiCache = new Map<string, { time: number; value: Promise<any> }>();
+
+interface AtlasState {
+    status: StatusResponse | null;
+    careers: CareerSummary[];
+    snapshots: SnapshotSummary[];
+    careerClock: CareerClock | null;
+    careerId: number | null;
+    snapshotId: number | null;
+    route: string;
+    routeData: JsonRecord;
+    history: Array<{route: string; data: JsonRecord}>;
+    historyIndex: number;
+    searchResults: SearchResult[];
+    searchIndex: number;
+    playerTab: string;
+    playerComparisonScope: "club" | "league";
+    playerComparisonMode: "group" | "position";
+    squadQuery: string;
+    squadPosition: string;
+    squadSort: string;
+    competitionQuery: string;
+    matchCompetition: string;
+    compareFrom: number | null;
+    compareTo: number | null;
+    competitionTab: string;
+    chronologyType: string;
+    chronologyQuery: string;
+    loanScope: string;
+    transferScope: string;
+    movementSeasonIndex: number | null;
+    movementEditKind: "transfer" | "loan" | null;
+    movementEditId: number | null;
+    analysisSeasonIndex: number | null;
+    recordsSeasonIndex: number | null;
+    seasonReportSeasonIndex: number | null;
+    seasonReportTab: string;
+    analysisTab: string;
+    clubTab: string;
+    competitionListTab: string;
+    mediaType: string;
+    mediaStatus: string;
+    mediaSources: JsonRecord[] | null;
+    manualSeasonId: number | null;
+    manualTab: string;
+    manualEditKind: string | null;
+    manualEditId: number | null;
+    manualDraftCompetitionId: number | null;
+    manualQuickEntry: boolean;
+    pendingLiveRender: boolean;
+    llmProvider: string;
+    llmKeys: Record<string, string>;
+}
+
 const state: AtlasState = {
     status: null, careers: [], snapshots: [], careerClock: null, careerId: null, snapshotId: null,
     route: "overview", routeData: {}, history: [], historyIndex: -1,
@@ -13,15 +66,27 @@ const state: AtlasState = {
     compareFrom: null, compareTo: null,
     competitionTab: "results", chronologyType: "all", chronologyQuery: "", loanScope: "club", transferScope: "club",
     movementSeasonIndex: null, movementEditKind: null, movementEditId: null,
-    analysisSeasonIndex: null, recordsSeasonIndex: -1, seasonReportSeasonIndex: null, seasonReportTab: "overview", analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
+    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "overview", analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
     mediaType: "all", mediaStatus: "all", mediaSources: null,
     manualSeasonId: null, manualTab: "competitions", manualEditKind: null, manualEditId: null, manualDraftCompetitionId: null, manualQuickEntry: false,
     pendingLiveRender: false,
+    llmProvider: "ollama", llmKeys: {},
 };
+
 const $ = <T extends Element = any>(selector: string, root: ParentNode = document): T => root.querySelector(selector) as T;
 const $$ = <T extends Element = HTMLElement>(selector: string, root: ParentNode = document): T[] => Array.from(root.querySelectorAll<T>(selector));
 const content = $<HTMLElement>("#content");
 const toastEl = $<HTMLElement>("#toast");
+
+function toast(message: string) {
+    if (!toastEl) return;
+    toastEl.textContent = message;
+    toastEl.classList.add("visible");
+    setTimeout(() => {
+        toastEl.classList.remove("visible");
+    }, 3000);
+}
+
 const careerSelect = $<HTMLSelectElement>("#careerSelect");
 const snapshotSelect = $<HTMLSelectElement>("#snapshotSelect");
 const searchPalette = $<HTMLElement>("#searchPalette");
@@ -62,11 +127,11 @@ function applyIcons(root: ParentNode = document): void {
 const ATLAS_TEXT: Record<string, Record<string, string>> = {
   "pt-BR": {navOverview:"Visão geral",navChronology:"Linha do tempo",navManual:"Dados históricos",navMatches:"Central de partidas",navSchedule:"Calendário",navResults:"Resultados",navCompetitions:"Competições",navSquad:"Elenco",navContracts:"Contratos",navTransfers:"Transferências",navLoans:"Empréstimos",navYouth:"Base FC26",navCommission:"Comissão técnica",navAnalysis:"Análises",navRecords:"Recordes",navSeasonReport:"Relatório da temporada",navCompare:"Comparar snapshots",navSnapshots:"Snapshots",navImports:"Importações",navMedia:"Biblioteca de mídia",navSetup:"Configurações",crumbOverview:"Visão geral",crumbCommission:"Comissão técnica",crumbAnalysis:"Análises",crumbMatches:"Partidas",crumbMatch:"Partida",crumbSquad:"Elenco",crumbPlayer:"Perfil do jogador",crumbSetup:"Configurações",setupLanguage:"Idioma do Atlas",setupLanguageHelp:"Define o idioma da interface principal e das análises da Comissão Técnica.",saveLanguage:"Salvar idioma",languageSaved:"Idioma do Atlas atualizado.",commissionNote:"Nota da comissão",claimFact:"Fato observado",claimInference:"Inferência baseada em evidências",claimHypothesis:"Hipótese esportiva",claimLimit:"Limite da evidência",claimsFiltered:"Afirmações filtradas",interpretationNotScored:"Qualidade interpretativa não avaliada independentemente",reportOnDemand:"Análises sob demanda",generateReport:"Gerar análise",retroTitle:"Analisar histórico da carreira",retroHelp:"Gera relatórios da temporada selecionada em ordem cronológica. Atualiza partidas, jogadores e avaliações acumuladas; retoma após interrupções e sinaliza dados ausentes.",retroStart:"Gerar análises históricas",retroResume:"Retomar análises históricas",retroWorking:"Processando análises históricas",retroPaused:"Pausado: Ollama indisponível. O progresso foi salvo; clique em retomar.",retroFailed:"Concluído com falhas ou dados ausentes",retroDone:"Análises históricas concluídas",retroBackup:"Backup criado antes da geração"},
   "en-GB": {navOverview:"Overview",navChronology:"Career timeline",navManual:"Historical data",navMatches:"Match Centre",navSchedule:"Schedule",navResults:"Results",navCompetitions:"Competitions",navSquad:"Squad",navContracts:"Contracts",navTransfers:"Transfer history",navLoans:"Loans",navYouth:"FC26 youth",navCommission:"Technical commission",navAnalysis:"Analysis",navRecords:"Records",navSeasonReport:"Season report",navCompare:"Snapshot comparison",navSnapshots:"Snapshots",navImports:"Imports",navMedia:"Media library",navSetup:"Settings",crumbOverview:"Overview",crumbCommission:"Technical commission",crumbAnalysis:"Analysis",crumbMatches:"Matches",crumbMatch:"Match",crumbSquad:"Squad",crumbPlayer:"Player profile",crumbSetup:"Settings",setupLanguage:"Atlas language",setupLanguageHelp:"Sets the main interface and Technical Commission analysis language.",saveLanguage:"Save language",languageSaved:"Atlas language updated.",commissionNote:"Commission note",claimFact:"Observed fact",claimInference:"Evidence-based inference",claimHypothesis:"Sports hypothesis",claimLimit:"Evidence limitation",claimsFiltered:"Claims filtered",interpretationNotScored:"Interpretation quality not independently scored",reportOnDemand:"On-demand analysis",generateReport:"Generate analysis",retroTitle:"Analyse career history",retroHelp:"Generate reports for the selected season in chronological order. Update match, player and accumulated assessments; resume after interruptions and flag missing data.",retroStart:"Generate historical reports",retroResume:"Resume historical reports",retroWorking:"Processing historical reports",retroPaused:"Paused: Ollama is unavailable. Progress is saved; select resume to continue.",retroFailed:"Completed with failures or missing data",retroDone:"Historical reports complete",retroBackup:"Backup created before generation"},
-  "es-ES": {navOverview:"Resumen",navChronology:"Cronología",navManual:"Datos históricos",navMatches:"Centro de partidos",navSchedule:"Calendario",navResults:"Resultados",navCompetitions:"Competiciones",navSquad:"Plantilla",navContracts:"Contratos",navTransfers:"Historial de traspasos",navLoans:"Cesiones",navYouth:"Cantera FC26",navCommission:"Comisión técnica",navAnalysis:"Análisis",navRecords:"Récords",navSeasonReport:"Informe de temporada",navCompare:"Comparar snapshots",navSnapshots:"Snapshots",navImports:"Importaciones",navMedia:"Biblioteca multimedia",navSetup:"Ajustes",crumbOverview:"Resumen",crumbCommission:"Comisión técnica",crumbAnalysis:"Análisis",crumbMatches:"Partidos",crumbMatch:"Partido",crumbSquad:"Plantilla",crumbPlayer:"Perfil del jugador",crumbSetup:"Ajustes",setupLanguage:"Idioma de Atlas",setupLanguageHelp:"Define el idioma de la interfaz principal y de los análisis de la Comisión Técnica.",saveLanguage:"Guardar idioma",languageSaved:"Idioma de Atlas actualizado.",commissionNote:"Nota de la comisión",claimFact:"Hecho observado",claimInference:"Inferencia basada en evidencias",claimHypothesis:"Hipótesis deportiva",claimLimit:"Límite de la evidencia",claimsFiltered:"Afirmaciones filtradas",interpretationNotScored:"Calidad interpretativa no evaluada de forma independiente",reportOnDemand:"Análisis bajo demanda",generateReport:"Generar análisis",retroTitle:"Analizar el historial de la carrera",retroHelp:"Genera informes para la temporada seleccionada en orden cronológico. Actualiza partidos, jugadores y valoraciones acumuladas; reanuda después de interrupciones y señala datos ausentes.",retroStart:"Generar informes históricos",retroResume:"Reanudar informes históricos",retroWorking:"Procesando informes históricos",retroPaused:"Pausado: Ollama no está disponible. El progreso está guardado; pulse reanudar.",retroFailed:"Terminado con fallos o datos ausentes",retroDone:"Informes históricos terminados",retroBackup:"Copia de seguridad creada antes de generar"}
-};
+  "es-ES": {navOverview:"Resumen",navChronology:"Cronología",navManual:"Datos históricos",navMatches:"Centro de partidos",navSchedule:"Calendário",navResults:"Resultados",navCompetitions:"Competiciones",navSquad:"Plantilla",navContracts:"Contratos",navTransfers:"Historial de traspasos",navLoans:"Cesiones",navYouth:"Cantera FC26",navCommission:"Comisión técnica",navAnalysis:"Análisis",navRecords:"Récords",navSeasonReport:"Informe de temporada",navCompare:"Comparar snapshots",navSnapshots:"Snapshots",navImports:"Importaciones",navMedia:"Biblioteca multimedia",navSetup:"Ajustes",crumbOverview:"Resumen",crumbCommission:"Comisión técnica",crumbAnalysis:"Análise",crumbMatches:"Partidos",crumbMatch:"Partido",crumbSquad:"Plantilla",crumbPlayer:"Perfil del jugador",crumbSetup:"Ajustes",setupLanguage:"Idioma de Atlas",setupLanguageHelp:"Define el idioma de la interfaz principal y de los análisis de la Comisión Técnica.",saveLanguage:"Guardar idioma",languageSaved:"Idioma de Atlas actualizado.",commissionNote:"Nota de la comisión",claimFact:"Hecho observado",claimInference:"Inferencia basada en evidencias",claimHypothesis:"Hipótesis deportiva",claimLimit:"Límite de la evidencia",claimsFiltered:"Afirmaciones filtradas",interpretationNotScored:"Calidad interpretativa no evaluada de forma independiente",reportOnDemand:"Análisis bajo demanda",generateReport:"Generar análisis",retroTitle:"Analizar el historial de la carrera",retroHelp:"Genera informes para la temporada seleccionada em ordem cronológica. Actualiza partidos, jugadores y valoraciones acumuladas; reanuda después de interrupciones y señala datos ausentes.",retroStart:"Generar informes históricos",retroResume:"Reanudar informes históricos",retroWorking:"Procesando informes históricos",retroPaused:"Pausado: Ollama no está disponible. El progreso está guardado; pulse reanudar.",retroFailed:"Terminado con fallos o datos ausentes",retroDone:"Informes históricos terminados",retroBackup:"Copia de seguridad creada antes de gen..."},
+}
 Object.assign(ATLAS_TEXT["pt-BR"],{moreContextTitle:"A comissão pediu mais contexto",moreContextHelp:"Responda apenas o que souber. Sua resposta será enviada separada das estatísticas importadas.",yourContext:"Sua resposta",sendContext:"Enviar contexto à comissão",contextSent:"Contexto enviado ao Ollama; atualizando a análise…"});
 Object.assign(ATLAS_TEXT["en-GB"],{moreContextTitle:"The commission needs more context",moreContextHelp:"Answer only what you know. Your response is sent separately from imported statistics.",yourContext:"Your answer",sendContext:"Send context to the commission",contextSent:"Context sent to Ollama; refreshing the analysis…"});
-Object.assign(ATLAS_TEXT["es-ES"],{moreContextTitle:"La comisión necesita más contexto",moreContextHelp:"Responde solo lo que sepas. Tu respuesta se envía por separado de las estadísticas importadas.",yourContext:"Tu respuesta",sendContext:"Enviar contexto a la comisión",contextSent:"Contexto enviado a Ollama; actualizando el análisis…"});
+Object.assign(ATLAS_TEXT["es-ES"],{moreContextTitle:"La comisión necesita más contexto",moreContextHelp:"Responde solo lo que sepas. Tu respuesta se envía por separado de las estatísticas importadas.",yourContext:"Tu respuesta",sendContext:"Enviar contexto a la comisión",contextSent:"Contexto enviado a Ollama; atualizando el análisis…"});
 function atlasLanguage(): string { const selected=String(state.status?.settings?.language||"pt-BR");return ATLAS_TEXT[selected]?selected:"pt-BR"; }
 function tr(key: string): string { return ATLAS_TEXT[atlasLanguage()][key]||ATLAS_TEXT["en-GB"][key]||key; }
 function applyAtlasLanguage(): void { const language=atlasLanguage();document.documentElement.lang=language;$$<HTMLElement>("[data-nav-key]").forEach(item=>{const key=String(item.dataset.navKey||"");if(key)item.textContent=tr(key);}); }
@@ -198,19 +263,60 @@ function parseSortValue(cell: HTMLTableCellElement): SortValue { const explicit 
     return { type: "number", value };
 } const normalized = raw.replace(/^#/, "").replace(/\s*(months|apps|matches|G|A)$/i, "").replaceAll(",", ""); if (/^[+-]?\d+(?:\.\d+)?$/.test(normalized))
     return { type: "number", value: Number(normalized) }; return { type: "text", value: raw.toLocaleLowerCase("en-GB") }; }
-function bindSortableTables() { $$("table.sortable-table", content).forEach((tableEl: any) => { const tbody = $("tbody", tableEl); if (!tbody)
-    return; const original = [...tbody.rows]; original.forEach((row: any, index: any) => row.dataset.originalIndex = String(index)); $$("th[data-sortable='1']", tableEl).forEach((th: any) => { th.onclick = () => { const column = Number(th.dataset.column); const previousColumn = Number(tableEl.dataset.sortColumn ?? -1); const previousDirection = tableEl.dataset.sortDirection || "none"; let direction = previousColumn !== column ? "asc" : previousDirection === "asc" ? "desc" : previousDirection === "desc" ? "none" : "asc"; tableEl.dataset.sortColumn = String(column); tableEl.dataset.sortDirection = direction; $$("th", tableEl).forEach((header: any) => { header.classList.remove("sort-asc", "sort-desc"); const indicator = $(".sort-indicator", header); if (indicator)
-    indicator.textContent = "↕"; }); if (direction === "none") {
-    original.sort((a: any, b: any) => Number(a.dataset.originalIndex) - Number(b.dataset.originalIndex)).forEach((row: any) => tbody.appendChild(row));
-    return;
-} th.classList.add(direction === "asc" ? "sort-asc" : "sort-desc"); const indicator = $(".sort-indicator", th); if (indicator)
-    indicator.textContent = direction === "asc" ? "↑" : "↓"; const rows = [...tbody.rows]; rows.sort((a: any, b: any) => { const av = parseSortValue(a.cells[column]), bv = parseSortValue(b.cells[column]); if (av.type === "empty" && bv.type === "empty")
-    return 0; if (av.type === "empty")
-    return 1; if (bv.type === "empty")
-    return -1; let result = 0; if (av.type === "number" && bv.type === "number")
-    result = Number(av.value) - Number(bv.value);
-else
-    result = String(av.value).localeCompare(String(bv.value), "en", { numeric: true, sensitivity: "base" }); return direction === "asc" ? result : -result; }); rows.forEach((row: any) => tbody.appendChild(row)); }; }); }); }
+function bindSortableTables() {
+    $$("table.sortable-table", content).forEach((tableEl: any) => {
+        const tbody = $("tbody", tableEl);
+        if (!tbody) return;
+
+        const original = [...tbody.rows];
+        original.forEach((row: any, index: any) => row.dataset.originalIndex = String(index));
+
+        $$("th[data-sortable='1']", tableEl).forEach((th: any) => {
+            th.onclick = () => {
+                const column = Number(th.dataset.column);
+                const previousColumn = Number(tableEl.dataset.sortColumn ?? -1);
+                const previousDirection = tableEl.dataset.sortDirection || "none";
+                let direction = previousColumn !== column ? "asc" : previousDirection === "asc" ? "desc" : previousDirection === "desc" ? "none" : "asc";
+
+                tableEl.dataset.sortColumn = String(column);
+                tableEl.dataset.sortDirection = direction;
+
+                $$("th", tableEl).forEach((header: any) => {
+                    header.classList.remove("sort-asc", "sort-desc");
+                    const indicator = $(".sort-indicator", header);
+                    if (indicator) indicator.textContent = "↕";
+                });
+
+                if (direction === "none") {
+                    original.sort((a: any, b: any) => Number(a.dataset.originalIndex) - Number(b.dataset.originalIndex)).forEach((row: any) => tbody.appendChild(row));
+                    return;
+                }
+
+                th.classList.add(direction === "asc" ? "sort-asc" : "sort-desc");
+                const indicator = $(".sort-indicator", th);
+                if (indicator) indicator.textContent = direction === "asc" ? "↑" : "↓";
+
+                const rows = [...tbody.rows];
+                rows.sort((a: any, b: any) => {
+                    const av = parseSortValue(a.cells[column]);
+                    const bv = parseSortValue(b.cells[column]);
+                    if (av.type === "empty" && bv.type === "empty") return 0;
+                    if (av.type === "empty") return 1;
+                    if (bv.type === "empty") return -1;
+
+                    let res = 0;
+                    if (av.type === "number" && bv.type === "number") {
+                        res = Number(av.value) - Number(bv.value);
+                    } else {
+                        res = String(av.value).localeCompare(String(bv.value), "en", { numeric: true, sensitivity: "base" });
+                    }
+                    return direction === "asc" ? res : -res;
+                });
+                rows.forEach((row: any) => tbody.appendChild(row));
+            };
+        });
+    });
+}
 function ratingValue(value: any, average: any = false) { const n = Number(value); if (!Number.isFinite(n) || n <= 0)
     return "–"; if (average)
     return num(n, 2); return Number.isInteger(n) ? num(n, 0) : num(n, 1); }
@@ -235,4 +341,18 @@ async function api<T = JsonRecord>(path: string, options?: RequestInit): Promise
     try { return await request as T; }
     catch (error) { if (cacheable) apiCache.delete(path); throw error; }
 }
-function toast(message: string): void { toastEl.textContent = message; toastEl.classList.add("show"); setTimeout(() => toastEl.classList.remove("show"), 2600); }
+function setLLMProvider(provider: string): void {
+    state.llmProvider = provider;
+}
+function setLLMKey(provider: string, key: string): void {
+    state.llmKeys[provider] = key;
+}
+function getLLMConfig() {
+    return {
+        provider: state.llmProvider,
+        keys: state.llmKeys
+    };
+}
+function loadLLMConfig(): void {
+    // Removed localStorage fallback to prioritize DB config
+}

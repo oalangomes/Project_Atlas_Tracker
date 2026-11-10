@@ -1,0 +1,12 @@
+{
+  "name": "atlas-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for Project Atlas Tracker",
+  "main": "src/app.ts",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "scripts": {
+    "build": "tsc"
+  }
+}

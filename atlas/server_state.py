@@ -44,9 +44,14 @@ class AppState:
     career_reset: CareerResetService | None = None
 
     def __post_init__(self) -> None:
+        with self.database.connect() as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)"
+            )
         if self.reference is None:
             self.reference = ReferenceImporter(self.database)
             self.reference.ensure_builtin()
+
         if self.media is None:
             self.media = MediaLibrary(self.database)
         if self.manual is None:

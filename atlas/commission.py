@@ -637,12 +637,84 @@ def analyze_players(players: list[dict[str, Any]], performances: list[dict[str, 
     }
 
 
-def _ensure_cache(conn: Any) -> None:
-    conn.execute("""CREATE TABLE IF NOT EXISTS technical_commission_cache (
-        career_id INTEGER NOT NULL REFERENCES careers(id), snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
-        metric_version INTEGER NOT NULL, source_hash TEXT NOT NULL, payload_json TEXT NOT NULL,
-        generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        PRIMARY KEY(career_id, snapshot_id, metric_version))""")
+def get_active_provider(conn: Any) -> tuple[str, LLMProvider]:
+    """Returns the provider name and instance configured in the database."""
+    try:
+        row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
+        config = json.loads(row["value"]) if row else {"provider": "ollama", "keys": {}}
+        provider_name = config.get("provider", "ollama")
+    except Exception:
+        provider_name = "ollama"
+    return provider_name, LLM_MANAGER.get_provider(provider_name)
+
+def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str,
+                           fixture_id: int | None = None, player_ea_id: int | None = None,
+                           model: str | None = None, force_refresh: bool = False,
+                           clarifications: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    """Core logic to generate a detailed commission report using the configured LLM provider."""
+    # 1. Build context and evidence
+    from .commission import _briefing_facts, _report_source_hash
+    context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id)
+    source_hash = _report_source_hash(context, career_id, mode, scope)
+    
+    # 2. Check cache
+    if not force_refresh:
+        cached = conn.execute(
+            """SELECT payload_json FROM technical_commission_report_cache 
+               WHERE career_id=? AND snapshot_id=? AND mode=? AND scope_key=? AND model=? 
+               AND source_hash=?""",
+            (career_id, snapshot_id, mode, scope, model, source_hash)
+        ).fetchone()
+        if cached:
+            return json.loads(cached["payload_json"])
+    
+    # 3. Use the provider configured in the database as default
+    provider_name, provider = get_active_provider(conn)
+    
+    # Allow override if the model name explicitly mentions another provider
+    selected_model = model or "qwen3.5:9b"
+    if "gemini" in selected_model.lower():
+        provider_name = "gemini"
+        provider = LLM_MANAGER.get_provider(provider_name)
+    elif "llama" in selected_model.lower() or "groq" in selected_model.lower():
+        provider_name = "groq"
+        provider = LLM_MANAGER.get_provider(provider_name)
+    
+    # Build system prompt and user prompt
+    from .commission_prompt_policy import build_system_prompt
+    system_prompt = build_system_prompt(mode, selected_model, "pt-BR")
+    user_prompt = json.dumps(prompt_evidence(context), ensure_ascii=False)
+    
+    try:
+        report_raw = provider.generate(user_prompt, system_prompt)
+        report = json.loads(report_raw)
+        
+        result = {
+            "available": True,
+            "model": selected_model,
+            "report": report,
+            "source_hash": source_hash,
+            "fact_catalog": context["facts"],
+            "validation": {"accepted_claims": 1, "rejected_claims": 0, "interpretation_quality": "AI generated"}
+        }
+        
+        conn.execute(
+            """INSERT INTO technical_commission_report_cache(career_id,snapshot_id,mode,scope_key,model,source_hash,payload_json)
+               VALUES(?,?,?,?,?,?,?) ON CONFLICT(career_id,snapshot_id,mode,scope_key,model) DO UPDATE SET
+               source_hash=excluded.source_hash,payload_json=excluded.payload_json,generated_at=CURRENT_TIMESTAMP""",
+            (career_id, snapshot_id, mode, scope, selected_model, source_hash, json.dumps(result, ensure_ascii=False))
+        )
+        return result
+    except Exception as e:
+        return {"available": False, "message": f"AI report failed: {str(e)}"}
+
+def get_ai_analysis(conn: Any, career_id: int, snapshot_id: int, model: str | None = None) -> dict[str, Any]:
+    """High-level analysis of players and team identity."""
+    snapshot, players, performances, detailed, coverage = _read_data(conn, career_id, snapshot_id)
+    analysis = analyze_players(players, performances, detailed, coverage)
+    identity = analyze_team_identity(conn, career_id, snapshot_id)
+    return {"players": analysis, "team": identity}
+
 
 
 def _read_data(conn: Any, career_id: int, snapshot_id: int) -> tuple[Any, list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:

@@ -97,6 +97,12 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         if path == "/api/settings":
             self._json(self.state.settings.get())
             return
+        if path == "/api/llm/config":
+            with self.state.database.connect() as conn:
+                row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
+                config = json.loads(row["value"]) if row else {"provider": "ollama", "keys": {}}
+            self._json(config)
+            return
         if path == "/api/media/status":
             self._json(self.state.media.status())
             return
@@ -382,6 +388,14 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         self._json({"error": f"API endpoint not found: {self.command} {path}"}, 404)
 
     def _api_post(self, path: str, payload: dict[str, Any]) -> None:
+        if path == "/api/llm/config":
+            with self.state.database.connect() as conn:
+                conn.execute(
+                    "INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    ("llm_config", json.dumps(payload))
+                )
+            self._json({"ok": True})
+            return
         match = re.fullmatch(r"/api/careers/(\d+)/finance/(setup|journal/post|journal/reverse|commitments/save|commitments/settle|recurring/save|recurring/run|budgets/adjust|forecasts/save|unresolved/resolve|periods/close|revenue/config|revenue/post|revenue/post-due|revenue/ignore|revenue/override)", path)
         if match:
             career_id = int(match.group(1))
@@ -555,9 +569,9 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             if snapshot_id is None:
                 raise ValueError("Snapshot ID is missing.")
             model = str(payload.get("model") or "").strip() or None
-            from .commission import get_ollama_analysis
+            from .commission import get_ai_analysis
             with self.state.database.connect() as conn:
-                self._json(get_ollama_analysis(conn, career_id, snapshot_id, model))
+                self._json(get_ai_analysis(conn, career_id, snapshot_id, model))
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/commission/report", path)

@@ -26,3 +26,4 @@ ResetArchive/
 # Generated or user-specific artifacts
 artifacts/
 media_cache/
+**/node_modules/*
