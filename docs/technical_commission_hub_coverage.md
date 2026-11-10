@@ -23,7 +23,7 @@ Audit reference: `oalangomes/ea-fc-sheffield-hub` at commit `60c77b85ee528fca116
 - Extracted records, Atlas-derived rates/averages, and unavailable categories are distinct. Missing values stay absent/N/D.
 - Historical match context excludes the target match and same/later dates and constrains source exports to the selected career snapshot import sequence.
 - Every query is career scoped. Plymouth Argyle and Sheffield United careers are never combined.
-- Position observations require `career_playermatchratinghistory_position`; they do not prove starting status, tactical function or movement.
+- Position observations require `career_playermatchratinghistory_position` or `career_playerlastmatchhistory_latest_match`; they do not prove starting status, tactical function or movement. The latest-match source includes substitutes who entered during the match.
 - Professional MatchStats and youth 5x5 remain separate. Lua exporters and EA FC save files are unchanged/read-only.
 
 ## Report pipeline and quality claims

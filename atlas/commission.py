@@ -22,6 +22,7 @@ from .claim_binding import score_claim_bindings
 from .commission_role_policy import (CROSS_ROLE_METRIC_FIELDS, goalkeeper_match_context,
                                      goalkeeper_opponent_xg_evidence, player_role,
                                      prompt_evidence, role_relevance_conflict)
+from .positions import trusted_actual_position
 
 MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
@@ -302,7 +303,7 @@ def _prior_player_context(conn: Any, career_id: int, snapshot: Any, fixture_id: 
             continue
         grouped[player_id].append({"date": row["date"], "fixture_id": int(row["fixture_id"]),
                                    "minutes": minutes, "stats": stats,
-                                   "position": row["actual_position"] if row["actual_position_source"] == "career_playermatchratinghistory_position" else None,
+                                   "position": trusted_actual_position(row["actual_position"], row["actual_position_source"]),
                                    "registered_position": row["primary_position"], "name": row["display_name"]})
     result = []
     for player_id, appearances in grouped.items():
@@ -680,7 +681,7 @@ def _read_data(conn: Any, career_id: int, snapshot_id: int) -> tuple[Any, list[d
         fixture_rows = conn.execute(
         """SELECT e.id,e.fixture_id,e.team0_ea_id,e.team1_ea_id,f.fixture_key,o.date,
                   d.player_ea_id,d.minutes_played,d.game_rating,d.stats_json,
-                  CASE WHEN p.actual_position_source='career_playermatchratinghistory_position' THEN p.actual_position ELSE NULL END match_position
+                  CASE WHEN p.actual_position_source IN ('career_playermatchratinghistory_position','career_playerlastmatchhistory_latest_match') THEN p.actual_position ELSE NULL END match_position
            FROM match_stat_exports e JOIN snapshots es ON es.id=e.snapshot_id
            JOIN fixture_observations o ON o.snapshot_id=? AND o.fixture_id=e.fixture_id
            JOIN fixtures f ON f.id=e.fixture_id
@@ -718,8 +719,20 @@ def _read_data(conn: Any, career_id: int, snapshot_id: int) -> tuple[Any, list[d
                 "metrics_from_matchstats": "gols, assistências, NPK-xG, xA, chutes, passes, desarmes, interceptações e ações registradas",
                 "detailed_metric_scope": "somente partidas com exportação completa ligada; não representa temporada completa",
                 "detailed_rows_with_stats": stats_present,
-                "position_function": "função por atuação somente quando provenance é histórico de posição do rating; sem inferência"}
+                "position_function": "função por atuação somente quando provenance é histórico de posição do rating ou histórico da última partida; sem inferência"}
     return snapshot, players, performances, detailed, coverage
+
+
+def _ensure_cache(conn: Any) -> None:
+    """Ensure the metric-level technical_commission_cache table exists."""
+    conn.execute("""CREATE TABLE IF NOT EXISTS technical_commission_cache (
+        career_id INTEGER NOT NULL REFERENCES careers(id),
+        snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+        metric_version INTEGER NOT NULL,
+        source_hash TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        generated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY(career_id, snapshot_id, metric_version))""")
 
 
 def get_commission(conn: Any, career_id: int, snapshot_id: int) -> dict[str, Any]:
@@ -1002,11 +1015,14 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                 fact("matchstats", "Linked FC26 match statistics", team_stats, "complete linked MatchStats export")
                 observed_rows = conn.execute(
                     """SELECT player_ea_id,actual_position,actual_position_source FROM player_match_performances
-                         WHERE snapshot_id=? AND fixture_key=? AND actual_position_source='career_playermatchratinghistory_position'""",
+                         WHERE snapshot_id=? AND fixture_key=?
+                           AND actual_position_source IN ('career_playermatchratinghistory_position','career_playerlastmatchhistory_latest_match')""",
                     (snapshot_id, row["fixture_key"]),
                 ).fetchall()
-                observed_positions = {int(item["player_ea_id"]): item["actual_position"] for item in observed_rows
-                                      if item["actual_position"]}
+                observed_positions = {int(item["player_ea_id"]):
+                                      (str(item["actual_position"]).upper(), str(item["actual_position_source"]))
+                                      for item in observed_rows
+                                      if trusted_actual_position(item["actual_position"], item["actual_position_source"])}
                 player_facts = []
                 for item in detailed.get("players") or []:
                     player_id = int(item["playerEaId"])
@@ -1015,18 +1031,19 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                     metric_fields = REPORT_PLAYER_FIELDS
                     if mode == "match_player" and player_team_id == team_id:
                         metric_fields = tuple(dict.fromkeys((*REPORT_PLAYER_FIELDS, *CROSS_ROLE_METRIC_FIELDS)))
+                    observed = observed_positions.get(player_id)
                     player_facts.append({"player_ea_id": player_id, "name": item.get("displayName"),
                                          "team_ea_id": item.get("teamEaId"),
                                          "team_name": team_names.get(player_team_id),
                                          "team_side": team_sides.get(player_team_id),
                                          "registered_position": item.get("primaryPosition"),
-                                         "observed_position": observed_positions.get(player_id),
-                                         "observed_position_source": "career_playermatchratinghistory_position" if player_id in observed_positions else None,
+                                         "observed_position": observed[0] if observed else None,
+                                         "observed_position_source": observed[1] if observed else None,
                                          "team_ea_id": item.get("teamEaId"), "team_index": item.get("teamIndex"),
                                          "minutes": stats.get("minutes_played"), "rating": stats.get("game_rating"),
                                          "stats": _compact_metrics(stats, metric_fields)})
                 fact("match_players", "Player match performances and position evidence", player_facts,
-                     "complete linked MatchStats export; observed positions only from career_playermatchratinghistory_position")
+                     "complete linked MatchStats export; observed positions only from trusted FC position exports (rating history or last-match history)")
                 managed_players = [item for item in player_facts if int(item.get("team_ea_id") or -1) == team_id]
                 context_players = ([item for item in managed_players if int(item["player_ea_id"]) == int(player_ea_id)]
                                    if mode == "match_player" and player_ea_id is not None else managed_players)
@@ -1130,7 +1147,7 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                 fact("following_fixture", "Next fixture after this match", following_fact, "Atlas fixture calendar")
         if mode == "match":
             scope = f"fixture:{fixture_id}"
-    elif mode == "player":
+    elif mode in PLAYER_REPORT_MODES:
         if player_ea_id is None:
             raise ValueError("Select a player from the current professional squad.")
         checkpoint_date = None
@@ -1154,16 +1171,15 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                 (int(player_ea_id), snapshot_id, int(fixture_id)),
             ).fetchone()
             if fixture_context:
-                observed_position = (fixture_context["actual_position"]
-                                     if fixture_context["actual_position_source"] == "career_playermatchratinghistory_position"
-                                     else None)
+                observed_position = trusted_actual_position(fixture_context["actual_position"],
+                                                            fixture_context["actual_position_source"])
                 fact("player_checkpoint", "Player evaluation checkpoint", {
                     "fixture_id": int(fixture_id), "date": fixture_context["date"],
                     "competition": fixture_context["competition_name"],
                     "home": fixture_context["home_team_name"], "away": fixture_context["away_team_name"],
                     "home_score": fixture_context["home_score"], "away_score": fixture_context["away_score"],
                     "observed_position": observed_position,
-                    "observed_position_source": "career_playermatchratinghistory_position" if observed_position else None,
+                    "observed_position_source": fixture_context["actual_position_source"] if observed_position else None,
                     "same_day_order": "unknown; other fixtures on this date are excluded from prior context",
                 }, "selected completed fixture and player position only when provenance is trusted")
             snapshot, players, performances, detailed, coverage = _read_data(conn, career_id, snapshot_id)
@@ -1248,14 +1264,14 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
             ).fetchall()
         recent_facts = [dict(item) for item in rows[:10]]
         for recent in recent_facts:
-            if recent.get("actual_position_source") != "career_playermatchratinghistory_position":
+            if trusted_actual_position(recent.get("actual_position"), recent.get("actual_position_source")) is None:
                 recent["actual_position"] = None
             recent["observed_position_source"] = (recent.get("actual_position_source")
                                                    if recent.get("actual_position") else None)
             recent.pop("actual_position_source", None)
         # Re-emit only positions whose provenance is trusted; nominal/unverified values stay N/D.
         fact("player_recent_matches", "Last recorded player appearances", recent_facts,
-             "player match rating history; positions retained only with trusted position-history provenance")
+             "player match rating and last-match history; positions retained only with trusted position provenance")
         from .match_stats import detailed_player_matches
         detailed_rows = detailed_player_matches(conn, career_id, int(player_ea_id),
                                                  season_indices=[int(snapshot["season_index"])],
@@ -1281,7 +1297,7 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
             fact("player_matchstats", "Player detail from linked MatchStats", compact_matches, "complete linked MatchStats exports; partial season coverage")
         else:
             fact("player_matchstats_missing", "Player MatchStats", "No linked player MatchStats rows in this season", "Atlas linkage status")
-        scope = f"player:{player_ea_id}"
+        scope = f"player:{player_ea_id}" if mode == "player" else f"player:{player_ea_id}:{mode}"
     elif mode == "team_identity":
         identity = analyze_team_identity(conn, career_id, snapshot_id, through_fixture_id=fixture_id)
         fact("team_statistical_profile", "Team statistical profile from linked matches", {
@@ -2147,7 +2163,7 @@ def _deterministic_report_summary(context: dict[str, Any]) -> dict[str, Any] | N
                     "en-GB": f"Team review based on {detailed} of {total} completed fixtures with detailed data ({coverage}% coverage).",
                     "es-ES": f"Análisis del equipo basado en {detailed} de {total} partidos completos con datos detallados ({coverage}% de cobertura)."}.get(language)
             return {"text": text, "fact_refs": ["team_statistical_profile"]}
-    if context.get("mode") == "player":
+    if context.get("mode") in PLAYER_REPORT_MODES:
         player = facts.get("player_summary") or {}
         name, position = player.get("display_name") or "Player", player.get("position") or "N/D"
         minutes, appearances, rating = player.get("minutes"), player.get("appearances"), player.get("season_rating")
@@ -2585,7 +2601,7 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
         return reject("unsupported_causal_inference")
     if is_generic_claim(item["text"], section):
         return reject("generic_claim")
-    if mode in {"player", "match_player"} and role_relevance_conflict(context, item["text"]):
+    if mode in PLAYER_REPORT_MODES | {"match_player"} and role_relevance_conflict(context, item["text"]):
         return reject("irrelevant_player_role_metric")
     if section == "recommendations" and _report_recommendation_target_conflict(context, mode, item["text"]):
         return reject("recommendation_targets_opponent")
@@ -2597,7 +2613,7 @@ def _validate_report_item(context: dict[str, Any], mode: str, item: dict[str, An
         return reject("wrong_managed_team_role")
     if mode == "match_player" and _report_selected_player_metric_conflict(context, item):
         return reject("selected_player_metric_conflict")
-    if mode == "player" and _report_accumulated_player_metric_conflict(context, item):
+    if mode in PLAYER_REPORT_MODES and _report_accumulated_player_metric_conflict(context, item):
         return reject("player_summary_metric_conflict")
     if mode in {"match", "match_player"} and _report_missing_metric_source_conflict(context, item):
         return reject("metric_source_missing")
@@ -3161,6 +3177,7 @@ def _report_coverage(context: dict[str, Any]) -> dict[str, Any]:
 
 
 OLLAMA_DEFAULT_MODEL = "qwen3.5:9b"
+PLAYER_REPORT_MODES = {"player", "player_form", "player_season"}
 CLOUD_DEFAULT_MODELS = {"gemini": "gemini-flash-latest", "groq": "llama-3.1-8b-instant"}
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
@@ -3644,6 +3661,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         "pt-BR": {
             "next_match": "Prepare a próxima partida com calendário, amostra de minutos e posições observadas. Sugira somente esquemas de allowed_formations. Separe adequação de elenco de escalação/disponibilidade.",
             "player": "Cruze radar e perfis de função já calculados com produção, eficiência por 90, recorte recente e pares da mesma posição no elenco. Compare amostras equivalentes; não infira hierarquia nem titularidade.",
+            "player_form": "Avalie o momento de forma recente do jogador: últimas atuações, tendência de rating, eficiência por 90 e desvio em relação à própria média da temporada. Destaque picos, quedas e estabilidade, sem atribuir causas não observadas.",
+            "player_season": "Faça uma leitura da temporada acumulada do jogador: volume, eficiência, contribuições por 90, participação nos resultados e evolução ao longo das rodadas. Compare com pares da mesma posição e mantenha conclusões individuais.",
             "match_player": "Faça uma avaliação técnica concisa desta atuação, com opinião calibrada e sustentada pelos dados. Dê um veredito curto no resumo e até quatro observações que cruzem produção, eficiência, função/posição e comparação pré-calculada do jogador com o time e os colegas que atuaram. Destaque tanto méritos quanto limitações quando existirem; não enumere estatísticas sem explicar o que elas significam em conjunto. Interprete volume como volume, eficiência como eficiência; não trate todo número alto como qualidade. Evite elogios genéricos ou absolutos como 'perfeito', 'incrível' e 'consistente' sem evidência comparativa. Quando os dados sustentarem, diga claramente que um indicador ficou abaixo ou acima do padrão coletivo, sem inventar causas. Use posição observada somente com evidência; caso contrário identifique a posição como cadastrada. Não recomende treino nem desenvolvimento. Para goleiro, relacione o xG e os chutes no alvo do adversário com defesas e gols sofridos; avalie o resultado com cautela, sem confundir xG com defesas esperadas nem atribuir sozinho ao goleiro gols que também dependem da defesa. Se faltarem dados, qualifique a avaliação.",
             "team_identity": "Interprete tendências e recortes calculados pelo Atlas. Só proponha hipótese sobre estilo de jogo se sample_sufficient=true; caso contrário descreva apenas métricas observadas. Associação não prova causa nem instrução tática.",
             "match": "Contextualize resultado versus desempenho; compare criação/concessão, volume/qualidade, circulação, progressão e ações defensivas atuais com médias anteriores e últimas cinco partidas válidas. Compare atletas com a mesma posição observada quando registrada. Identifique desvio, padrão, impacto e acompanhamento útil, sem atribuir causa não observada.",
@@ -3651,6 +3670,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         "en-GB": {
             "next_match": "Prepare the next fixture using the calendar, recorded minutes and observed positions. Recommend only shapes in allowed_formations. Separate squad fit from confirmed selection or availability.",
             "player": "Combine Atlas role and attribute profiles with production, per-90 efficiency, recent form and same-position squad peers. Compare samples fairly; do not infer hierarchy or starting status.",
+            "player_form": "Assess the player's current form: recent appearances, rating trend, per-90 efficiency and deviation from their own season average. Highlight peaks, dips and stability without attributing unobserved causes.",
+            "player_season": "Review the player's accumulated season: volume, efficiency, contributions per 90, involvement in results and progression across rounds. Compare with same-position peers and keep conclusions individual.",
             "match_player": "Give a concise technical assessment of this appearance, with a calibrated opinion grounded in the data. Give a short verdict in the summary and up to four observations that combine production, efficiency, role/position, and the precomputed comparison with the team and teammates who played. State both strengths and limitations when present; do not list statistics without explaining what they mean together. Treat volume as volume and efficiency as efficiency; a high count is not automatically good. Avoid generic or absolute praise such as 'perfect', 'incredible', or 'consistent' without comparative evidence. When supported, clearly say an indicator was below or above the collective pattern without inventing causes. Use observed position only when evidenced; otherwise identify the registered position. Do not recommend training or development. For a goalkeeper, relate opponent xG and shots on target to saves and goals conceded; assess cautiously, do not equate xG with expected saves, and do not assign goals solely to the keeper when the defence also matters. Qualify the assessment when data is missing.",
             "team_identity": "Interpret Atlas-calculated trends. Offer a playing-style hypothesis only when sample_sufficient=true; otherwise describe measured statistics only. Association does not prove a cause or tactical instruction.",
             "match": "Contextualise result versus performance; compare chance creation/concession, volume/quality, circulation, progression and defensive actions with prior averages and the last five valid fixtures. Compare players at the same observed position when recorded. Identify deviations, patterns, impact and useful follow-up without assigning unobserved causes.",
@@ -3658,6 +3679,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         "es-ES": {
             "next_match": "Prepara el próximo partido con calendario, minutos y posiciones observadas. Recomienda solo esquemas de allowed_formations. Separa la compatibilidad de plantilla de una alineación o disponibilidad confirmada.",
             "player": "Cruza perfiles de función y atributos de Atlas con producción, eficiencia por 90, rendimiento reciente y compañeros de la misma posición. Compara muestras equivalentes; no infieras jerarquía ni titularidad.",
+            "player_form": "Evalúa el momento de forma actual del jugador: apariciones recientes, tendencia de nota, eficiencia por 90 y desviación respecto a su propia media de la temporada. Destaca picos, caídas y estabilidad sin atribuir causas no observadas.",
+            "player_season": "Haz una lectura de la temporada acumulada del jugador: volumen, eficiencia, contribuciones por 90, participación en los resultados y evolución a lo largo de las jornadas. Compara con compañeros de la misma posición y mantén conclusiones individuales.",
             "match_player": "Ofrece una evaluación técnica concisa de esta actuación, con una opinión calibrada y sustentada por los datos. Da un veredicto breve en el resumen y hasta cuatro observaciones que combinen producción, eficiencia, función/posición y la comparación precalculada del jugador con el equipo y sus compañeros que jugaron. Señala méritos y limitaciones cuando existan; no enumeres estadísticas sin explicar su significado conjunto. Trata el volumen como volumen y la eficiencia como eficiencia; un valor alto no es automáticamente bueno. Evita elogios genéricos o absolutos como 'perfecto', 'increíble' o 'consistente' sin evidencia comparativa. Cuando los datos lo sustenten, indica claramente que un indicador quedó por debajo o por encima del patrón colectivo, sin inventar causas. Usa la posición observada solo si hay evidencia; si no, identifica la posición registrada. No recomiendes entrenamiento ni desarrollo. Para un portero, relaciona el xG y los tiros a puerta del rival con las paradas y los goles encajados; evalúa con cautela, no confundas xG con paradas esperadas ni atribuyas los goles solo al portero cuando la defensa también influye. Matiza la evaluación cuando falten datos.",
             "team_identity": "Interpreta tendencias calculadas por Atlas. Propón una hipótesis de estilo solo si sample_sufficient=true; de lo contrario describe únicamente métricas observadas. Una asociación no demuestra una causa ni una instrucción táctica.",
             "match": "Contextualiza resultado frente a rendimiento; compara creación/concesión, volumen/calidad, circulación, progresión y acciones defensivas con promedios previos y los últimos cinco partidos válidos. Compara jugadores en la misma posición observada cuando esté registrada. Identifica desviaciones, patrones, impacto y seguimiento útil sin atribuir causas no observadas.",
@@ -3676,7 +3699,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                    "matchstats contains team rows. Keep the report about the selected player, not a general team review. "
                    "For a goalkeeper, cite matchstats for opponent xG/shots and selected_match_player for keeper outcomes; xG describes chance quality, "
                    "not expected saves, and defensive context limits attribution of conceded goals. Avoid generic or absolute verdicts without strong evidence.")
-    elif mode == "player":
+    elif mode in PLAYER_REPORT_MODES:
         system += (" This is an accumulated individual report. Keep conclusions about the selected player, their recorded position and their own comparable history. Do not convert team totals into individual contribution.")
     system += (" Ask for more context only when a specific qualitative answer from the coach could materially change the interpretation or recommendation and Atlas does not record it. Ask only about coach-only context such as intended instructions, tactical plan, or an observed adjustment. Never ask the coach to supply performance statistics, recent or historical results, player minutes, goals, xG, shots, ratings, or other figures; these are Atlas data questions, not coach-context questions. Continue with a qualified analysis when no coach-only answer is needed. Return at most two concise information_requests, each with question and reason, in the selected language; return an empty list when there is no material coach-context gap. Treat coach_context as unverified user narrative, never as an imported Atlas statistic. If coach_context is supplied, use it only for the stated context and label any use as coach-provided. If six coach answers are already present, return no more requests.")
     allowed_shapes = context.get("allowed_formations") or []
@@ -3759,6 +3782,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
         default_refs = {"match": ["match", "matchstats", "match_players", "pre_match_team_context"],
                         "match_player": ["match", "matchstats", "match_players", "selected_match_player", "pre_match_player_context"],
                         "player": ["player_checkpoint", "player_summary", "player_position_peers", "player_recent_matches", "player_matchstats"],
+                        "player_form": ["player_checkpoint", "player_summary", "player_position_peers", "player_recent_matches", "player_matchstats"],
+                        "player_season": ["player_checkpoint", "player_summary", "player_position_peers", "player_recent_matches", "player_matchstats"],
                         "team_identity": ["team_statistical_profile", "opponent_profiles"],
                         "next_match": ["match", "squad", "formation_options", "previous_fixture", "following_fixture"]}
         safe_default_refs = [item for item in default_refs.get(mode, []) if item in valid_ids]
@@ -3821,7 +3846,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                                 "limitations": str(item.get("limitations") or "")[:500],
                                 "fact_refs": item["fact_refs"]})
             report[key] = cleaned
-        if mode not in {"player", "match_player"}:
+        if mode not in (PLAYER_REPORT_MODES | {"match_player"}):
             for key in ("strengths", "development_areas", "training_suggestions"):
                 report[key] = []
         if mode == "match_player" and len(report["observations"]) < 2:
@@ -4276,7 +4301,7 @@ def run_retroactive_commission_reports(database: Any, career_id: int, job_id: st
                                        language: str | None = None, model: str | None = None) -> None:
     """Resume one persisted chronological queue; each task is committed before advancing."""
     with database.connect() as conn:
-        _, selected_model, _ = resolve_report_model(conn, model)
+        provider, selected_model, _ = resolve_report_model(conn, model)
         _ensure_replay_schema(conn)
         run = conn.execute("SELECT * FROM technical_commission_replay_runs WHERE job_id=? AND career_id=?",
                            (job_id, career_id)).fetchone()

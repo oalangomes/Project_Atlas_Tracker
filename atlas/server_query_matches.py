@@ -10,11 +10,67 @@ from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
+from .positions import trusted_actual_position
 from .server_utils import (
     age_on_date, aggregate_standings, annotate_knockout_progress, as_int, clean_raw,
     competition_format_info, contract_role_label, fixture_group_value, parse_fc_date,
     parse_raw, rows_to_dicts, subtract_months, youth_potential_range,
 )
+
+
+def historical_observed_positions(conn: sqlite3.Connection, snapshot: sqlite3.Row,
+                                  fixture_key: str) -> dict[int, dict[str, Any]]:
+    """Recover trusted in-match positions from earlier snapshots of this fixture.
+
+    The exporter stamps the position actually used in a match (including
+    substitutes) via career_playerlastmatchhistory only in the snapshot taken
+    right after that match. Later snapshots re-export the rating history alone,
+    so the line-up slot disappears for substitutes. The most recent snapshot
+    still holding a trusted position for this fixture is therefore the most
+    faithful record, and later snapshots never override it.
+    """
+
+    result: dict[int, dict[str, Any]] = {}
+    rows = conn.execute(
+        """SELECT pmp.player_ea_id,pmp.actual_position,pmp.actual_position_source,pmp.snapshot_id
+             FROM player_match_performances pmp JOIN snapshots s ON s.id=pmp.snapshot_id
+            WHERE s.career_id=? AND pmp.fixture_key=? AND pmp.snapshot_id<>?
+              AND COALESCE(pmp.actual_position,'')<>''
+            ORDER BY s.import_sequence DESC""",
+        (snapshot["career_id"], fixture_key, snapshot["id"]),
+    ).fetchall()
+    for row in rows:
+        position = trusted_actual_position(row["actual_position"], row["actual_position_source"])
+        if not position:
+            continue
+        player_id = as_int(row["player_ea_id"])
+        if player_id is None or player_id in result:
+            continue
+        result[player_id] = {
+            "position": position,
+            "source": str(row["actual_position_source"]),
+            "snapshot_id": int(row["snapshot_id"]),
+        }
+    return result
+
+
+def apply_historical_observed_positions(rows: list[dict[str, Any]],
+                                        trusted: dict[int, dict[str, Any]]) -> int:
+    """Fill missing observed positions without overwriting a present one."""
+
+    filled = 0
+    for item in rows:
+        player_id = as_int(item.get("player_ea_id"))
+        if player_id is None or str(item.get("actual_position") or "").strip():
+            continue
+        trusted_row = trusted.get(player_id)
+        if not trusted_row:
+            continue
+        item["actual_position"] = trusted_row["position"]
+        item["actual_position_source"] = trusted_row["source"]
+        item["observedPositionBackfill"] = {"snapshotId": trusted_row["snapshot_id"]}
+        filled += 1
+    return filled
 
 class MatchQueryMixin:
     def _matches(self, snapshot_id: int) -> dict[str, Any]:
@@ -90,6 +146,10 @@ class MatchQueryMixin:
             detailed = detailed_match(conn, fixture_id, career_id=int(snap["career_id"]),
                                       as_of_import_sequence=int(snap["import_sequence"]),
                                       season_index=int(snap["season_index"]))
+            if row["fixture_key"]:
+                historical_observed = historical_observed_positions(conn, snap, row["fixture_key"])
+            else:
+                historical_observed = {}
         season_start = self._season_start(snap)
         match_item = dict(row)
         self._enrich_fixtures([match_item], season_start, snapshot_id)
@@ -135,6 +195,7 @@ class MatchQueryMixin:
             base_by_player[player_id] = merged
         base_performances = list(base_by_player.values())
         suppressed_snapshot_duplicates = max(0, len(raw_base_performances) - len(base_performances))
+        historical_backfill_count = apply_historical_observed_positions(base_performances, historical_observed)
 
         detailed_by_player = {int(item.get("playerEaId")): item for item in (detailed or {}).get("players", []) if item.get("playerEaId") is not None}
         detailed_team_ids = {int(item.get("teamIndex")): as_int(item.get("teamEaId")) for item in (detailed or {}).get("teams", []) if item.get("teamIndex") is not None}
@@ -181,6 +242,7 @@ class MatchQueryMixin:
             "performances": performance_items,
             "performanceDiagnostics": {
                 "suppressedSnapshotDuplicates": suppressed_snapshot_duplicates,
+                "historicalObservedPositionsBackfilled": historical_backfill_count,
             },
             "competition": clean_raw(competition),
             "competitionIdentity": self.state.media.competition_identity(int(row["competition_object_id"]), snapshot_id=snapshot_id, competition_name=match_item.get("competition_name")) if row["competition_object_id"] is not None else None,

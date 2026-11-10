@@ -187,6 +187,12 @@ function canonicalPosition(value: any, explicitId: any = null) {
     return positionAliases[raw] || raw || (Number.isInteger(id) ? positionById[id] : "");
 }
 function pos(v: any) { return canonicalPosition(v) || "–"; }
+function observedPositionOf(p: any) {
+    const source = String(p?.actual_position_source || "");
+    const position = String(p?.actual_position || "").trim();
+    if (!position) return null;
+    return (source === "career_playermatchratinghistory_position" || source === "career_playerlastmatchhistory_latest_match") ? position : null;
+}
 function positionClass(v: any) { const value = canonicalPosition(v); if (value === "GK") return "pos-gk"; if (["SW","RWB","RB","RCB","CB","LCB","LB","LWB"].includes(value)) return "pos-def"; if (["RDM","CDM","LDM","RM","RCM","CM","LCM","LM","RAM","CAM","LAM"].includes(value)) return "pos-mid"; return "pos-att"; }
 function positionOrder(value: any, explicitId: any = null) {
     const rank: Record<string, number> = {

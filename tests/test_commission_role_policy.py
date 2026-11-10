@@ -371,6 +371,21 @@ class KeeperRoleContextTests(unittest.TestCase):
         selected["observed_position_source"] = "unverified"
         self.assertEqual(player_role(ctx)["role"], "goalkeeper")
 
+    def test_last_match_history_position_is_trusted_observed_position(self):
+        ctx = keeper_context()
+        selected = fact_map(ctx)["selected_match_player"]
+        selected["observed_position"] = "RDM"
+        selected["observed_position_source"] = "career_playerlastmatchhistory_latest_match"
+        role = player_role(ctx)
+        self.assertEqual(role["position"], "RDM")
+        self.assertEqual(role["position_source"], "trusted_observed_position")
+        self.assertEqual(role["role"], "defensive_midfielder")
+        self.assertFalse(role_relevance_conflict(ctx, "O jogador cobriu um espaço no meio-campo."))
+        selected["observed_position_source"] = "career_playermatchratinghistory_position"
+        self.assertEqual(player_role(ctx)["position_source"], "trusted_observed_position")
+        selected["observed_position_source"] = "unverified"
+        self.assertEqual(player_role(ctx)["position_source"], "registered_position")
+
     def test_role_profile_is_explicitly_a_prompt_lens_not_an_extra_fact(self):
         ctx = keeper_context("player")
         ctx["role_analysis"] = player_role(ctx)

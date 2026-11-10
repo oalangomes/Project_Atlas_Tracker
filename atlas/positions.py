@@ -29,6 +29,34 @@ POSITION_ALIASES: dict[str, str] = {
 
 CANONICAL_POSITIONS = frozenset(POSITION_BY_ID.values())
 
+# --- Observed in-match position provenance ---------------------------------
+# Atlas accepts an in-match position only when the export proves where the
+# player actually took the pitch:
+# * "career_playermatchratinghistory_position" — the FC26 rating-history row
+#   keeps the line-up slot for that match; slots 28/29 (SUB/RES) carry no
+#   position, and occasionally a stale slot survives for a full-match player.
+# * "career_playerlastmatchhistory_latest_match" — the position actually used
+#   in the player's latest completed managed match, including substitutes,
+#   as retained by career_playerlastmatchhistory until the next managed match.
+TRUSTED_POSITION_SOURCES: frozenset[str] = frozenset({
+    "career_playermatchratinghistory_position",
+    "career_playerlastmatchhistory_latest_match",
+})
+
+
+def trusted_position_source(value: Any) -> str | None:
+    """Return the provenance text only when it identifies an in-match record."""
+
+    text = str(value or "").strip()
+    return text if text in TRUSTED_POSITION_SOURCES else None
+
+
+def trusted_actual_position(position: Any, source: Any) -> str | None:
+    """Return the position only when it is recorded with trusted provenance."""
+
+    text = str(position or "").strip().upper()
+    return text if text and trusted_position_source(source) else None
+
 # Broad groups remain available for high-level charts and generic statistical
 # models.  They are explicitly forbidden as squad-coverage evidence.
 BROAD_POSITION_GROUPS: dict[str, frozenset[str]] = {

@@ -12,6 +12,8 @@ from statistics import median
 import unicodedata
 from typing import Any
 
+from .positions import trusted_position_source
+
 
 _COMMON = (
     "minutes", "minutes_played", "appearances", "game_rating", "rating",
@@ -144,7 +146,7 @@ def _number(value: Any) -> float | None:
 def _role_for_match_player(row: dict[str, Any]) -> str | None:
     position = None
     if (row.get("observed_position")
-            and row.get("observed_position_source") == "career_playermatchratinghistory_position"):
+            and trusted_position_source(row.get("observed_position_source"))):
         position = str(row["observed_position"]).upper().strip()
     elif row.get("registered_position"):
         position = str(row["registered_position"]).upper().strip()
@@ -339,7 +341,7 @@ def player_role(context: dict[str, Any]) -> dict[str, Any] | None:
     provenance = "unknown"
     if (context["mode"] == "match_player"
             and row.get("observed_position")
-            and row.get("observed_position_source") == "career_playermatchratinghistory_position"):
+            and trusted_position_source(row.get("observed_position_source"))):
         position = str(row["observed_position"]).upper().strip()
         provenance = "trusted_observed_position"
     elif context["mode"] == "match_player" and row.get("registered_position"):

@@ -194,7 +194,7 @@ function bindContent() {
       const output=target?$(`[data-report-slot="${target}"]`,content):$('[data-commission-report-output]',content);
       const payload:any={snapshot_id:Number(button.dataset.snapshotId||state.snapshotId),mode,force_refresh:button.dataset.forceRefresh==='1'};
       const fixtureId=Number(button.dataset.fixtureId||fixture?.value||0),playerId=Number(button.dataset.playerEaId||player?.value||0);
-      if(mode==='player'||mode==='match_player')payload.player_ea_id=playerId;
+      if(mode==='player'||mode==='player_form'||mode==='player_season'||mode==='match_player')payload.player_ea_id=playerId;
       if(mode==='match'||mode==='match_player'||mode==='next_match')payload.fixture_id=fixtureId;
       button.disabled=true;const oldLabel=button.textContent;button.textContent='Starting staff report…';if(output)output.innerHTML='<p>The report is running in the background. You can keep using Atlas while the AI provider works.</p>';
       try{

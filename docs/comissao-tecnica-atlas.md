@@ -20,7 +20,7 @@ A Comissão Técnica é uma camada do Project Atlas Tracker existente. Ela usa a
 - **Extraído:** valores presentes em snapshot, fixture, exportação MatchStats completa ligada, histórico de rating/minutos ou atributo cadastrado.
 - **Derivado:** taxas e médias produzidas pelos cálculos de `atlas/match_stats.py`, contexto pré-partida agregado e métricas da Comissão Técnica. O contexto de partida exclui datas iguais/posteriores ao jogo analisado e exports posteriores ao snapshot selecionado.
 - **Indisponível:** posse percentual, pressão coletiva, altura de linha, evento com minuto, coordenadas, disponibilidade física, hierarquia formal e funções táticas quando não há fonte específica. Nenhum valor ausente é tratado como zero.
-- A posição observada é aceita somente quando `actual_position_source` é `career_playermatchratinghistory_position`. Ela não confirma titularidade, função ou movimentação.
+- A posição observada é aceita somente quando `actual_position_source` é `career_playermatchratinghistory_position` ou `career_playerlastmatchhistory_latest_match` (histórico de rating com slot de escalação, ou posição da última partida comprovada pelo histórico de partidas do jogador). Ela não confirma titularidade, função ou movimentação.
 - Dados profissionais e futebol jovem 5x5 permanecem separados. O save EA FC segue somente leitura e nenhuma mudança de exportador Lua foi necessária.
 
 ## Política de amostra e comparação temporal
