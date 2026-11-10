@@ -44,7 +44,7 @@ async function submitCommissionFollowup(form:HTMLFormElement):Promise<void> {
         }
         if(job.status==="failed")throw new Error(job.error||"The follow-up failed.");
         const result=job.result||{};
-        if(output)output.innerHTML=result.available?commissionReportMarkup(result,payload):`<p>${esc(result.message||"Ollama report unavailable.")}</p>`;
+        if(output)output.innerHTML=result.available?commissionReportMarkup(result,payload):`<p>${esc(result.message||"AI report unavailable.")}</p>`;
     }catch(error:any){if(output)output.innerHTML=`<p class="status-badge amber">${esc(String(error?.message||error))}</p>`;}
     finally{if(button)button.disabled=false;}
 }
@@ -79,21 +79,37 @@ function bindContent() {
     $$<HTMLButtonElement>('[data-workspace-restore]',content).forEach(button=>button.onclick=async()=>{const workspaceId=String(button.dataset.workspaceRestore||''),name=String(button.dataset.workspaceName||'Career');await api('/api/workspaces/archive',{method:'POST',body:JSON.stringify({workspaceId,archived:false})});toast(`“${name}” restored`);await refreshSetup();});
     $$<HTMLButtonElement>('[data-save-llm-config]', content).forEach(button => button.onclick = async () => {
         const provider = $<HTMLSelectElement>('[data-llm-provider]', content)?.value;
-        const key = $<HTMLInputElement>('[data-llm-key]', content)?.value;
         if (!provider) return;
-        
-        const payload = { provider, keys: { [provider]: key || "" } };
+        const keys: Record<string, string> = {};
+        $$<HTMLInputElement>('[data-llm-key]', content).forEach(input => {
+            const name = String(input.dataset.llmKey || '');
+            const value = String(input.value || '').trim();
+            if (name && value) keys[name] = value;
+        });
         try {
-            await api('/api/llm/config', { method: 'POST', body: JSON.stringify(payload) });
-            
+            await api('/api/llm/config', { method: 'POST', body: JSON.stringify({ provider, keys }) });
             state.llmProvider = provider;
-            state.llmKeys = { ...state.llmKeys, [provider]: key || "" };
-            
-            toast("AI configuration saved to database");
+            state.llmKeys = { ...state.llmKeys, ...keys };
+            const saved = Object.keys(keys).length;
+            toast(saved ? `AI configuration saved (${saved} key${saved > 1 ? 's' : ''})` : 'AI provider saved');
         } catch (error: any) {
             toast(`Error saving configuration: ${error.message}`);
         }
-        
+        await renderSetup();
+        applyIcons(content);
+        bindContent();
+    });
+
+    $$<HTMLButtonElement>('[data-remove-llm-key]', content).forEach(button => button.onclick = async () => {
+        const name = String(button.dataset.removeLlmKey || '');
+        if (!name || !confirm(`Remove the saved ${name} key?`)) return;
+        try {
+            await api('/api/llm/config', { method: 'POST', body: JSON.stringify({ remove: [name] }) });
+            delete state.llmKeys[name];
+            toast(`${name} key removed`);
+        } catch (error: any) {
+            toast(`Error removing key: ${error.message}`);
+        }
         await renderSetup();
         applyIcons(content);
         bindContent();
@@ -179,7 +195,7 @@ function bindContent() {
       const fixtureId=Number(button.dataset.fixtureId||fixture?.value||0),playerId=Number(button.dataset.playerEaId||player?.value||0);
       if(mode==='player'||mode==='match_player')payload.player_ea_id=playerId;
       if(mode==='match'||mode==='match_player'||mode==='next_match')payload.fixture_id=fixtureId;
-      button.disabled=true;const oldLabel=button.textContent;button.textContent='Starting staff report…';if(output)output.innerHTML='<p>The report is running in the background. You can keep using Atlas while the local model works.</p>';
+      button.disabled=true;const oldLabel=button.textContent;button.textContent='Starting staff report…';if(output)output.innerHTML='<p>The report is running in the background. You can keep using Atlas while the AI provider works.</p>';
       try{
         const started:any=await api(`/api/careers/${state.careerId}/commission/report-jobs`,{method:'POST',body:JSON.stringify(payload)});
         let job:any={status:started.status},attempt=0;
@@ -187,13 +203,13 @@ function bindContent() {
           await new Promise(resolve=>setTimeout(resolve,1500));
           job=await api(`/api/careers/${state.careerId}/commission/report-jobs/${started.job_id}`);
           attempt++;
-          if(output&&attempt%20===0)output.innerHTML='<p>Ollama is still working in the background. This does not block the rest of Atlas.</p>';
+          if(output&&attempt%20===0)output.innerHTML='<p>The AI provider is still working in the background. This does not block the rest of Atlas.</p>';
           if(attempt>240)throw new Error('Report is taking longer than expected; it continues in the background. Refresh the report later to use its cache.');
         }
         if(job.status==='failed')throw new Error(job.error||'The background report failed.');
         const result:any=job.result||{};
         if(output){
-          if(!result.available){output.innerHTML=`<p>${esc(result.message||'Ollama report unavailable.')}</p>`;}
+          if(!result.available){output.innerHTML=`<p>${esc(result.message||'AI report unavailable.')}</p>`;}
           else {
             output.innerHTML=commissionReportMarkup(result,payload);
             if(mode==="player"&&target==="player-p1-integrated"){
@@ -205,7 +221,7 @@ function bindContent() {
             }
           }
         }
-      }catch(error:any){if(output)output.textContent=`Local report failed. Atlas metrics are unchanged. ${String(error?.message||error)}`;}
+      }catch(error:any){if(output)output.textContent=`Report failed. Atlas metrics are unchanged. ${String(error?.message||error)}`;}
       finally{
         button.disabled=false;
         const p1Ready=mode==="player"&&target==="player-p1-integrated"&&!!output?.querySelector(".commission-report-head");

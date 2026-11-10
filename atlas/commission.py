@@ -6,6 +6,7 @@ import json
 import os
 import re
 import sqlite3
+import time
 from datetime import date
 import urllib.error
 import urllib.request
@@ -38,7 +39,15 @@ _MATCH_PLAYER_ADVICE_LANGUAGE = re.compile(
     r"debería|deberían|debe|necesita|enfocarse|entrenar|mejorar|priorizar)\b",
     re.IGNORECASE,
 )
-_REPORT_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="atlas-ollama-report")
+try:
+    _REPORT_WORKERS = max(1, min(6, int(os.environ.get("ATLAS_REPORT_WORKERS") or 3)))
+except (TypeError, ValueError):
+    _REPORT_WORKERS = 3
+_REPORT_EXECUTOR = ThreadPoolExecutor(max_workers=_REPORT_WORKERS,
+                                      thread_name_prefix="atlas-llm-report")
+# Cloud providers tolerate parallel requests; a local GPU does not, so Ollama calls
+# stay serialised even when several report jobs run at the same time.
+_OLLAMA_REPORT_LOCK = Lock()
 _REPORT_JOB_LOCK = Lock()
 _REPORT_JOBS: dict[str, dict[str, Any]] = {}
 _REPORT_JOB_KEYS: dict[str, str] = {}
@@ -636,77 +645,6 @@ def analyze_players(players: list[dict[str, Any]], performances: list[dict[str, 
         "function_comparisons": function_comparisons,
     }
 
-
-def get_active_provider(conn: Any) -> tuple[str, LLMProvider]:
-    """Returns the provider name and instance configured in the database."""
-    try:
-        row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
-        config = json.loads(row["value"]) if row else {"provider": "ollama", "keys": {}}
-        provider_name = config.get("provider", "ollama")
-    except Exception:
-        provider_name = "ollama"
-    return provider_name, LLM_MANAGER.get_provider(provider_name)
-
-def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str,
-                           fixture_id: int | None = None, player_ea_id: int | None = None,
-                           model: str | None = None, force_refresh: bool = False,
-                           clarifications: list[dict[str, str]] | None = None) -> dict[str, Any]:
-    """Core logic to generate a detailed commission report using the configured LLM provider."""
-    # 1. Build context and evidence
-    from .commission import _briefing_facts, _report_source_hash
-    context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id)
-    source_hash = _report_source_hash(context, career_id, mode, scope)
-    
-    # 2. Check cache
-    if not force_refresh:
-        cached = conn.execute(
-            """SELECT payload_json FROM technical_commission_report_cache 
-               WHERE career_id=? AND snapshot_id=? AND mode=? AND scope_key=? AND model=? 
-               AND source_hash=?""",
-            (career_id, snapshot_id, mode, scope, model, source_hash)
-        ).fetchone()
-        if cached:
-            return json.loads(cached["payload_json"])
-    
-    # 3. Use the provider configured in the database as default
-    provider_name, provider = get_active_provider(conn)
-    
-    # Allow override if the model name explicitly mentions another provider
-    selected_model = model or "qwen3.5:9b"
-    if "gemini" in selected_model.lower():
-        provider_name = "gemini"
-        provider = LLM_MANAGER.get_provider(provider_name)
-    elif "llama" in selected_model.lower() or "groq" in selected_model.lower():
-        provider_name = "groq"
-        provider = LLM_MANAGER.get_provider(provider_name)
-    
-    # Build system prompt and user prompt
-    from .commission_prompt_policy import build_system_prompt
-    system_prompt = build_system_prompt(mode, selected_model, "pt-BR")
-    user_prompt = json.dumps(prompt_evidence(context), ensure_ascii=False)
-    
-    try:
-        report_raw = provider.generate(user_prompt, system_prompt)
-        report = json.loads(report_raw)
-        
-        result = {
-            "available": True,
-            "model": selected_model,
-            "report": report,
-            "source_hash": source_hash,
-            "fact_catalog": context["facts"],
-            "validation": {"accepted_claims": 1, "rejected_claims": 0, "interpretation_quality": "AI generated"}
-        }
-        
-        conn.execute(
-            """INSERT INTO technical_commission_report_cache(career_id,snapshot_id,mode,scope_key,model,source_hash,payload_json)
-               VALUES(?,?,?,?,?,?,?) ON CONFLICT(career_id,snapshot_id,mode,scope_key,model) DO UPDATE SET
-               source_hash=excluded.source_hash,payload_json=excluded.payload_json,generated_at=CURRENT_TIMESTAMP""",
-            (career_id, snapshot_id, mode, scope, selected_model, source_hash, json.dumps(result, ensure_ascii=False))
-        )
-        return result
-    except Exception as e:
-        return {"available": False, "message": f"AI report failed: {str(e)}"}
 
 def get_ai_analysis(conn: Any, career_id: int, snapshot_id: int, model: str | None = None) -> dict[str, Any]:
     """High-level analysis of players and team identity."""
@@ -3222,6 +3160,295 @@ def _report_coverage(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+OLLAMA_DEFAULT_MODEL = "qwen3.5:9b"
+CLOUD_DEFAULT_MODELS = {"gemini": "gemini-flash-latest", "groq": "llama-3.1-8b-instant"}
+GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
+GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
+GEMINI_FALLBACK_MODELS = ("gemini-flash-latest", "gemini-3.6-flash", "gemini-3.8-flash",
+                          "gemini-3.5-flash", "gemini-3.7-flash", "gemini-flash-lite-latest",
+                          "gemini-3.1-flash-lite", "gemini-2.5-flash")
+GROQ_FALLBACK_MODELS = ("llama-3.1-8b-instant", "llama-3.3-70b-versatile", "openai/gpt-oss-20b")
+
+
+def read_llm_config(conn: Any) -> dict[str, Any]:
+    """Read the provider saved by the Setup screen from app_settings."""
+    config: dict[str, Any] = {}
+    try:
+        row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
+        parsed = json.loads(row["value"]) if row else None
+        if isinstance(parsed, dict):
+            config = parsed
+    except (sqlite3.Error, ValueError, TypeError):
+        config = {}
+    provider = str(config.get("provider") or "ollama").strip().lower()
+    if provider not in CLOUD_DEFAULT_MODELS and provider != "ollama":
+        provider = "ollama"
+    raw_keys = config.get("keys") if isinstance(config.get("keys"), dict) else {}
+    return {
+        "provider": provider,
+        "model": str(config.get("model") or "").strip(),
+        "keys": {str(name).lower(): str(value or "").strip() for name, value in raw_keys.items()},
+    }
+
+
+def resolve_report_model(conn: Any, requested: str | None = None) -> tuple[str, str, str]:
+    """Return the active provider, the model label to store, and its API key."""
+    config = read_llm_config(conn)
+    provider = config["provider"]
+    if provider == "ollama":
+        model = (requested or config["model"]
+                 or os.environ.get("ATLAS_OLLAMA_MODEL") or OLLAMA_DEFAULT_MODEL)
+        return provider, model, ""
+    api_key = config["keys"].get(provider, "")
+    requested_text = str(requested or "").strip()
+    lowered = requested_text.lower()
+    same_family = (
+        (provider == "gemini" and "gemini" in lowered)
+        or (provider == "groq" and any(tag in lowered for tag in ("llama", "groq", "mixtral")))
+    )
+    model = (requested_text if requested_text and same_family
+             else config["model"] or CLOUD_DEFAULT_MODELS[provider])
+    return provider, model, api_key
+
+
+def _post_json(url: str, body: dict[str, Any], headers: dict[str, str], timeout: float) -> dict[str, Any]:
+    request = urllib.request.Request(
+        url, data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", **headers}, method="POST")
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _extract_json_object(value: str) -> dict[str, Any]:
+    cleaned = str(value or "").strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```[a-zA-Z]*\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    start, end = cleaned.find("{"), cleaned.rfind("}")
+    if start >= 0 and end > start:
+        cleaned = cleaned[start:end + 1]
+    parsed = json.loads(cleaned or "{}")
+    if not isinstance(parsed, dict):
+        raise ValueError("schema inválido")
+    return parsed
+
+
+def _cloud_budget() -> tuple[float, float]:
+    """Return (total seconds for one report, seconds per HTTP attempt)."""
+    def read(name: str, default: float) -> float:
+        try:
+            return max(5.0, float(os.environ.get(name) or default))
+        except (TypeError, ValueError):
+            return default
+    return (
+        read("ATLAS_CLOUD_REPORT_DEADLINE_SECONDS", 100.0),
+        read("ATLAS_CLOUD_ATTEMPT_TIMEOUT_SECONDS", 25.0),
+    )
+
+
+# Models that answered 429 are skipped until the provider says they are usable
+# again. Gemini's free tier is per model per day, so without this every report
+# burns seconds retrying aliases that already know they are out of quota.
+_CLOUD_MODEL_COOLDOWN: dict[str, float] = {}
+_CLOUD_COOLDOWN_LOCK = Lock()
+_QUOTA_RETRY = re.compile(r"retry in\s+(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?\s*([\d.]+)\s*s",
+                          re.IGNORECASE)
+
+
+def _model_ready(name: str) -> bool:
+    with _CLOUD_COOLDOWN_LOCK:
+        until = _CLOUD_MODEL_COOLDOWN.get(name, 0.0)
+        if until <= time.monotonic():
+            _CLOUD_MODEL_COOLDOWN.pop(name, None)
+            return True
+        return False
+
+
+def _cool_model(name: str, seconds: float) -> None:
+    with _CLOUD_COOLDOWN_LOCK:
+        _CLOUD_MODEL_COOLDOWN[name] = max(_CLOUD_MODEL_COOLDOWN.get(name, 0.0),
+                                          time.monotonic() + max(30.0, seconds))
+
+
+def _cooldown_seconds(detail: str) -> float:
+    """How long a throttled model should be skipped before trying it again."""
+    lowered = (detail or "").lower()
+    match = _QUOTA_RETRY.search(lowered)
+    if match:
+        hours, minutes, seconds = (float(part or 0) for part in match.groups())
+        total = hours * 3600 + minutes * 60 + seconds
+        if total >= 30:
+            return min(total, 86400.0)
+    if "per day" in lowered or "daily" in lowered:
+        return 3600.0
+    return 60.0
+
+
+def _cooldown_label() -> str:
+    now = time.monotonic()
+    with _CLOUD_COOLDOWN_LOCK:
+        waiting = [until for until in _CLOUD_MODEL_COOLDOWN.values() if until > now]
+    if not waiting:
+        return "alguns instantes"
+    seconds = max(0.0, min(waiting) - now)
+    if seconds >= 3600:
+        return f"~{seconds / 3600:.0f}h"
+    return f"~{max(1, int(seconds / 60))}min"
+
+
+def _cloud_report_payload(provider: str, api_key: str, model: str, system: str,
+                          prompt_text: str, schema: dict[str, Any], _timeout: float) -> dict[str, Any]:
+    """Call Gemini or Groq in JSON mode and return the parsed report object.
+
+    Every report has a hard total deadline: cloud aliases rotate quickly and free tiers
+    throttle, so the fallback chain must give up fast instead of queueing for minutes.
+    Models that reported 429 are skipped until their quota window reopens.
+    """
+    budget, attempt_budget = _cloud_budget()
+    # Cloud reports use their own budget; the Ollama timeout must not shrink it.
+    budget = max(10.0, budget)
+    deadline = time.monotonic() + budget
+    schema_hint = (" Respond with a single valid JSON object and nothing else. "
+                   "It must follow this JSON Schema: " + json.dumps(schema, ensure_ascii=False))
+
+    def remaining() -> float:
+        return deadline - time.monotonic()
+
+    def attempt(name: str, url: str, body: dict[str, Any],
+                headers: dict[str, str]) -> tuple[dict[str, Any] | None, str]:
+        """One model call with a single retry, bounded by the shared deadline."""
+        error = "sem resposta"
+        for _ in range(2):
+            left = remaining()
+            if left <= 2.0:
+                return None, "prazo esgotado"
+            try:
+                return _post_json(url, body, headers, max(5.0, min(attempt_budget, left))), ""
+            except urllib.error.HTTPError as exc:
+                error = f"HTTP {exc.code}"
+                if exc.code not in {400, 404, 408, 429, 500, 502, 503, 504}:
+                    raise
+                if exc.code == 429:
+                    detail = ""
+                    try:
+                        detail = exc.read().decode("utf-8", "replace")
+                    except (OSError, ValueError):
+                        detail = ""
+                    _cool_model(name, _cooldown_seconds(detail))
+                    return None, "HTTP 429 (limite/quota)"
+                if exc.code in {500, 502, 503, 504}:
+                    pause = min(0.8, max(0.0, remaining() - 3.0))
+                    if pause:
+                        time.sleep(pause)
+                continue
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                error = f"rede ({exc.__class__.__name__})"
+                continue
+        return None, error
+
+    provider_label = {"gemini": "Gemini", "groq": "Groq"}.get(provider, provider)
+    if provider == "gemini":
+        chain = [model, *[item for item in GEMINI_FALLBACK_MODELS if item != model]]
+    elif provider == "groq":
+        chain = [model, *[item for item in GROQ_FALLBACK_MODELS if item != model]]
+    else:
+        raise ValueError(f"Provedor de IA desconhecido: {provider}")
+
+    candidates = [item for item in chain if _model_ready(item)]
+    if not candidates:
+        raise ValueError(f"{provider_label}: todos os modelos estão em limite de quota. "
+                         f"Nova tentativa possível em {_cooldown_label()}.")
+
+    last_error = "sem resposta"
+    for candidate in candidates:
+        if remaining() <= 2.0:
+            break
+        if provider == "gemini":
+            url = f"{GEMINI_ENDPOINT}/{candidate}:generateContent?key={api_key}"
+            body = {
+                "systemInstruction": {"parts": [{"text": system + schema_hint}]},
+                "contents": [{"role": "user", "parts": [{"text": prompt_text}]}],
+                "generationConfig": {"temperature": 0.2, "responseMimeType": "application/json",
+                                     "maxOutputTokens": 8192},
+            }
+            headers: dict[str, str] = {}
+        else:
+            url = GROQ_ENDPOINT
+            body = {
+                "model": candidate,
+                "temperature": 0.2,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {"role": "system", "content": system + schema_hint},
+                    {"role": "user", "content": prompt_text},
+                ],
+            }
+            headers = {"Authorization": f"Bearer {api_key}"}
+        data, error = attempt(candidate, url, body, headers)
+        if data is None:
+            last_error = f"{candidate}: {error}"
+            continue
+        if provider == "gemini":
+            responses = data.get("candidates") or []
+            content = (responses[0] if responses else {}).get("content") or {}
+            parts = content.get("parts") or []
+            text_out = "".join(str(part.get("text") or "") for part in parts
+                               if isinstance(part, dict) and not part.get("thought"))
+        else:
+            choices = data.get("choices") or []
+            message = (choices[0] if choices else {}).get("message") or {}
+            text_out = str(message.get("content") or "")
+        if not text_out.strip():
+            last_error = f"{candidate}: resposta vazia"
+            continue
+        try:
+            return _extract_json_object(text_out)
+        except ValueError:
+            last_error = f"{candidate}: JSON inválido"
+            continue
+
+    if remaining() <= 2.0:
+        raise ValueError(f"{provider_label} excedeu o prazo de {int(budget)}s ({last_error}).")
+    if "429" in last_error:
+        raise ValueError(f"{provider_label} sem quota disponível agora ({last_error}). "
+                         f"Próxima tentativa em {_cooldown_label()}.")
+    raise ValueError(f"{provider_label} não respondeu ({last_error}).")
+
+
+def _payload_version_ok(payload_json: Any) -> bool:
+    """Only reuse reports produced by the current report contract."""
+    try:
+        value = json.loads(payload_json)
+    except (TypeError, ValueError):
+        return False
+    try:
+        return int(value.get("report_version") or 0) == REPORT_VERSION
+    except (TypeError, ValueError):
+        return False
+
+
+def _cached_report_row(conn: Any, career_id: int, mode: str, scope: str,
+                       source_hash: str | None = None) -> Any:
+    """Newest persisted report for the same evidence, whatever provider made it.
+
+    The cache primary key still includes the model, but lookups ignore it so that
+    switching provider in Setup reuses existing analysis instead of regenerating
+    every match and player report. The stored model travels inside the payload.
+    """
+    sql = """SELECT snapshot_id, scope_key, source_hash, payload_json, generated_at, model
+               FROM technical_commission_report_cache
+              WHERE career_id=? AND mode=? AND scope_key=?"""
+    params: list[Any] = [career_id, mode, scope]
+    if source_hash is not None:
+        sql += " AND source_hash=?"
+        params.append(source_hash)
+    sql += " ORDER BY generated_at DESC, snapshot_id DESC, rowid DESC LIMIT 8"
+    for row in conn.execute(sql, tuple(params)).fetchall():
+        if _payload_version_ok(row["payload_json"]):
+            return row
+    return None
+
+
 def _ensure_report_cache(conn: Any) -> None:
     conn.execute("""CREATE TABLE IF NOT EXISTS technical_commission_report_cache (
         career_id INTEGER NOT NULL REFERENCES careers(id), snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
@@ -3235,23 +3462,23 @@ def get_cached_commission_report(conn: Any, career_id: int, snapshot_id: int, mo
                                  model: str | None = None, language: str | None = None) -> dict[str, Any]:
     """Read a persisted report without contacting Ollama; exact facts can reuse prior snapshots."""
     context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id, language)
-    selected = model or os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
+    _, selected, _ = resolve_report_model(conn, model)
     exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='technical_commission_report_cache'").fetchone()
     if not exists:
         return {"state": "missing", "cached": False, "model": selected, "scope_key": scope}
     current_hash = _report_source_hash(context, career_id, mode, scope)
-    coach_row = conn.execute(
-        """SELECT snapshot_id,scope_key,source_hash,payload_json,generated_at FROM technical_commission_report_cache
-             WHERE career_id=? AND snapshot_id=? AND mode=? AND scope_key GLOB ? AND model=?
-             ORDER BY generated_at DESC LIMIT 1""",
-        (career_id, snapshot_id, mode, f"{scope}:coach:*", selected),
-    ).fetchone()
-    row = conn.execute(
-        """SELECT snapshot_id,source_hash,payload_json,generated_at FROM technical_commission_report_cache
-             WHERE career_id=? AND mode=? AND scope_key=? AND model=? AND source_hash=?
-             ORDER BY generated_at DESC,snapshot_id DESC LIMIT 1""",
-        (career_id, mode, scope, selected, current_hash),
-    ).fetchone()
+    coach_row = None
+    for candidate in conn.execute(
+        """SELECT snapshot_id,scope_key,source_hash,payload_json,generated_at,model
+             FROM technical_commission_report_cache
+             WHERE career_id=? AND snapshot_id=? AND mode=? AND scope_key GLOB ?
+             ORDER BY generated_at DESC, rowid DESC LIMIT 8""",
+        (career_id, snapshot_id, mode, f"{scope}:coach:*"),
+    ).fetchall():
+        if _payload_version_ok(candidate["payload_json"]):
+            coach_row = candidate
+            break
+    row = _cached_report_row(conn, career_id, mode, scope, current_hash)
     if coach_row and (not row or str(coach_row["generated_at"]) >= str(row["generated_at"])):
         value = json.loads(coach_row["payload_json"])
         coach_fact = next((item for item in value.get("fact_catalog", []) if item.get("id") == "coach_context"), None)
@@ -3263,19 +3490,16 @@ def get_cached_commission_report(conn: Any, career_id: int, snapshot_id: int, mo
         coach_scope = f"{scope}:coach:{suffix}"
         coach_hash = _report_source_hash(coach_context, career_id, mode, coach_scope)
         state = "ready" if str(coach_row["source_hash"]) == coach_hash else "stale"
-        return {"state": state, "cached": True, "model": selected, "scope_key": coach_scope,
+        return {"state": state, "cached": True, "model": str(coach_row["model"] or selected),
+                "scope_key": coach_scope,
                 "source_hash": coach_hash, "snapshot_id": int(coach_row["snapshot_id"]),
                 "generated_at": coach_row["generated_at"], "result": value}
     if row:
         value = json.loads(row["payload_json"])
-        return {"state": "ready", "cached": True, "model": selected, "scope_key": scope, "source_hash": current_hash,
+        return {"state": "ready", "cached": True, "model": str(row["model"] or selected),
+                "scope_key": scope, "source_hash": current_hash,
                 "snapshot_id": int(row["snapshot_id"]), "generated_at": row["generated_at"], "result": value}
-    row = conn.execute(
-        """SELECT snapshot_id,source_hash,payload_json,generated_at FROM technical_commission_report_cache
-             WHERE career_id=? AND mode=? AND scope_key=? AND model=?
-             ORDER BY generated_at DESC,snapshot_id DESC LIMIT 1""",
-        (career_id, mode, scope, selected),
-    ).fetchone()
+    row = _cached_report_row(conn, career_id, mode, scope)
     auto_key = f"auto:{career_id}:{mode}:{scope}:{selected}:{current_hash}"
     with _REPORT_JOB_LOCK:
         job_id = _REPORT_JOB_KEYS.get(auto_key)
@@ -3287,9 +3511,10 @@ def get_cached_commission_report(conn: Any, career_id: int, snapshot_id: int, mo
         return {"state": "missing", "cached": False, "model": selected, "scope_key": scope, "source_hash": current_hash}
     value = json.loads(row["payload_json"])
     if str(row["source_hash"]) == current_hash:
-        return {"state": "ready", "cached": True, "model": selected, "scope_key": scope, "source_hash": current_hash,
+        return {"state": "ready", "cached": True, "model": str(row["model"] or selected),
+                "scope_key": scope, "source_hash": current_hash,
                 "snapshot_id": int(row["snapshot_id"]), "generated_at": row["generated_at"], "result": value}
-    return {"state": "stale", "cached": True, "model": selected, "scope_key": scope,
+    return {"state": "stale", "cached": True, "model": str(row["model"] or selected), "scope_key": scope,
             "source_hash": current_hash, "snapshot_id": int(row["snapshot_id"]), "generated_at": row["generated_at"], "result": value}
 
 
@@ -3308,36 +3533,39 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                           model: str | None = None, force_refresh: bool = False,
                           language: str | None = None,
                           clarifications: list[dict[str, str]] | None = None) -> dict[str, Any]:
-    """Generate a cited, cached, local Ollama report from one selected Atlas context."""
+    """Generate a cited, cached report with the configured LLM provider."""
     context, fact_ids, scope = _briefing_facts(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id,
                                                  language, clarifications)
     clarifications = _normalize_report_clarifications(clarifications)
     if clarifications:
         suffix = hashlib.sha256(json.dumps(clarifications, ensure_ascii=False, sort_keys=True).encode()).hexdigest()[:16]
         scope = f"{scope}:coach:{suffix}"
-    selected = model or os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
+    provider, selected, api_key = resolve_report_model(conn, model)
     _ensure_report_cache(conn)
     source_hash = _report_source_hash(context, career_id, mode, scope)
-    cached = conn.execute(
-        """SELECT source_hash,payload_json FROM technical_commission_report_cache
-             WHERE career_id=? AND mode=? AND scope_key=? AND model=? AND source_hash=?
-             ORDER BY generated_at DESC,snapshot_id DESC LIMIT 1""",
-        (career_id, mode, scope, selected, source_hash),
-    ).fetchone()
+    cached = _cached_report_row(conn, career_id, mode, scope, source_hash)
     if cached and not force_refresh:
         value = json.loads(cached["payload_json"])
         value["cached"] = True
         value.setdefault("source_hash", source_hash)
+        # Keep the model that actually wrote the report; switching provider must not
+        # relabel cached analysis or duplicate it under the new provider's namespace.
+        cached_model = str(value.get("model") or cached["model"] or selected)
+        value["model"] = cached_model
         conn.execute("""INSERT INTO technical_commission_report_cache(career_id,snapshot_id,mode,scope_key,model,source_hash,payload_json)
              VALUES(?,?,?,?,?,?,?) ON CONFLICT(career_id,snapshot_id,mode,scope_key,model) DO UPDATE SET
              source_hash=excluded.source_hash,payload_json=excluded.payload_json""",
-            (career_id, snapshot_id, mode, scope, selected, source_hash,
+            (career_id, snapshot_id, mode, scope, cached_model, source_hash,
              json.dumps(value, ensure_ascii=False, sort_keys=True)))
         return value
-    tags = ollama_models(timeout=2.0)
-    if not tags.get("available") or selected not in tags.get("models", []):
+    if provider == "ollama":
+        tags = ollama_models(timeout=2.0)
+        if not tags.get("available") or selected not in tags.get("models", []):
+            return {"available": False, "fallback": True, "cached": False,
+                    "message": "Ollama indisponível ou modelo não instalado. Os dados do Atlas continuam disponíveis.", "context": context}
+    elif not api_key:
         return {"available": False, "fallback": True, "cached": False,
-                "message": "Ollama indisponível ou modelo não instalado. Os dados do Atlas continuam disponíveis.", "context": context}
+                "message": f"Nenhuma API key configurada para {provider}. Salve a chave em Configurações > AI Analysis Engine.", "context": context}
     language = str(context.get("language") or "pt-BR")
     language_name = {"pt-BR": "Brazilian Portuguese", "en-GB": "British English", "es-ES": "Spanish"}.get(language, "Brazilian Portuguese")
     tasks = {
@@ -3414,18 +3642,24 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                        "required": ["summary", "observations", "recommendations", "strengths", "development_areas", "training_suggestions", "formation", "information_requests"]}
     if mode == "match_player":
         _apply_match_player_fact_contract(response_schema, claim_schema)
-    body = {"model": selected, "stream": False, "format": response_schema, "think": False,
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": json.dumps(prompt_evidence(context), ensure_ascii=False, sort_keys=True)}],
-            "keep_alive": "10m", "options": {"temperature": 0.2, "num_predict": 1200 if mode == "match_player" else 4600}}
-    base = os.environ.get("ATLAS_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
-    req = urllib.request.Request(base + "/api/chat", data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-                                 headers={"Content-Type": "application/json"}, method="POST")
+    prompt_text = json.dumps(prompt_evidence(context), ensure_ascii=False, sort_keys=True)
     try:
         timeout = min(300.0, max(20.0, float(os.environ.get("ATLAS_OLLAMA_TIMEOUT_SECONDS", "240"))))
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            raw = json.loads(response.read().decode("utf-8"))
-        report = json.loads(raw.get("message", {}).get("content", "{}"))
+        if provider == "ollama":
+            body = {"model": selected, "stream": False, "format": response_schema, "think": False,
+                    "messages": [{"role": "system", "content": system},
+                                 {"role": "user", "content": prompt_text}],
+                    "keep_alive": "10m", "options": {"temperature": 0.2, "num_predict": 1200 if mode == "match_player" else 4600}}
+            base = os.environ.get("ATLAS_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+            req = urllib.request.Request(base + "/api/chat", data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+                                         headers={"Content-Type": "application/json"}, method="POST")
+            with _OLLAMA_REPORT_LOCK:
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    raw = json.loads(response.read().decode("utf-8"))
+            report = json.loads(raw.get("message", {}).get("content", "{}"))
+        else:
+            report = _cloud_report_payload(provider, api_key, selected, system, prompt_text,
+                                           response_schema, timeout)
         if not isinstance(report, dict):
             raise ValueError("schema inválido")
         requests = []
@@ -3597,10 +3831,11 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
              json.dumps(result, ensure_ascii=False, sort_keys=True)))
         return result
     except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError, TimeoutError) as exc:
-        detail = str(exc).replace("\n", " ")[:120]
+        detail = str(exc).replace("\n", " ")[:160]
+        provider_label = {"gemini": "Gemini", "groq": "Groq"}.get(provider, "Ollama")
         return {"available": False, "fallback": True, "cached": False, "model": selected,
                 "source_hash": source_hash, "report_version": REPORT_VERSION,
-                "message": f"Análise local não validada; métricas do Atlas preservadas ({exc.__class__.__name__}: {detail})."}
+                "message": f"Análise {provider_label} não concluída; métricas do Atlas preservadas ({exc.__class__.__name__}: {detail})."}
 
 
 def start_commission_report_job(career_id: int, work: Any, dedupe_key: str | None = None) -> dict[str, str]:
@@ -3661,7 +3896,7 @@ def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int
             snapshot_id = int(latest["id"]) if latest else None
         if snapshot_id is None:
             return []
-        selected_model = os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
+        _, selected_model, _ = resolve_report_model(conn, None)
         snapshot = conn.execute("SELECT managed_team_ea_id FROM snapshots WHERE id=? AND career_id=?",
                                 (snapshot_id, career_id)).fetchone()
         team_id = int(snapshot["managed_team_ea_id"] or -1) if snapshot else -1
@@ -3676,12 +3911,7 @@ def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int
             try:
                 context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, report_fixture, player_id)
                 source_hash = _report_source_hash(context, career_id, mode, scope)
-                cached = conn.execute(
-                    """SELECT 1 FROM technical_commission_report_cache WHERE career_id=? AND mode=? AND scope_key=?
-                         AND model=? AND source_hash=? LIMIT 1""",
-                    (career_id, mode, scope, selected_model, source_hash),
-                ).fetchone()
-                if cached:
+                if _cached_report_row(conn, career_id, mode, scope, source_hash):
                     continue
                 dedupe = f"auto:{career_id}:{mode}:{scope}:{selected_model}:{source_hash}"
                 def work(mode=mode, report_fixture=report_fixture, player_id=player_id, selected_model=selected_model):
@@ -3964,8 +4194,8 @@ def start_retroactive_commission_reports(database: Any, career_id: int, season_i
 def run_retroactive_commission_reports(database: Any, career_id: int, job_id: str,
                                        language: str | None = None, model: str | None = None) -> None:
     """Resume one persisted chronological queue; each task is committed before advancing."""
-    selected_model = model or os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
     with database.connect() as conn:
+        _, selected_model, _ = resolve_report_model(conn, model)
         _ensure_replay_schema(conn)
         run = conn.execute("SELECT * FROM technical_commission_replay_runs WHERE job_id=? AND career_id=?",
                            (job_id, career_id)).fetchone()
@@ -3981,7 +4211,7 @@ def run_retroactive_commission_reports(database: Any, career_id: int, job_id: st
             "SELECT * FROM technical_commission_replay_tasks WHERE job_id=? AND status='pending' ORDER BY sequence",
             (job_id,),
         ).fetchall()
-    if task_rows and not ollama_models(timeout=3.0).get("available"):
+    if task_rows and provider == "ollama" and not ollama_models(timeout=3.0).get("available"):
         with database.connect() as conn:
             conn.execute("UPDATE technical_commission_replay_runs SET status='paused_offline',current_task=NULL,updated_at=CURRENT_TIMESTAMP WHERE job_id=?",
                          (job_id,))

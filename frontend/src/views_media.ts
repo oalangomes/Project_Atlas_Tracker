@@ -44,11 +44,13 @@ function startMediaProgressPolling() {
     refreshMediaProgress();
     mediaProgressTimer = setInterval(refreshMediaProgress, 900);
 }
-function updateLLMKeyPanel(provider: string) {
-    const panel = document.getElementById("llmKeysPanel");
-    if (panel) {
-        panel.style.display = provider === "ollama" ? "none" : "block";
-    }
+function llmKeyField(configured: Record<string, boolean>, hints: Record<string, string>, name: string, label: string): string {
+    const saved = Boolean(configured[name]);
+    const placeholder = saved ? `Saved ${esc(hints[name] || "")} — type a new key to replace` : "Paste the API key";
+    const action = saved
+        ? `<div class="page-actions" style="margin:-4px 0 10px"><button class="button small danger" data-remove-llm-key="${name}">Remove saved key</button></div>`
+        : `<p class="muted" style="margin:-4px 0 10px">Not configured.</p>`;
+    return `<label class="page-filter"><span>${label}</span><input class="filter-input" data-llm-key="${name}" autocomplete="off" spellcheck="false" placeholder="${placeholder}"></label>${action}`;
 }
 
 async function renderMedia() {
@@ -78,11 +80,15 @@ async function renderMedia() {
     if (progress.active || Number(progress.queue || 0) > 0 || Number(progress.processing?.processing || 0) > 0) startMediaProgressPolling();
 }
 async function renderSetup() {
-    const [reference, media, workspaces] = await Promise.all([
+    const [reference, media, workspaces, llm] = await Promise.all([
         api("/api/reference/status"),
         api("/api/media/status"),
         api("/api/workspaces"),
+        api("/api/llm/config"),
     ]);
+    const llmConfigured = (llm.configured || {}) as Record<string, boolean>;
+    const llmHints = (llm.key_hints || {}) as Record<string, string>;
+    const llmProvider = String(llm.provider || state.llmProvider || "ollama");
     const latest = reference.latest || {};
     const workspaceRows = (workspaces.workspaces || []).map((workspace: any) => {
         const isCurrent = Boolean(workspace.isCurrent);
@@ -116,7 +122,7 @@ async function renderSetup() {
       <section class="card pad"><h3 class="card-title">Media status</h3><div class="list"><div class="list-row"><div class="list-main"><strong>Sources</strong></div><b>${num(media.sources?.filter((s: any) => s.enabled).length)}</b></div><div class="list-row"><div class="list-main"><strong>Assigned assets</strong></div><b>${num(media.counts?.assigned || 0)}</b></div><div class="list-row"><div class="list-main"><strong>Conflicts / unknown</strong></div><b>${num((media.counts?.conflict || 0) + (media.counts?.unknown || 0))}</b></div></div><div class="page-actions"><button class="button" data-route="media">Manage sources</button><button class="button primary" data-action="scan-media">Scan media</button></div></section>
       <section class="card pad"><h3 class="card-title">${tr("setupLanguage")}</h3><p class="muted">${tr("setupLanguageHelp")}</p><label class="page-filter"><span>${tr("setupLanguage")}</span><select data-atlas-language><option value="pt-BR" ${state.status?.settings?.language === "pt-BR" ? "selected" : ""}>Português (Brasil)</option><option value="en-GB" ${state.status?.settings?.language === "en-GB" ? "selected" : ""}>English (UK)</option><option value="es-ES" ${state.status?.settings?.language === "es-ES" ? "selected" : ""}>Español</option></select></label><div class="page-actions"><button class="button primary" data-save-atlas-language>${tr("saveLanguage")}</button></div></section>
       <section class="card pad"><h3 class="card-title">Visibility</h3><p class="muted">This filter applies across search, views and world simulation. Imported snapshot data is never changed.</p><label class="setting-toggle"><input type="checkbox" data-hide-womens-football ${state.status?.settings?.hideWomensFootball ? "checked" : ""}><span><strong>Hide women’s football</strong><small>Hide women’s competitions, teams and players from Tracker views.</small></span></label></section>
-      <section class="card pad"><h3 class="card-title">AI Analysis Engine</h3><p class="muted">Choose the model used for Technical Commission reports. Cloud models free up GPU for the game.</p><label class="page-filter"><span>Provider</span><select data-llm-provider onchange="updateLLMKeyPanel(this.value)"><option value="ollama" ${state.llmProvider === "ollama" ? "selected" : ""}>Ollama (Local)</option><option value="gemini" ${state.llmProvider === "gemini" ? "selected" : ""}>Google Gemini (Cloud)</option><option value="groq" ${state.llmProvider === "groq" ? "selected" : ""}>Groq (Cloud)</option></select></label><div id="llmKeysPanel" class="llm-keys-panel" style="${state.llmProvider === "ollama" ? "display:none" : ""}"><label class="page-filter"><span>API Key</span><input class="filter-input" data-llm-key value="${esc(state.llmKeys[state.llmProvider] || "")}" placeholder="Enter API Key..."></label></div><div class="page-actions"><button class="button primary" data-save-llm-config>Save Configuration</button></div></section>
+      <section class="card pad"><h3 class="card-title">AI Analysis Engine</h3><p class="muted">Keys are stored in this career's database, so Gemini and Groq can both be saved and switched at any time. The selected provider is used for every Technical Commission report; local Ollama keeps everything on your GPU.</p><label class="page-filter"><span>Provider</span><select data-llm-provider><option value="ollama" ${llmProvider === "ollama" ? "selected" : ""}>Ollama (Local)</option><option value="gemini" ${llmProvider === "gemini" ? "selected" : ""}>Google Gemini (Cloud)${llmConfigured.gemini ? " · key saved" : " · no key"}</option><option value="groq" ${llmProvider === "groq" ? "selected" : ""}>Groq (Cloud)${llmConfigured.groq ? " · key saved" : " · no key"}</option></select></label><div class="llm-keys-panel">${llmKeyField(llmConfigured, llmHints, "gemini", "Google Gemini key")}${llmKeyField(llmConfigured, llmHints, "groq", "Groq key")}</div><p class="muted">Gemini free tier: 20 requests per day per model. Groq free tier has a much larger daily limit. Saved keys are reused automatically and never removed by saving the other provider.</p><div class="page-actions"><button class="button primary" data-save-llm-config>Save Configuration</button></div></section>
       <section class="card pad"><h3 class="card-title">System status</h3><div class="list"><div class="list-row"><div class="list-main"><strong>Database</strong></div><span class="mono muted">${esc(state.status?.databasePath || "–")}</span></div><div class="list-row"><div class="list-main"><strong>App data</strong></div><span class="mono muted">${esc(state.status?.appDataPath || "–")}</span></div><div class="list-row"><div class="list-main"><strong>Ready snapshots</strong></div><b>${num(state.status?.readyCount)}</b></div><div class="list-row"><div class="list-main"><strong>Last import</strong></div><b>${esc(state.status?.lastImportAt || "–")}</b></div></div></section>
     </div></div>`;
 }

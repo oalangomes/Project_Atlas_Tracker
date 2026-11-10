@@ -100,8 +100,17 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         if path == "/api/llm/config":
             with self.state.database.connect() as conn:
                 row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
-                config = json.loads(row["value"]) if row else {"provider": "ollama", "keys": {}}
-            self._json(config)
+                try:
+                    config = json.loads(row["value"]) if row else {"provider": "ollama", "keys": {}}
+                except (ValueError, TypeError):
+                    config = {"provider": "ollama", "keys": {}}
+            if not isinstance(config, dict):
+                config = {"provider": "ollama", "keys": {}}
+            keys = config.get("keys") if isinstance(config.get("keys"), dict) else {}
+            stored = {name: str(keys.get(name) or "").strip() for name in ("gemini", "groq")}
+            self._json({**config,
+                        "configured": {name: bool(value) for name, value in stored.items()},
+                        "key_hints": {name: (f"…{value[-4:]}" if value else "") for name, value in stored.items()}})
             return
         if path == "/api/media/status":
             self._json(self.state.media.status())
@@ -389,12 +398,41 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
 
     def _api_post(self, path: str, payload: dict[str, Any]) -> None:
         if path == "/api/llm/config":
+            # Merge instead of replacing: the Setup screen stores one key per cloud
+            # provider, so saving Groq must never erase the Gemini key (and vice versa).
+            requested = payload.get("provider")
             with self.state.database.connect() as conn:
+                row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
+                try:
+                    config = json.loads(row["value"]) if row else {}
+                except (ValueError, TypeError):
+                    config = {}
+                if not isinstance(config, dict):
+                    config = {}
+                if requested is None:
+                    provider = str(config.get("provider") or "ollama").strip().lower()
+                else:
+                    provider = str(requested).strip().lower()
+                if provider not in {"ollama", "gemini", "groq"}:
+                    raise ValueError(f"Unknown AI provider: {provider}")
+                keys = dict(config.get("keys")) if isinstance(config.get("keys"), dict) else {}
+                incoming = payload.get("keys") if isinstance(payload.get("keys"), dict) else {}
+                for name, value in incoming.items():
+                    name = str(name).strip().lower()
+                    text = str(value or "").strip()
+                    if name in {"gemini", "groq"} and text:
+                        keys[name] = text
+                for name in payload.get("remove") or []:
+                    keys.pop(str(name).strip().lower(), None)
+                config["provider"] = provider
+                config["keys"] = keys
+                config["model"] = str(payload.get("model") or config.get("model") or "").strip()
                 conn.execute(
                     "INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                    ("llm_config", json.dumps(payload))
+                    ("llm_config", json.dumps(config))
                 )
-            self._json({"ok": True})
+            self._json({"ok": True, "provider": provider,
+                        "configured": {name: bool(str(keys.get(name) or "").strip()) for name in ("gemini", "groq")}})
             return
         match = re.fullmatch(r"/api/careers/(\d+)/finance/(setup|journal/post|journal/reverse|commitments/save|commitments/settle|recurring/save|recurring/run|budgets/adjust|forecasts/save|unresolved/resolve|periods/close|revenue/config|revenue/post|revenue/post-due|revenue/ignore|revenue/override)", path)
         if match:
@@ -627,12 +665,15 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             force_refresh = input_bool(payload.get("force_refresh") or payload.get("forceRefresh"), "Force new Ollama analysis", default=False)
             clarifications = payload.get("clarifications")
             from .commission import (get_commission_report, start_commission_report_job,
-                                     _briefing_facts, _report_source_hash)
+                                     _briefing_facts, _report_source_hash, resolve_report_model)
             dedupe_key = None
-            if mode == "player" and player_ea_id is not None and not force_refresh and not clarifications:
+            # Any repeated click for the same evidence must reuse the job that is already
+            # queued or running; otherwise every click adds another report to the queue
+            # and the newest request appears to hang forever behind duplicates.
+            if not force_refresh and not clarifications:
                 with self.state.database.connect() as conn:
                     context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id)
-                selected_model = model or os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
+                    _, selected_model, _ = resolve_report_model(conn, model)
                 source_hash = _report_source_hash(context, career_id, mode, scope)
                 dedupe_key = f"auto:{career_id}:{mode}:{scope}:{selected_model}:{source_hash}"
 
@@ -648,14 +689,17 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         if match:
             career_id = int(match.group(1))
             from .commission import (REPORT_VERSION, _find_resumable_replay, ollama_models,
-                                     start_retroactive_commission_reports)
+                                     start_retroactive_commission_reports, resolve_report_model)
             from .settings import application_language
-            selected_model = os.environ.get("ATLAS_OLLAMA_MODEL") or "qwen3.5:9b"
             selected_language = application_language()
-            available = ollama_models(timeout=3.0)
-            if not available.get("available") or selected_model not in available.get("models", []):
-                raise ValueError("Ollama está offline ou o modelo configurado não está instalado.")
             with self.state.database.connect() as conn:
+                provider, selected_model, api_key = resolve_report_model(conn, None)
+                if provider == "ollama":
+                    available = ollama_models(timeout=3.0)
+                    if not available.get("available") or selected_model not in available.get("models", []):
+                        raise ValueError("Ollama está offline ou o modelo configurado não está instalado.")
+                elif not api_key:
+                    raise ValueError(f"Nenhuma API key configurada para {provider}.")
                 if not conn.execute("SELECT 1 FROM careers WHERE id=?", (career_id,)).fetchone():
                     raise ValueError("Carreira não encontrada.")
                 # Index 0 is a valid first season; never treat it as missing.
