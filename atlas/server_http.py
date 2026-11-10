@@ -665,7 +665,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             force_refresh = input_bool(payload.get("force_refresh") or payload.get("forceRefresh"), "Force new Ollama analysis", default=False)
             clarifications = payload.get("clarifications")
             from .commission import (get_commission_report, start_commission_report_job,
-                                     _briefing_facts, _report_source_hash, resolve_report_model)
+                                     _briefing_facts, _report_source_hash)
             dedupe_key = None
             # Any repeated click for the same evidence must reuse the job that is already
             # queued or running; otherwise every click adds another report to the queue
@@ -673,9 +673,8 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             if not force_refresh and not clarifications:
                 with self.state.database.connect() as conn:
                     context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, fixture_id, player_ea_id)
-                    _, selected_model, _ = resolve_report_model(conn, model)
                 source_hash = _report_source_hash(context, career_id, mode, scope)
-                dedupe_key = f"auto:{career_id}:{mode}:{scope}:{selected_model}:{source_hash}"
+                dedupe_key = f"auto:{career_id}:{mode}:{scope}:{source_hash}"
 
             def work() -> dict[str, Any]:
                 with self.state.database.connect() as conn:

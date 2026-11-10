@@ -3987,7 +3987,7 @@ def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int
                 source_hash = _report_source_hash(context, career_id, mode, scope)
                 if _cached_report_row(conn, career_id, mode, scope, source_hash):
                     continue
-                dedupe = f"auto:{career_id}:{mode}:{scope}:{selected_model}:{source_hash}"
+                dedupe = f"auto:{career_id}:{mode}:{scope}:{source_hash}"
                 def work(mode=mode, report_fixture=report_fixture, player_id=player_id, selected_model=selected_model):
                     with database.connect() as report_conn:
                         return get_commission_report(report_conn, career_id, int(snapshot_id), mode,
