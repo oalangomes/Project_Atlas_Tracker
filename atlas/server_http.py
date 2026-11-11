@@ -19,6 +19,7 @@ from .server_queries import QueryApiMixin
 from .server_state import AppState
 from .media_utils import season_start_from_date
 from .server_utils import as_int, career_clock, input_bool, latest_snapshot, parse_raw, rows_to_dicts
+from .secret_protection import protect_secret, unprotect_secret
 from .paths import write_snapshot_root, log_dir
 
 
@@ -107,8 +108,10 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             if not isinstance(config, dict):
                 config = {"provider": "ollama", "keys": {}}
             keys = config.get("keys") if isinstance(config.get("keys"), dict) else {}
-            stored = {name: str(keys.get(name) or "").strip() for name in ("gemini", "groq")}
-            self._json({**config,
+            stored = {name: unprotect_secret(str(keys.get(name) or "").strip()) for name in ("gemini", "groq")}
+            self._json({
+                        "provider": str(config.get("provider") or "ollama").strip().lower(),
+                        "model": str(config.get("model") or "").strip(),
                         "configured": {name: bool(value) for name, value in stored.items()},
                         "key_hints": {name: (f"…{value[-4:]}" if value else "") for name, value in stored.items()}})
             return
@@ -421,9 +424,25 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                     name = str(name).strip().lower()
                     text = str(value or "").strip()
                     if name in {"gemini", "groq"} and text:
-                        keys[name] = text
+                        protected = protect_secret(text)
+                        if protected is None:
+                            raise ValueError("Protected credential storage is unavailable on this system.")
+                        keys[name] = protected
                 for name in payload.get("remove") or []:
                     keys.pop(str(name).strip().lower(), None)
+                # Migrate any legacy plaintext keys to protected storage when possible.
+                migrated: dict[str, Any] = {}
+                for name, value in keys.items():
+                    text = str(value or "").strip()
+                    if text.startswith("dpapi:"):
+                        migrated[name] = text
+                    else:
+                        protected = protect_secret(text)
+                        if protected is None:
+                            migrated[name] = text
+                        else:
+                            migrated[name] = protected
+                keys = migrated
                 config["provider"] = provider
                 config["keys"] = keys
                 config["model"] = str(payload.get("model") or config.get("model") or "").strip()

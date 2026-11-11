@@ -17,7 +17,7 @@ async function bootstrap() {
         const llmConfig = await api<JsonRecord>("/api/llm/config");
         if (llmConfig) {
             state.llmProvider = llmConfig.provider || "ollama";
-            state.llmKeys = llmConfig.keys || {};
+            state.llmKeys = {};
         }
 
         applyAtlasLanguage();

@@ -23,6 +23,7 @@ from .commission_role_policy import (CROSS_ROLE_METRIC_FIELDS, goalkeeper_match_
                                      goalkeeper_opponent_xg_evidence, player_role,
                                      prompt_evidence, role_relevance_conflict)
 from .positions import trusted_actual_position
+from .secret_protection import unprotect_secret
 
 MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
@@ -3204,7 +3205,7 @@ def read_llm_config(conn: Any) -> dict[str, Any]:
     return {
         "provider": provider,
         "model": str(config.get("model") or "").strip(),
-        "keys": {str(name).lower(): str(value or "").strip() for name, value in raw_keys.items()},
+        "keys": {str(name).lower(): unprotect_secret(str(value or "").strip()) for name, value in raw_keys.items()},
     }
 
 

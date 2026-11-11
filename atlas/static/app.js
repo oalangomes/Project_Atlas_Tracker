@@ -366,7 +366,7 @@ async function bootstrap() {
         const llmConfig = await api("/api/llm/config");
         if (llmConfig) {
             state.llmProvider = llmConfig.provider || "ollama";
-            state.llmKeys = llmConfig.keys || {};
+            state.llmKeys = {};
         }
         applyAtlasLanguage();
         state.careers = await api("/api/careers");

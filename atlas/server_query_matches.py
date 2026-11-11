@@ -31,13 +31,23 @@ def historical_observed_positions(conn: sqlite3.Connection, snapshot: sqlite3.Ro
     """
 
     result: dict[int, dict[str, Any]] = {}
+    selected_sequence = snapshot["import_sequence"]
+    selected_id = int(snapshot["id"])
+    career_id = snapshot["career_id"]
+    if selected_sequence is None:
+        eligibility = "s.career_id=? AND pmp.snapshot_id<>? AND s.id<=?"
+        params: tuple[Any, ...] = (career_id, selected_id, selected_id)
+    else:
+        eligibility = ("s.career_id=? AND pmp.snapshot_id<>? "
+                       "AND (s.import_sequence IS NULL OR s.import_sequence < ? "
+                       "OR (s.import_sequence = ? AND s.id <= ?))")
+        params = (career_id, selected_id, selected_sequence, selected_sequence, selected_id)
     rows = conn.execute(
-        """SELECT pmp.player_ea_id,pmp.actual_position,pmp.actual_position_source,pmp.snapshot_id
+        f"""SELECT pmp.player_ea_id,pmp.actual_position,pmp.actual_position_source,pmp.snapshot_id,s.import_sequence
              FROM player_match_performances pmp JOIN snapshots s ON s.id=pmp.snapshot_id
-            WHERE s.career_id=? AND pmp.fixture_key=? AND pmp.snapshot_id<>?
-              AND COALESCE(pmp.actual_position,'')<>''
-            ORDER BY s.import_sequence DESC""",
-        (snapshot["career_id"], fixture_key, snapshot["id"]),
+            WHERE {eligibility} AND pmp.fixture_key=? AND COALESCE(pmp.actual_position,'')<>''
+            ORDER BY COALESCE(s.import_sequence, s.id) DESC, s.id DESC""",
+        (*params, fixture_key),
     ).fetchall()
     for row in rows:
         position = trusted_actual_position(row["actual_position"], row["actual_position_source"])
@@ -50,6 +60,7 @@ def historical_observed_positions(conn: sqlite3.Connection, snapshot: sqlite3.Ro
             "position": position,
             "source": str(row["actual_position_source"]),
             "snapshot_id": int(row["snapshot_id"]),
+            "import_sequence": row["import_sequence"],
         }
     return result
 
