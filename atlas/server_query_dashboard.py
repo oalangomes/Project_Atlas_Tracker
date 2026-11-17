@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
+from .metric_evidence import snapshot_fixture_evidence
 from .team_strength import live_squad_strength
 from .server_utils import (
     age_on_date, aggregate_standings, annotate_knockout_progress, as_int, career_clock, clean_raw,
@@ -160,11 +161,13 @@ class DashboardQueryMixin:
             metadata = conn.execute(
                 "SELECT key,value FROM snapshot_metadata WHERE snapshot_id=? ORDER BY key", (snapshot_id,)
             ).fetchall()
+            match_evidence = snapshot_fixture_evidence(conn, dict(snap))
         return {
             "snapshot": dict(snap),
             "counts": counts,
             "files": rows_to_dicts(files),
             "metadata": {row["key"]: row["value"] for row in metadata},
+            "matchEvidence": match_evidence,
             "capabilities": parse_raw(snap["capabilities_json"]),
             "warnings": json.loads(snap["warnings_json"] or "[]"),
         }

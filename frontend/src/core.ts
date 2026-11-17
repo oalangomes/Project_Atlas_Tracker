@@ -325,7 +325,16 @@ function bindSortableTables() {
 function ratingValue(value: any, average: any = false) { const n = Number(value); if (!Number.isFinite(n) || n <= 0)
     return "–"; if (average)
     return num(n, 2); return Number.isInteger(n) ? num(n, 0) : num(n, 1); }
-function delta(v: any) { const n = Number(v) || 0; return `<span class="delta ${n > 0 ? "pos positive" : n < 0 ? "negative" : "muted"}">${n > 0 ? num(n) : num(n)}</span>`; }
+function delta(v: any) { if (v == null || v === "") return '<span class="delta muted">–</span>'; const n = Number(v); return Number.isFinite(n) ? `<span class="delta ${n > 0 ? "pos positive" : n < 0 ? "negative" : "muted"}">${num(n)}</span>` : '<span class="delta muted">–</span>'; }
+function matchEvidenceMarkup(evidence: any) {
+    if (!evidence) return "";
+    const states: Record<string, string> = { complete: "Complete", partial: "Partial", unlinked: "Unlinked", absent: "Absent" };
+    const source = evidence.source || {};
+    const rows = (evidence.teams || []).flatMap((team: any) => (team.indicators || []).map((indicator: any) => `<tr><td>${team.teamIndex === 0 ? "Home" : "Away"}</td><td>${esc(indicator.label)}</td><td class="num">${indicator.value == null ? "–" : num(indicator.value, 3)}</td><td>${esc(indicator.unit)}</td><td>${indicator.state === "available" ? statusBadge(indicator.origin === "derived" ? "Derived" : "FC26", indicator.origin === "derived" ? "blue" : "good") : statusBadge("Absent", "warn")}</td><td><small>${esc(indicator.reason || indicator.formula || "")}</small></td></tr>`));
+    const positions = evidence.positions || [];
+    const observed = positions.filter((position: any) => position.state === "observed").length;
+    return `<div class="data-note">MatchStats: ${statusBadge(states[evidence.state] || evidence.state, evidence.state === "complete" ? "good" : "warn")} · career ${num(evidence.careerId)} · snapshot ${num(evidence.snapshotId)} · fixture ${num(evidence.fixtureId)} · contract ${esc(evidence.version)} · source snapshot ${source.sourceSnapshotId == null ? "–" : num(source.sourceSnapshotId)} · export ${source.exportId == null ? "–" : num(source.exportId)}${evidence.reason ? ` · ${esc(evidence.reason)}` : ""}</div>${rows.length ? table([{label:"Side"},{label:"Indicator"},{label:"Value",cls:"num"},{label:"Unit"},{label:"Origin"},{label:"Method / absence"}],rows) : ""}${positions.length ? `<p class="data-note">Observed match positions: ${num(observed)} / ${num(positions.length)}. Natural position is kept separate; ${num(positions.filter((position: any) => position.backfilledFromEarlierSnapshot).length)} positions came from an earlier eligible snapshot.</p>` : ""}`;
+}
 function clearApiCache() { apiCache.clear(); }
 function cacheableApiPath(path: string, options?: RequestInit): boolean {
     const method = String(options?.method || "GET").toUpperCase();

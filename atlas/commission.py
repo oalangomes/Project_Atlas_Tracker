@@ -23,6 +23,7 @@ from .commission_role_policy import (CROSS_ROLE_METRIC_FIELDS, goalkeeper_match_
                                      goalkeeper_opponent_xg_evidence, player_role,
                                      prompt_evidence, role_relevance_conflict)
 from .positions import trusted_actual_position
+from .metric_evidence import fixture_evidence
 from .llm_credentials import load_config
 from .secret_protection import unprotect_secret
 
@@ -30,8 +31,8 @@ MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
-METRIC_VERSION = 3
-REPORT_VERSION = 34
+METRIC_VERSION = 4
+REPORT_VERSION = 35
 MATCH_PLAYER_REPORT_CONTRACT = 8
 MATCH_CONTEXT_REPORT_CONTRACT = 1
 MATCH_REPORT_CONTRACT = 2
@@ -193,8 +194,13 @@ def _prior_match_context(conn: Any, career_id: int, snapshot: Any, fixture_id: i
              FROM fixture_observations fo
              JOIN fixtures f ON f.id=fo.fixture_id
              JOIN match_stat_exports e ON e.fixture_id=f.id AND e.career_id=?
-                  AND e.linkage_status='linked' AND e.export_status='complete_participant_export'
-                  AND e.superseded_by_export_id IS NULL
+                  AND e.linkage_status='linked' AND e.export_status IN
+                      ('complete_participant_export','participant_export_complete_with_unresolved_nonparticipant')
+                  AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                      SELECT 1 FROM match_stat_exports successor
+                      JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                      WHERE successor.id=e.superseded_by_export_id
+                        AND successor_snapshot.import_sequence>?))
              JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
              WHERE fo.snapshot_id=? AND fo.managed_team_involved=1 AND fo.is_completed=1
                AND fo.fixture_id<>? AND fo.date<?
@@ -202,7 +208,8 @@ def _prior_match_context(conn: Any, career_id: int, snapshot: Any, fixture_id: i
                AND source_snapshot.career_id=? AND source_snapshot.season_index=?
                AND source_snapshot.import_sequence<=?
              ORDER BY fo.date DESC,fo.fixture_id DESC""",
-        (career_id, int(snapshot["id"]), fixture_id, match_date, managed_team_id, managed_team_id,
+        (career_id, int(snapshot["import_sequence"]), int(snapshot["id"]), fixture_id, match_date,
+         managed_team_id, managed_team_id,
          career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"])),
     ).fetchall()
     history: list[dict[str, Any]] = []
@@ -282,7 +289,13 @@ def _prior_player_context(conn: Any, career_id: int, snapshot: Any, fixture_id: 
                    AND p.player_ea_id=d.player_ea_id
               LEFT JOIN player_states ps ON ps.snapshot_id=e.snapshot_id AND ps.ea_player_id=d.player_ea_id
              WHERE e.career_id=? AND e.fixture_id<>? AND e.linkage_status='linked'
-               AND e.export_status='complete_participant_export' AND e.superseded_by_export_id IS NULL
+               AND e.export_status IN ('complete_participant_export',
+                   'participant_export_complete_with_unresolved_nonparticipant')
+               AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                   SELECT 1 FROM match_stat_exports successor
+                   JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                   WHERE successor.id=e.superseded_by_export_id
+                     AND successor_snapshot.import_sequence>?))
                AND source_snapshot.career_id=? AND source_snapshot.import_sequence<=?
                AND source_snapshot.season_index=?
                AND (e.team0_ea_id=? OR e.team1_ea_id=?)
@@ -290,6 +303,7 @@ def _prior_player_context(conn: Any, career_id: int, snapshot: Any, fixture_id: 
                AND d.player_ea_id IN ({placeholders})
              ORDER BY fo.date DESC,e.fixture_id DESC""",
         (int(snapshot["id"]), match_date, int(snapshot["id"]), career_id, fixture_id,
+         int(snapshot["import_sequence"]),
          career_id, int(snapshot["import_sequence"]), int(snapshot["season_index"]), managed_team_id, managed_team_id,
          managed_team_id, *player_ids),
     ).fetchall()
@@ -460,18 +474,27 @@ def analyze_team_identity(conn: Any, career_id: int, snapshot_id: int,
                   f.home_team_ea_id,f.away_team_ea_id,e.id export_id,e.team0_ea_id,e.team1_ea_id,
                   t.team_index,t.team_ea_id,t.stats_json
              FROM fixture_observations fo JOIN fixtures f ON f.id=fo.fixture_id
-             LEFT JOIN match_stat_exports e ON e.fixture_id=f.id AND e.career_id=f.career_id
-                  AND e.linkage_status='linked' AND e.export_status='complete_participant_export'
-                  AND e.superseded_by_export_id IS NULL
-                  AND e.snapshot_id IN (SELECT source_snapshot.id FROM snapshots source_snapshot
-                                         WHERE source_snapshot.career_id=? AND source_snapshot.season_index=?
-                                           AND source_snapshot.import_sequence<=?)
+             LEFT JOIN match_stat_exports e ON e.id=(
+                  SELECT candidate.id FROM match_stat_exports candidate
+                  JOIN snapshots source_snapshot ON source_snapshot.id=candidate.snapshot_id
+                  WHERE candidate.fixture_id=f.id AND candidate.career_id=f.career_id
+                    AND source_snapshot.career_id=f.career_id AND source_snapshot.season_index=?
+                    AND source_snapshot.import_sequence<=?
+                    AND candidate.linkage_status='linked' AND candidate.export_status IN
+                        ('complete_participant_export','participant_export_complete_with_unresolved_nonparticipant')
+                    AND (candidate.superseded_by_export_id IS NULL OR EXISTS (
+                        SELECT 1 FROM match_stat_exports successor
+                        JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                        WHERE successor.id=candidate.superseded_by_export_id
+                          AND successor_snapshot.import_sequence>?))
+                  ORDER BY source_snapshot.import_sequence DESC,candidate.id DESC LIMIT 1)
              LEFT JOIN match_team_detailed_stats t ON t.export_id=e.id
              WHERE fo.snapshot_id=? AND fo.managed_team_involved=1 AND fo.is_completed=1
                AND (? IS NULL OR fo.date>=?) AND (? IS NULL OR fo.date<?)
                AND (? IS NULL OR fo.date<? OR fo.fixture_id=?)
              ORDER BY fo.date,fo.fixture_id,t.team_index""",
-        (career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"]), snapshot_id,
+        (int(snapshot["season_index"]), int(snapshot["import_sequence"]),
+         int(snapshot["import_sequence"]), snapshot_id,
          season_start, season_start, next_season_start, next_season_start,
          checkpoint_date, checkpoint_date, int(through_fixture_id or -1)),
     ).fetchall()
@@ -503,10 +526,11 @@ def analyze_team_identity(conn: Any, career_id: int, snapshot_id: int,
         return round(sum(values) / len(values), 2) if values else None
 
     def ratio(numerator: str, denominator: str, source: str = "own") -> float | None:
-        top = sum((_float((row.get(source) or {}).get(numerator)) or 0.0) for row in detailed_rows
-                  if (row.get(source) or {}).get(numerator) is not None)
-        bottom = sum((_float((row.get(source) or {}).get(denominator)) or 0.0) for row in detailed_rows
-                     if (row.get(source) or {}).get(denominator) is not None)
+        paired = [(_float((row.get(source) or {}).get(numerator)),
+                   _float((row.get(source) or {}).get(denominator))) for row in detailed_rows]
+        paired = [(top, bottom) for top, bottom in paired if top is not None and bottom is not None]
+        top = sum(value for value, _ in paired)
+        bottom = sum(value for _, value in paired)
         return round(top * 100 / bottom, 1) if bottom else None
 
     metrics = {
@@ -521,6 +545,24 @@ def analyze_team_identity(conn: Any, career_id: int, snapshot_id: int,
         "interceptions_per_match": average("interceptions"),
         "possession_share_pct": None,
     }
+    metric_coverage = {
+        key: {"covered_matches": sum(
+            _float((row.get("own") or {}).get(field)) is not None for row in detailed_rows),
+              "completed_matches": len(completed)}
+        for key, field in (
+            ("passes_per_match", "passes"), ("dribbles_completed_per_match", "dribbles_completed"),
+            ("crosses_attempted_per_match", "crosses_attempted"),
+            ("through_passes_per_match", "tracker_completed_through_passes_including_lobbed"),
+            ("shots_per_match", "shots"), ("npk_xg_per_match", "npk_expected_goals"),
+            ("tackles_per_match", "tackles"), ("interceptions_per_match", "interceptions"))
+    }
+    metric_coverage["pass_accuracy_pct"] = {
+        "covered_matches": sum(
+            _float(row["own"].get("passes_completed")) is not None
+            and _float(row["own"].get("passes")) is not None for row in detailed_rows),
+        "completed_matches": len(completed),
+    }
+    metric_coverage["possession_share_pct"] = {"covered_matches": 0, "completed_matches": len(completed)}
 
     # Compare lower and upper thirds of the observed opposition shot-volume ranks.
     ranked = sorted((row for row in detailed_rows if row.get("opponent") and row["opponent"].get("shots") is not None),
@@ -554,7 +596,7 @@ def analyze_team_identity(conn: Any, career_id: int, snapshot_id: int,
             "season_index": int(snapshot["season_index"]), "team_name": snapshot["managed_team_name"],
             "completed_matches": len(completed), "detailed_matches": len(detailed_rows),
             "coverage_pct": round(100 * len(detailed_rows) / len(completed), 1) if completed else None,
-            "metrics": metrics, "opponent_profiles": cohorts,
+            "metrics": metrics, "metric_coverage": metric_coverage, "opponent_profiles": cohorts,
             "style_sample_sufficient": len(detailed_rows) >= 5,
             "sample_note": "Amostra utilizável a partir de 5 partidas completas; sem isso, estilo e perfis ficam inconclusivos.",
             "unavailable": ["posse de bola percentual", "pressão alta", "altura da linha", "formação inicial, quando não exportada"],
@@ -689,14 +731,21 @@ def _read_data(conn: Any, career_id: int, snapshot_id: int) -> tuple[Any, list[d
            JOIN fixtures f ON f.id=e.fixture_id
            JOIN match_player_detailed_stats d ON d.export_id=e.id
            LEFT JOIN player_match_performances p ON p.snapshot_id=? AND p.fixture_key=f.fixture_key AND p.player_ea_id=d.player_ea_id
-           WHERE e.career_id=? AND es.season_index=? AND e.linkage_status='linked' AND e.export_status='complete_participant_export'
-             AND e.superseded_by_export_id IS NULL AND o.is_completed=1 AND o.managed_team_involved=1
+           WHERE e.career_id=? AND es.season_index=? AND e.linkage_status='linked'
+             AND e.export_status IN ('complete_participant_export','participant_export_complete_with_unresolved_nonparticipant')
+             AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                 SELECT 1 FROM match_stat_exports successor
+                 JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                 WHERE successor.id=e.superseded_by_export_id
+                   AND successor_snapshot.import_sequence>?))
+             AND o.is_completed=1 AND o.managed_team_involved=1
              AND es.import_sequence<=? AND (? IS NULL OR o.date>=?) AND (? IS NULL OR o.date<?)
              AND (? IS NULL OR o.date<=?)
              AND (? IN (e.team0_ea_id,e.team1_ea_id))
              AND d.team_index=CASE WHEN e.team0_ea_id=? THEN 0 ELSE 1 END
            ORDER BY o.date,e.id,d.player_ea_id""",
             (snapshot_id, snapshot_id, career_id, int(snapshot["season_index"]), snapshot_sequence,
+             snapshot_sequence,
              season_start, season_start, next_season_start, next_season_start,
              snapshot["career_date"], snapshot["career_date"], int(team_id or -1), int(team_id or -1))).fetchall()
     detailed = []
@@ -781,15 +830,26 @@ def get_commission(conn: Any, career_id: int, snapshot_id: int) -> dict[str, Any
             f"""SELECT f.id fixture_id,{expressions['date']} date,{expressions['competition_name']} competition_name,
                        {expressions['home_team_name']} home_team_name,{expressions['away_team_name']} away_team_name,
                        {expressions['home_score']} home_score,{expressions['away_score']} away_score,{expressions['is_completed']} is_completed,
-                       EXISTS(SELECT 1 FROM match_stat_exports e WHERE e.fixture_id=f.id
-                              AND e.superseded_by_export_id IS NULL AND e.linkage_status='linked'
-                              AND e.export_status='complete_participant_export') detailed_stats_available
+                       EXISTS(SELECT 1 FROM match_stat_exports e
+                              JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
+                              WHERE e.fixture_id=f.id AND e.career_id=?
+                                AND source_snapshot.career_id=? AND source_snapshot.season_index=?
+                                AND source_snapshot.import_sequence<=?
+                                AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                                    SELECT 1 FROM match_stat_exports successor
+                                    JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                                    WHERE successor.id=e.superseded_by_export_id
+                                      AND successor_snapshot.import_sequence>?))
+                                AND e.linkage_status='linked' AND e.export_status IN
+                                    ('complete_participant_export',
+                                     'participant_export_complete_with_unresolved_nonparticipant')) detailed_stats_available
                 FROM fixture_observations fo JOIN fixtures f ON f.id=fo.fixture_id
                 WHERE fo.snapshot_id=? AND fo.managed_team_involved=1
                 ORDER BY CASE WHEN fo.is_completed=1 THEN 0 ELSE 1 END,
                          CASE WHEN fo.is_completed=1 THEN fo.date END DESC,
                          CASE WHEN COALESCE(fo.is_completed,0)<>1 THEN fo.date END ASC,f.id LIMIT 80""",
-            (snapshot_id,)).fetchall()
+            (career_id, career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"]),
+             int(snapshot["import_sequence"]), snapshot_id)).fetchall()
     payload["briefingOptions"] = {
         "matches": [{"fixture_id": int(row["fixture_id"]), "date": row["date"],
                      "competition": row["competition_name"], "home": row["home_team_name"],
@@ -991,13 +1051,21 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                      prior_team_context,
                      "career-scoped linked MatchStats dated strictly before the selected fixture")
         if mode in {"match", "match_player"}:
+            detailed = None
             export = conn.execute(
                 """SELECT e.id FROM match_stat_exports e JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
                      WHERE e.fixture_id=? AND e.career_id=? AND source_snapshot.season_index=?
                      AND source_snapshot.import_sequence<=?
-                     AND e.linkage_status='linked' AND e.export_status='complete_participant_export'
-                     AND e.superseded_by_export_id IS NULL ORDER BY e.id DESC LIMIT 1""",
-                (fixture_id, career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"])),
+                     AND e.linkage_status='linked' AND e.export_status IN
+                         ('complete_participant_export','participant_export_complete_with_unresolved_nonparticipant')
+                     AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                         SELECT 1 FROM match_stat_exports successor
+                         JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                         WHERE successor.id=e.superseded_by_export_id
+                           AND successor_snapshot.import_sequence>?))
+                     ORDER BY source_snapshot.import_sequence DESC,e.id DESC LIMIT 1""",
+                (fixture_id, career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"]),
+                 int(snapshot["import_sequence"])),
             ).fetchone()
             if export:
                 from .match_stats import detailed_match
@@ -1015,6 +1083,9 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                                "team_side": team_sides.get(int(team.get("teamEaId") or -1)),
                                "stats": _compact_metrics(team.get("stats") or {}, REPORT_TEAM_FIELDS)} for team in teams]
                 fact("matchstats", "Linked FC26 match statistics", team_stats, "complete linked MatchStats export")
+                fact("match_evidence", "Match indicator evidence", fixture_evidence(
+                    dict(snapshot), int(fixture_id), detailed),
+                    "same fixture evidence contract as Match Center and snapshot coverage")
                 observed_rows = conn.execute(
                     """SELECT player_ea_id,actual_position,actual_position_source FROM player_match_performances
                          WHERE snapshot_id=? AND fixture_key=?
@@ -1070,6 +1141,9 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                     scope = f"fixture:{fixture_id}:player:{player_ea_id}"
             else:
                 fact("matchstats_missing", "MatchStats coverage", "No complete linked export for this fixture", "Atlas linkage status")
+                fact("match_evidence", "Match indicator evidence", fixture_evidence(
+                    dict(snapshot), int(fixture_id)),
+                    "same fixture evidence contract as Match Center and snapshot coverage")
                 if mode == "match_player":
                     if player_ea_id is None:
                         raise ValueError("Select a player from the current match.")
@@ -1305,6 +1379,7 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
         fact("team_statistical_profile", "Team statistical profile from linked matches", {
             "detailed_matches": identity["detailed_matches"], "completed_matches": identity["completed_matches"],
             "coverage_pct": identity["coverage_pct"], "metrics": identity["metrics"],
+            "metric_coverage": identity.get("metric_coverage", {}),
             "sample_sufficient": identity["style_sample_sufficient"],
             "unavailable": identity["unavailable"],
         }, "calculated from complete linked MatchStats exports available by this snapshot; checkpoint excludes other same-day fixtures" if fixture_id is not None else "calculated from complete linked MatchStats exports available by this snapshot; unavailable metrics remain null")
@@ -1437,10 +1512,19 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
 
 
 def _report_source_hash(context: dict[str, Any], career_id: int, mode: str, scope: str) -> str:
+    # A later selected snapshot may point at the same immutable fixture export.
+    # Keep the selected snapshot in the report context, but key reuse to source
+    # evidence so the same match does not become stale solely due to navigation.
+    stable_facts = []
+    for item in context.get("facts", []):
+        if item.get("id") == "match_evidence" and isinstance(item.get("value"), dict):
+            item = {**item, "value": {key: value for key, value in item["value"].items()
+                                       if key not in {"snapshotId", "selectedSnapshotCareerDate"}}}
+        stable_facts.append(item)
     stable = {"career_id": int(career_id), "mode": mode, "scope_key": scope,
               "season_index": context.get("season_index"), "report_version": REPORT_VERSION,
               "language": context.get("language"),
-              "facts": context.get("facts", []), "allowed_formations": context.get("allowed_formations"),
+              "facts": stable_facts, "allowed_formations": context.get("allowed_formations"),
               "role_analysis": context.get("role_analysis")}
     if mode == "match_player":
         stable["mode_contract_version"] = MATCH_PLAYER_REPORT_CONTRACT
@@ -4091,9 +4175,16 @@ def _managed_player_ids_for_fixture(conn: Any, career_id: int, snapshot_id: int,
         """SELECT e.id FROM match_stat_exports e JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
              WHERE e.fixture_id=? AND e.career_id=? AND source_snapshot.season_index=?
              AND source_snapshot.import_sequence<=?
-             AND e.linkage_status='linked' AND e.export_status='complete_participant_export'
-             AND e.superseded_by_export_id IS NULL ORDER BY e.id DESC LIMIT 1""",
-        (fixture_id, career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"])),
+             AND e.linkage_status='linked' AND e.export_status IN
+                 ('complete_participant_export','participant_export_complete_with_unresolved_nonparticipant')
+             AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                 SELECT 1 FROM match_stat_exports successor
+                 JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                 WHERE successor.id=e.superseded_by_export_id
+                   AND successor_snapshot.import_sequence>?))
+             ORDER BY source_snapshot.import_sequence DESC,e.id DESC LIMIT 1""",
+        (fixture_id, career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"]),
+         int(snapshot["import_sequence"])),
     ).fetchone()
     if export:
         rows = conn.execute(

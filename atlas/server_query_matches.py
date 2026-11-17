@@ -10,6 +10,7 @@ from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
+from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
 from .positions import trusted_actual_position
 from .server_utils import (
     age_on_date, aggregate_standings, annotate_knockout_progress, as_int, clean_raw,
@@ -98,15 +99,12 @@ class MatchQueryMixin:
                    GROUP BY f.competition_object_id,fo.competition_name ORDER BY fo.competition_name""",
                 (snapshot_id,),
             ).fetchall()
-            detailed_fixture_ids = {
-                int(r[0]) for r in conn.execute(
-                    "SELECT fixture_id FROM match_stat_exports WHERE fixture_id IS NOT NULL AND superseded_by_export_id IS NULL"
-                ).fetchall()
-            }
+            evidence_by_fixture = {item["fixtureId"]: item["evidence"]
+                                   for item in snapshot_fixture_evidence(conn, dict(snap))}
         season_start = self._season_start(snap)
         rows = self._enrich_fixtures(rows, season_start, snapshot_id)
         for item in rows:
-            item["detailedStatsAvailable"] = int(item.get("fixture_id") or 0) in detailed_fixture_ids
+            item["detailedStatsAvailable"] = evidence_by_fixture.get(int(item.get("fixture_id") or 0), {}).get("state") == "complete"
         completed = [row for row in rows if row.get("is_completed")]
         upcoming = [row for row in rows if not row.get("is_completed")]
         competition_items = rows_to_dicts(per_comp)
@@ -162,6 +160,19 @@ class MatchQueryMixin:
             detailed = detailed_match(conn, fixture_id, career_id=int(snap["career_id"]),
                                       as_of_import_sequence=int(snap["import_sequence"]),
                                       season_index=int(snap["season_index"]))
+            candidate_row = conn.execute(
+                """SELECT e.* FROM match_stat_exports e JOIN snapshots source ON source.id=e.snapshot_id
+                   WHERE e.fixture_id=? AND e.career_id=? AND source.career_id=?
+                     AND source.season_index=? AND source.import_sequence<=?
+                     AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                         SELECT 1 FROM match_stat_exports successor
+                         JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                         WHERE successor.id=e.superseded_by_export_id
+                           AND successor_snapshot.import_sequence>?))
+                   ORDER BY source.import_sequence DESC,e.id DESC LIMIT 1""",
+                (fixture_id, snap["career_id"], snap["career_id"], snap["season_index"],
+                 snap["import_sequence"], snap["import_sequence"]),
+            ).fetchone()
             if row["fixture_key"]:
                 historical_observed = historical_observed_positions(conn, snap, row["fixture_key"])
             else:
@@ -273,4 +284,7 @@ class MatchQueryMixin:
                 "sourceLabel": "Aus aufeinanderfolgenden Snapshots rekonstruiert" if reconstructed else "Cannot be reconstructed reliably",
             },
             "detailedStats": detailed or {"available": False, "modelId": "atlas-fc26-match-stats-v1"},
+            "evidence": fixture_evidence(dict(snap), fixture_id, detailed, performance_items,
+                                         dict(candidate_row) if candidate_row else None,
+                                         event_date=row["date"] if "date" in row.keys() else None),
         }

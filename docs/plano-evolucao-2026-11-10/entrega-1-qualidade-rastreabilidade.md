@@ -2,7 +2,7 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 0](entrega-0-estabilizacao-seguranca-contratos.md) · Próxima: [Entrega 2](entrega-2-contexto-tatico-diario.md).
 
-**Prioridade:** P1. **Estado:** planejada. **Dependências:** contratos de segurança e corte temporal da Entrega 0, especialmente AT-002. A numeração de PR original abaixo é histórica; vale [P03](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+**Prioridade:** P1. **Estado:** primeiro corte implementado; validação em dados reais e extensão do catálogo pendentes. **Dependências:** contratos de segurança e corte temporal da Entrega 0, especialmente AT-002. A numeração de PR original abaixo é histórica; vale [P03](plano-execucao-integracao-hub.md#prs-pequenos-propostos). [Contrato e verificação do P03](p03-contrato-evidencias.md).
 
 ## Revisão Hub → Atlas
 
@@ -83,10 +83,10 @@ Verificar TypeScript, JS gerado e fluxo da interface para os contratos alterados
 
 Entregar dicionário de indicadores/fontes, contrato de evidência, diagnóstico de cobertura/reconciliação e validação do PR 4. Se houver migração, produzir backup consistente e estratégia compatível de restauração; preservar valores originais. Invalidar caches cujos significados ou versões mudarem.
 
-- [ ] AT-005 apresenta disponibilidade e origem por partida.
+- [x] AT-005 apresenta disponibilidade e origem por partida no contrato, snapshot, Match Center e fatos da Comissão.
 - [ ] AT-006 explica ou bloqueia divergências sem apagar fontes.
 - [ ] AT-007 é consumido pelas telas e Comissão, sem lógica paralela.
-- [ ] Regressão histórica, integração e build comprovados.
+- [x] Regressão automatizada e build comprovados; inspeção visual e validação com dados reais seguem pendentes.
 - [ ] Checklist transversal e rollback documentados.
 
 Esta entrega libera contratos para rotação, comparação individual e sucessão. Não comprova precisão esportiva apenas por melhorar cobertura.

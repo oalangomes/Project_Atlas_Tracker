@@ -418,9 +418,14 @@ class EntityQueryMixin:
                 (snap["career_id"], snapshot_id, player_id),
             ).fetchall()
             reconstructed_matches = reconstructed_player_matches(conn, snapshot_id, player_id)
-            detailed_matches = detailed_player_matches(conn, int(snap["career_id"]), player_id)
-            detailed_season_stats = detailed_player_season_summary(conn, int(snap["career_id"]), player_id, season_indices=[int(snap["season_index"])])
-            detailed_season_history = detailed_player_season_history(conn, int(snap["career_id"]), player_id)
+            detailed_matches = detailed_player_matches(conn, int(snap["career_id"]), player_id,
+                                                       as_of_import_sequence=int(snap["import_sequence"]))
+            detailed_season_stats = detailed_player_season_summary(
+                conn, int(snap["career_id"]), player_id, season_indices=[int(snap["season_index"])],
+                as_of_import_sequence=int(snap["import_sequence"]))
+            detailed_season_history = detailed_player_season_history(
+                conn, int(snap["career_id"]), player_id,
+                as_of_import_sequence=int(snap["import_sequence"]))
             history = conn.execute(
                 """SELECT s.id snapshot_id,s.career_id,s.career_date,s.season_index,s.import_sequence,
                           s.managed_team_ea_id,s.external_snapshot_id,

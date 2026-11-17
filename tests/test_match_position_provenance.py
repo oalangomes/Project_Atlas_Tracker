@@ -164,6 +164,7 @@ class HistoricalObservedPositionBackfillTests(unittest.TestCase):
             conn.execute("CREATE TABLE player_states (snapshot_id INTEGER, ea_player_id INTEGER, overall INTEGER, potential INTEGER, primary_position TEXT, team_ea_id INTEGER, team_name TEXT)")
             conn.execute("CREATE TABLE roster_states (snapshot_id INTEGER, player_ea_id INTEGER, jersey_number INTEGER)")
             conn.execute("CREATE TABLE competition_states (snapshot_id INTEGER, competition_object_id INTEGER)")
+            conn.execute("CREATE TABLE match_stat_exports (id INTEGER, fixture_id INTEGER, career_id INTEGER, snapshot_id INTEGER, superseded_by_export_id INTEGER)")
             conn.execute("INSERT INTO snapshots VALUES (4, 1, '2026-01-01', 12, 1, '{}')")
             conn.execute("INSERT INTO fixture_observations VALUES (4, 99, ?, 1, 9, 0, NULL, NULL)", (KEY,))
             conn.execute("INSERT INTO player_match_performances (snapshot_id,fixture_key,player_ea_id,actual_position,actual_position_source,raw_json,rating,minutes_played,display_name) VALUES (4, ?, 11, 'ST', ?, '{}', 9, 45, 'Player')",
@@ -186,6 +187,7 @@ class HistoricalObservedPositionBackfillTests(unittest.TestCase):
             self.assertEqual(player["observedPositionBackfill"],
                              {"snapshotId": 2, "importSequence": 7})
             self.assertEqual(result["performanceDiagnostics"]["historicalObservedPositionsBackfilled"], 1)
+            self.assertEqual(result["evidence"]["positions"][1]["sourceSnapshotId"], 2)
             self.assertEqual([item["snapshot_id"] for item in result["history"]], [3])
         finally:
             conn.close()

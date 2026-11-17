@@ -5,6 +5,7 @@ from collections import defaultdict
 from typing import Any
 
 from .media_utils import season_start_from_date
+from .metric_evidence import COMPLETE_EXPORT_STATUSES
 from .server_utils import as_int
 
 
@@ -228,12 +229,22 @@ def _recalculate_rates(stats: dict[str, Any]) -> None:
         "defense_duel_success_pct_derived": ("defense_duels_won", "defense_duels_attempted"),
         "aerial_duel_success_pct_derived": ("aerial_duels_won", "aerial_duels_attempted"),
     }
+    coverage = stats.get("metricCoverage")
+
+    def comparable(*fields: str) -> bool:
+        if not isinstance(coverage, dict):
+            return all(_num(stats.get(field)) is not None for field in fields)
+        return all(coverage.get(field) == stats.get("matches") for field in fields)
     for field, (won, attempted) in pairs.items():
-        stats[field] = _pct(float(stats.get(won) or 0), float(stats.get(attempted) or 0))
+        stats[field] = (_pct(float(stats[won]), float(stats[attempted]))
+                        if comparable(won, attempted) else None)
     # FC26 validation uses saves/(saves + conceded) for the visible save-success surface.
-    stats["save_success_pct_derived"] = _pct(float(stats.get("saves") or 0), float(stats.get("saves") or 0) + float(stats.get("goals_conceded") or 0))
-    stats["pressure_pass_accuracy_pct"] = _pct(float(stats.get("passes_completed_under_pressure") or 0), float(stats.get("passes_under_pressure") or 0))
-    stats["shot_accuracy_pct"] = _pct(float(stats.get("shots_on_target") or 0), float(stats.get("shots") or 0))
+    stats["save_success_pct_derived"] = (_pct(float(stats["saves"]), float(stats["saves"]) + float(stats["goals_conceded"]))
+                                          if comparable("saves", "goals_conceded") else None)
+    stats["pressure_pass_accuracy_pct"] = (_pct(float(stats["passes_completed_under_pressure"]), float(stats["passes_under_pressure"]))
+                                           if comparable("passes_completed_under_pressure", "passes_under_pressure") else None)
+    stats["shot_accuracy_pct"] = (_pct(float(stats["shots_on_target"]), float(stats["shots"]))
+                                  if comparable("shots_on_target", "shots") else None)
 
 
 def _safe_ratio(numerator: Any, denominator: Any, *, scale: float = 1.0, digits: int = 2) -> float | None:
@@ -259,7 +270,8 @@ def _evidence_class(matches: int, minutes: float) -> dict[str, Any]:
     }
 
 
-def _add_context_metrics(stats: dict[str, Any], *, matches: int | None = None) -> None:
+def _add_context_metrics(stats: dict[str, Any], *, matches: int | None = None,
+                         metric_minutes: dict[str, float] | None = None) -> None:
     """Add interpretation-friendly metrics without changing the raw FC26 surface."""
     minutes = float(stats.get("minutes_played") or 0)
     per90_fields = (
@@ -267,34 +279,56 @@ def _add_context_metrics(stats: dict[str, Any], *, matches: int | None = None) -
         "dribbles_completed", "possession_won", "possession_lost", "interceptions", "tackles",
         "clearances", "aerial_duels_won", "fouls_committed", "saves", "goals_conceded",
     )
-    if minutes > 0:
-        for field in per90_fields:
-            if field in stats:
-                stats[f"{field}_per90"] = round(float(stats.get(field) or 0) * 90.0 / minutes, 2)
-    stats["xg_per_shot"] = _safe_ratio(stats.get("npk_expected_goals"), stats.get("shots"), digits=3)
-    stats["shot_on_target_pct"] = _safe_ratio(stats.get("shots_on_target"), stats.get("shots"), scale=100.0, digits=1)
-    stats["pressure_pass_accuracy_pct"] = _safe_ratio(
-        stats.get("passes_completed_under_pressure"), stats.get("passes_under_pressure"), scale=100.0, digits=1
+    for field in per90_fields:
+        value = _num(stats.get(field))
+        denominator = metric_minutes.get(field, 0.0) if metric_minutes is not None else minutes
+        if value is not None and denominator > 0:
+            stats[f"{field}_per90"] = round(value * 90.0 / denominator, 2)
+    coverage = stats.get("metricCoverage")
+
+    def comparable(*fields: str) -> bool:
+        return (all(_num(stats.get(field)) is not None for field in fields)
+                and (not isinstance(coverage, dict)
+                     or all(coverage.get(field) == matches for field in fields)))
+
+    stats["xg_per_shot"] = (_safe_ratio(stats.get("npk_expected_goals"), stats.get("shots"), digits=3)
+                            if comparable("npk_expected_goals", "shots") else None)
+    stats["shot_on_target_pct"] = (_safe_ratio(stats.get("shots_on_target"), stats.get("shots"), scale=100.0, digits=1)
+                                    if comparable("shots_on_target", "shots") else None)
+    stats["pressure_pass_accuracy_pct"] = (
+        _safe_ratio(stats.get("passes_completed_under_pressure"), stats.get("passes_under_pressure"), scale=100.0, digits=1)
+        if comparable("passes_completed_under_pressure", "passes_under_pressure") else None
     )
     stats["npk_finishing_delta"] = (
-        round(float(stats.get("npk_goals") or 0) - float(stats.get("npk_expected_goals") or 0), 2)
-        if stats.get("npk_expected_goals") is not None else None
+        round(float(stats["npk_goals"]) - float(stats["npk_expected_goals"]), 2)
+        if comparable("npk_goals", "npk_expected_goals") else None
     )
-    stats["xg_plus_xa"] = round(float(stats.get("npk_expected_goals") or 0) + float(stats.get("expected_assists") or 0), 3)
-    if minutes > 0:
+    both_available = comparable("npk_expected_goals", "expected_assists")
+    stats["xg_plus_xa"] = (round(float(stats["npk_expected_goals"]) + float(stats["expected_assists"]), 3)
+                           if both_available else None)
+    if minutes > 0 and stats["xg_plus_xa"] is not None and (
+        not isinstance(coverage, dict) or coverage.get("minutes_played") == matches
+    ):
         stats["xg_plus_xa_per90"] = round(float(stats["xg_plus_xa"]) * 90.0 / minutes, 2)
-    stats["possession_balance"] = int(stats.get("possession_won") or 0) - int(stats.get("possession_lost") or 0)
-    duel_won = sum(float(stats.get(key) or 0) for key in ("offense_duels_won", "defense_duels_won", "aerial_duels_won"))
-    duel_attempted = sum(float(stats.get(key) or 0) for key in ("offense_duels_attempted", "defense_duels_attempted", "aerial_duels_attempted"))
-    stats["combined_duel_success_pct"] = _pct(duel_won, duel_attempted)
+    won, lost = _num(stats.get("possession_won")), _num(stats.get("possession_lost"))
+    stats["possession_balance"] = int(won - lost) if comparable("possession_won", "possession_lost") else None
+    duel_won_fields = ("offense_duels_won", "defense_duels_won", "aerial_duels_won")
+    duel_attempted_fields = ("offense_duels_attempted", "defense_duels_attempted", "aerial_duels_attempted")
+    stats["combined_duel_success_pct"] = (
+        _pct(sum(float(stats[key]) for key in duel_won_fields),
+             sum(float(stats[key]) for key in duel_attempted_fields))
+        if comparable(*(duel_won_fields + duel_attempted_fields)) else None
+    )
     if matches and matches > 0:
         for field in (
             "npk_expected_goals", "expected_goals_derived", "penalty_attempts_derived", "expected_assists", "shots", "shots_on_target", "passes", "key_passes",
             "dribbles_completed", "possession_won", "possession_lost", "interceptions", "tackles",
             "aerial_duels_won", "fouls_committed", "goals_derived", "npk_goals", "assists",
         ):
-            if field in stats:
-                stats[f"{field}_per_match"] = round(float(stats.get(field) or 0) / matches, 2)
+            value = _num(stats.get(field))
+            covered = coverage.get(field, 0) if isinstance(coverage, dict) else matches
+            if value is not None and covered > 0:
+                stats[f"{field}_per_match"] = round(value / covered, 2)
 
 
 def _team_single_match_metrics(stats: dict[str, Any]) -> dict[str, Any]:
@@ -337,6 +371,9 @@ def aggregate_detailed_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
     ratings: list[float] = []
     appearances = 0
     motm = 0
+    field_counts: dict[str, int] = defaultdict(int)
+    field_minutes: dict[str, float] = defaultdict(float)
+    field_minutes_counts: dict[str, int] = defaultdict(int)
     for row in rows:
         if not row:
             continue
@@ -351,23 +388,36 @@ def aggregate_detailed_stats(rows: list[dict[str, Any]]) -> dict[str, Any]:
             number = _num(value)
             if number is not None:
                 aggregate[key] = float(aggregate.get(key) or 0) + number
+                field_counts[key] += 1
+                played = _num(row.get("minutes_played"))
+                if played is not None and played > 0:
+                    field_minutes[key] += played
+                    field_minutes_counts[key] += 1
     for key, value in list(aggregate.items()):
         if abs(value - round(value)) < 1e-9 and key not in {"npk_expected_goals", "expected_assists"}:
             aggregate[key] = int(round(value))
         elif key in {"npk_expected_goals", "expected_assists"}:
             aggregate[key] = round(float(value), 3)
     aggregate["matches"] = appearances
+    aggregate["metricCoverage"] = dict(sorted(field_counts.items()))
     aggregate["man_of_the_match"] = motm
     aggregate["average_game_rating"] = round(sum(ratings) / len(ratings), 2) if ratings else None
-    aggregate["minutes_per_match"] = round(float(aggregate.get("minutes_played") or 0) / appearances, 1) if appearances else None
+    minute_count = field_counts.get("minutes_played", 0)
+    aggregate["minutes_per_match"] = (round(float(aggregate["minutes_played"]) / minute_count, 1)
+                                       if minute_count else None)
     aggregate["evidence"] = _evidence_class(appearances, float(aggregate.get("minutes_played") or 0))
     _recalculate_rates(aggregate)
     minutes = float(aggregate.get("minutes_played") or 0)
-    aggregate["npk_xg_per90"] = round(float(aggregate.get("npk_expected_goals") or 0) * 90 / minutes, 2) if minutes > 0 else None
-    aggregate["xa_per90"] = round(float(aggregate.get("expected_assists") or 0) * 90 / minutes, 2) if minutes > 0 else None
-    aggregate["shots_per90"] = round(float(aggregate.get("shots") or 0) * 90 / minutes, 2) if minutes > 0 else None
-    aggregate["key_passes_per90"] = round(float(aggregate.get("key_passes") or 0) * 90 / minutes, 2) if minutes > 0 else None
-    _add_context_metrics(aggregate, matches=appearances)
+    for field, result_key in (("npk_expected_goals", "npk_xg_per90"),
+                              ("expected_assists", "xa_per90"),
+                              ("shots", "shots_per90"),
+                              ("key_passes", "key_passes_per90")):
+        denominator = field_minutes.get(field, 0.0) if field_minutes_counts[field] == field_counts[field] else 0.0
+        value = _num(aggregate.get(field))
+        aggregate[result_key] = round(value * 90 / denominator, 2) if value is not None and denominator > 0 else None
+    paired_minutes = {field: value for field, value in field_minutes.items()
+                      if field_minutes_counts[field] == field_counts[field]}
+    _add_context_metrics(aggregate, matches=appearances, metric_minutes=paired_minutes)
     return aggregate
 
 
@@ -429,8 +479,18 @@ def _match_events(players: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int | None = None,
                    as_of_import_sequence: int | None = None,
                    season_index: int | None = None) -> dict[str, Any] | None:
-    clauses = ["mse.fixture_id=?", "mse.superseded_by_export_id IS NULL"]
-    params: list[Any] = [fixture_id]
+    clauses = ["mse.fixture_id=?",
+               "mse.linkage_status='linked'", "mse.export_status IN (?,?)"]
+    params: list[Any] = [fixture_id, *sorted(COMPLETE_EXPORT_STATUSES)]
+    if as_of_import_sequence is None:
+        clauses.append("mse.superseded_by_export_id IS NULL")
+    else:
+        clauses.append("(mse.superseded_by_export_id IS NULL OR EXISTS ("
+                       "SELECT 1 FROM match_stat_exports successor "
+                       "JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id "
+                       "WHERE successor.id=mse.superseded_by_export_id "
+                       "AND successor_snapshot.import_sequence>?))")
+        params.append(int(as_of_import_sequence))
     if career_id is not None:
         clauses.append("mse.career_id=?")
         params.append(int(career_id))
@@ -442,7 +502,7 @@ def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int 
         params.append(int(as_of_import_sequence))
     export = conn.execute(
         "SELECT mse.* FROM match_stat_exports mse LEFT JOIN snapshots source_snapshot ON source_snapshot.id=mse.snapshot_id WHERE "
-        + " AND ".join(clauses) + " ORDER BY mse.id DESC LIMIT 1", tuple(params)
+        + " AND ".join(clauses) + " ORDER BY source_snapshot.import_sequence DESC,mse.id DESC LIMIT 1", tuple(params)
     ).fetchone()
     if not export:
         return None
@@ -472,6 +532,8 @@ def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int 
         "SELECT * FROM match_team_detailed_stats WHERE export_id=? ORDER BY team_index", (export["id"],)
     ).fetchall()
     teams = [{"teamIndex": int(row["team_index"]), "teamEaId": row["team_ea_id"], "stats": _team_single_match_metrics(_json_object(row["stats_json"]))} for row in team_rows]
+    if len(teams) != 2:
+        return None
     if len(teams) == 2:
         _add_team_expected_goals_from_opponent_penalty(teams[0]["stats"], teams[1]["stats"])
         _add_team_expected_goals_from_opponent_penalty(teams[1]["stats"], teams[0]["stats"])
@@ -480,7 +542,10 @@ def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int 
         "available": True,
         "exportId": int(export["id"]),
         "externalExportId": export["external_export_id"],
+        "importedAt": export["imported_at"] if "imported_at" in export.keys() else None,
+        "captureId": export["pipeline_capture_id"] if "pipeline_capture_id" in export.keys() else None,
         "status": export["export_status"],
+        "linkageStatus": export["linkage_status"],
         "linkageConfidence": export["linkage_confidence"],
         "snapshotId": export["snapshot_id"],
         "teams": teams,
@@ -507,6 +572,12 @@ def detailed_player_matches(
     if as_of_import_sequence is not None:
         season_filter += " AND s.import_sequence<=?"
         params.append(int(as_of_import_sequence))
+    supersession_filter = ("mse.superseded_by_export_id IS NULL" if as_of_import_sequence is None else
+        "(mse.superseded_by_export_id IS NULL OR EXISTS (SELECT 1 FROM match_stat_exports successor "
+        "JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id "
+        "WHERE successor.id=mse.superseded_by_export_id AND successor_snapshot.import_sequence>?))")
+    if as_of_import_sequence is not None:
+        params.append(int(as_of_import_sequence))
     rows = conn.execute(
         f"""SELECT mse.id export_id,mse.fixture_id,mse.snapshot_id,mse.linkage_confidence,
                    mpds.team_index,mpds.stats_json,s.season_index,s.career_date,
@@ -518,7 +589,10 @@ def detailed_player_matches(
             JOIN snapshots s ON s.id=mse.snapshot_id
             JOIN fixtures f ON f.id=mse.fixture_id
             LEFT JOIN fixture_observations fo ON fo.snapshot_id=mse.snapshot_id AND fo.fixture_id=mse.fixture_id
-            WHERE mse.career_id=? AND mpds.player_ea_id=? AND mse.superseded_by_export_id IS NULL {season_filter}
+            WHERE mse.career_id=? AND mpds.player_ea_id=? {season_filter}
+              AND {supersession_filter}
+              AND mse.linkage_status='linked' AND mse.export_status IN ('complete_participant_export',
+                  'participant_export_complete_with_unresolved_nonparticipant')
             ORDER BY COALESCE(fo.date,s.career_date) DESC,mse.id DESC""",
         tuple(params),
     ).fetchall()
@@ -541,13 +615,17 @@ def detailed_player_matches(
 
 def _official_player_appearances(
     conn: sqlite3.Connection, career_id: int, player_id: int, season_indices: list[int],
+    *, as_of_import_sequence: int | None = None,
 ) -> int | None:
     total = 0
     found = False
     for season_index in season_indices:
         snap = conn.execute(
-            "SELECT id FROM snapshots WHERE career_id=? AND season_index=? ORDER BY import_sequence DESC LIMIT 1",
-            (career_id, season_index),
+            "SELECT id FROM snapshots WHERE career_id=? AND season_index=?"
+            + (" AND import_sequence<=?" if as_of_import_sequence is not None else "")
+            + " ORDER BY import_sequence DESC LIMIT 1",
+            (career_id, season_index, as_of_import_sequence) if as_of_import_sequence is not None
+            else (career_id, season_index),
         ).fetchone()
         if not snap:
             continue
@@ -577,12 +655,15 @@ def _player_team_share(player: dict[str, Any], team: dict[str, Any]) -> dict[str
     result: dict[str, Any] = {}
     for key in ("npk_expected_goals", "expected_assists", "shots", "key_passes", "possession_won", "interceptions"):
         value = _num(player.get(key)); total = _num(team.get(key))
-        result[key] = round(value / total * 100.0, 1) if value is not None and total and total > 0 else None
+        comparable = (player.get("metricCoverage", {}).get(key) == player.get("matches")
+                      and team.get("metricCoverage", {}).get(key) == team.get("matches"))
+        result[key] = round(value / total * 100.0, 1) if comparable and value is not None and total and total > 0 else None
     return result
 
 
-def detailed_player_season_history(conn: sqlite3.Connection, career_id: int, player_id: int) -> list[dict[str, Any]]:
-    matches = detailed_player_matches(conn, career_id, player_id)
+def detailed_player_season_history(conn: sqlite3.Connection, career_id: int, player_id: int,
+                                   *, as_of_import_sequence: int | None = None) -> list[dict[str, Any]]:
+    matches = detailed_player_matches(conn, career_id, player_id, as_of_import_sequence=as_of_import_sequence)
     grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
     grouped_matches: dict[int, list[dict[str, Any]]] = defaultdict(list)
     competitions: dict[int, dict[str, list[dict[str, Any]]]] = defaultdict(lambda: defaultdict(list))
@@ -595,7 +676,8 @@ def detailed_player_season_history(conn: sqlite3.Connection, career_id: int, pla
     result: list[dict[str, Any]] = []
     for season_index in sorted(grouped, reverse=True):
         aggregate = aggregate_detailed_stats(grouped[season_index])
-        official = _official_player_appearances(conn, career_id, player_id, [season_index])
+        official = _official_player_appearances(conn, career_id, player_id, [season_index],
+                                               as_of_import_sequence=as_of_import_sequence)
         team = _player_team_context(conn, grouped_matches[season_index])
         covered = len({int(item["fixtureId"]) for item in grouped_matches[season_index]})
         result.append({
@@ -615,14 +697,18 @@ def detailed_player_season_history(conn: sqlite3.Connection, career_id: int, pla
 
 def detailed_player_season_summary(
     conn: sqlite3.Connection, career_id: int, player_id: int, *, season_indices: list[int] | None = None,
+    as_of_import_sequence: int | None = None,
 ) -> dict[str, Any]:
-    matches = detailed_player_matches(conn, career_id, player_id, season_indices=season_indices)
+    matches = detailed_player_matches(conn, career_id, player_id, season_indices=season_indices,
+                                      as_of_import_sequence=as_of_import_sequence)
     aggregate = aggregate_detailed_stats([item["stats"] for item in matches])
     competitions: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for item in matches:
         competitions[str(item.get("competitionName") or "Unknown competition")].append(item["stats"])
     resolved_seasons = season_indices or sorted({int(item.get("seasonIndex") or 0) for item in matches})
-    official = _official_player_appearances(conn, career_id, player_id, [int(value) for value in resolved_seasons]) if resolved_seasons else None
+    official = (_official_player_appearances(conn, career_id, player_id, [int(value) for value in resolved_seasons],
+                                            as_of_import_sequence=as_of_import_sequence)
+                if resolved_seasons else None)
     team = _player_team_context(conn, matches)
     covered = len({int(item["fixtureId"]) for item in matches})
     return {
@@ -640,7 +726,8 @@ def detailed_player_season_summary(
     }
 
 
-def _completed_managed_matches(conn: sqlite3.Connection, career_id: int, season_indices: list[int]) -> int:
+def _completed_managed_matches(conn: sqlite3.Connection, career_id: int, season_indices: list[int],
+                               *, as_of_import_sequence: int | None = None) -> int:
     if not season_indices:
         return 0
     placeholders = ",".join("?" for _ in season_indices)
@@ -648,18 +735,24 @@ def _completed_managed_matches(conn: sqlite3.Connection, career_id: int, season_
         f"""SELECT COUNT(DISTINCT fo.fixture_id) total
             FROM fixture_observations fo JOIN snapshots s ON s.id=fo.snapshot_id
             WHERE s.career_id=? AND s.season_index IN ({placeholders})
-              AND fo.is_completed=1 AND fo.managed_team_involved=1""",
-        (career_id, *season_indices),
+              AND fo.is_completed=1 AND fo.managed_team_involved=1
+              AND (? IS NULL OR s.import_sequence<=?)""",
+        (career_id, *season_indices, as_of_import_sequence, as_of_import_sequence),
     ).fetchone()
     return int(row["total"] or 0) if row else 0
 
 
 def detailed_analysis(
     conn: sqlite3.Connection, career_id: int, season_indices: list[int], managed_team_id: int | None,
+    *, as_of_import_sequence: int | None = None,
 ) -> dict[str, Any]:
     if not season_indices:
         return {"modelId": DETAILED_MODEL_ID, "available": False, "matchesCovered": 0, "coveragePct": 0.0}
     placeholders = ",".join("?" for _ in season_indices)
+    supersession_filter = ("mse.superseded_by_export_id IS NULL" if as_of_import_sequence is None else
+        "(mse.superseded_by_export_id IS NULL OR EXISTS (SELECT 1 FROM match_stat_exports successor "
+        "JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id "
+        "WHERE successor.id=mse.superseded_by_export_id AND successor_snapshot.import_sequence>?))")
     exports = conn.execute(
         f"""SELECT mse.*,s.season_index,s.career_date,f.home_team_ea_id,f.away_team_ea_id,
                    fo.date,fo.competition_name,fo.home_team_name,fo.away_team_name,fo.home_score,fo.away_score
@@ -668,9 +761,14 @@ def detailed_analysis(
             JOIN fixtures f ON f.id=mse.fixture_id
             LEFT JOIN fixture_observations fo ON fo.snapshot_id=mse.snapshot_id AND fo.fixture_id=mse.fixture_id
             WHERE mse.career_id=? AND s.season_index IN ({placeholders}) AND mse.fixture_id IS NOT NULL
-              AND mse.superseded_by_export_id IS NULL
+              AND {supersession_filter} AND mse.linkage_status='linked'
+              AND mse.export_status IN ('complete_participant_export',
+                  'participant_export_complete_with_unresolved_nonparticipant')
+              AND (? IS NULL OR s.import_sequence<=?)
             ORDER BY COALESCE(fo.date,s.career_date),mse.id""",
-        (career_id, *season_indices),
+        (career_id, *season_indices,
+         *((as_of_import_sequence,) if as_of_import_sequence is not None else ()),
+         as_of_import_sequence, as_of_import_sequence),
     ).fetchall()
     team_for_rows: list[dict[str, Any]] = []
     team_against_rows: list[dict[str, Any]] = []
@@ -721,7 +819,9 @@ def detailed_analysis(
                 "homeScore": export["home_score"], "awayScore": export["away_score"], "venue": "home" if is_home else "away",
                 "npkXgFor": own_metric.get("npk_expected_goals"), "npkXgAgainst": opp_metric.get("npk_expected_goals"),
                 "totalXgFor": own_metric.get("expected_goals_derived"), "totalXgAgainst": opp_metric.get("expected_goals_derived"),
-                "xgDiff": round(float(own_metric.get("npk_expected_goals") or 0) - float(opp_metric.get("npk_expected_goals") or 0), 3),
+                "xgDiff": (round(float(own_metric["npk_expected_goals"]) - float(opp_metric["npk_expected_goals"]), 3)
+                           if _num(own_metric.get("npk_expected_goals")) is not None
+                           and _num(opp_metric.get("npk_expected_goals")) is not None else None),
                 "xAFor": own_metric.get("expected_assists"), "xAAgainst": opp_metric.get("expected_assists"),
                 "shotsFor": own_metric.get("shots"), "shotsAgainst": opp_metric.get("shots"),
                 "shotQualityFor": own_metric.get("xg_per_shot"), "shotQualityAgainst": opp_metric.get("xg_per_shot"),
@@ -755,11 +855,13 @@ def detailed_analysis(
         agg = aggregate_detailed_stats(rows)
         name, pos = player_context.get(pid, (None, None))
         player_summaries.append({"playerEaId": pid, "displayName": name, "primaryPosition": pos, "stats": agg, "evidence": agg.get("evidence")})
-    total_completed = _completed_managed_matches(conn, career_id, season_indices)
+    total_completed = _completed_managed_matches(conn, career_id, season_indices,
+                                                 as_of_import_sequence=as_of_import_sequence)
     matches_covered = len({int(item["fixtureId"]) for item in trends})
     season_payload = []
     for season_index in sorted(season_for_rows):
-        total_season = _completed_managed_matches(conn, career_id, [season_index])
+        total_season = _completed_managed_matches(conn, career_id, [season_index],
+                                                  as_of_import_sequence=as_of_import_sequence)
         covered = len(season_for_rows[season_index])
         season_payload.append({
             "seasonIndex": season_index,

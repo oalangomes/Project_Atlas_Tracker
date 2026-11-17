@@ -140,14 +140,14 @@ class CommissionMetricTests(unittest.TestCase):
             CREATE TABLE snapshots(id INTEGER PRIMARY KEY,career_id INTEGER,season_index INTEGER,import_sequence INTEGER);
             CREATE TABLE match_stat_exports(id INTEGER PRIMARY KEY,fixture_id INTEGER,career_id INTEGER,snapshot_id INTEGER,
                 superseded_by_export_id INTEGER,external_export_id TEXT,export_status TEXT,linkage_confidence REAL,
-                team0_ea_id INTEGER,team1_ea_id INTEGER);
+                team0_ea_id INTEGER,team1_ea_id INTEGER,linkage_status TEXT);
             CREATE TABLE match_player_detailed_stats(export_id INTEGER,team_index INTEGER,game_rating REAL,
                 minutes_played INTEGER,player_ea_id INTEGER,stats_json TEXT);
             CREATE TABLE player_states(snapshot_id INTEGER,ea_player_id INTEGER,display_name TEXT,primary_position TEXT,team_ea_id INTEGER);
             CREATE TABLE match_team_detailed_stats(export_id INTEGER,team_index INTEGER,team_ea_id INTEGER,stats_json TEXT);
             INSERT INTO snapshots VALUES(1,1,0,1),(2,1,1,2);
-            INSERT INTO match_stat_exports VALUES(1,55,1,1,NULL,'old','complete_participant_export',1.0,100,1929);
-            INSERT INTO match_stat_exports VALUES(2,55,1,2,NULL,'current','complete_participant_export',1.0,100,1929);
+            INSERT INTO match_stat_exports VALUES(1,55,1,1,NULL,'old','complete_participant_export',1.0,100,1929,'linked');
+            INSERT INTO match_stat_exports VALUES(2,55,1,2,NULL,'current','complete_participant_export',1.0,100,1929,'linked');
             INSERT INTO match_team_detailed_stats VALUES(1,0,100,'{}'),(1,1,1929,'{}');
             INSERT INTO match_team_detailed_stats VALUES(2,0,100,'{}'),(2,1,1929,'{}');
         """)
@@ -632,7 +632,8 @@ class CommissionMetricTests(unittest.TestCase):
         conn.executescript("""
             CREATE TABLE careers(id INTEGER PRIMARY KEY);
             CREATE TABLE snapshots(id INTEGER PRIMARY KEY,career_id INTEGER,managed_team_ea_id INTEGER,
-                season_index INTEGER,career_date TEXT,managed_team_name TEXT,managed_completed_fixture_count INTEGER);
+                season_index INTEGER,career_date TEXT,managed_team_name TEXT,managed_completed_fixture_count INTEGER,
+                import_sequence INTEGER);
             CREATE TABLE player_states(snapshot_id INTEGER,ea_player_id INTEGER,display_name TEXT,
                 primary_position TEXT,team_ea_id INTEGER);
             CREATE TABLE player_match_performances(snapshot_id INTEGER,player_ea_id INTEGER,fixture_key TEXT,
@@ -644,8 +645,8 @@ class CommissionMetricTests(unittest.TestCase):
             CREATE TABLE match_player_detailed_stats(export_id INTEGER,player_ea_id INTEGER,minutes_played INTEGER,
                 game_rating REAL,stats_json TEXT,team_index INTEGER);
             INSERT INTO careers VALUES(1);
-            INSERT INTO snapshots VALUES(9,1,1794,0,'2025-08-31','Sheffield Utd',0);
-            INSERT INTO snapshots VALUES(10,1,1794,0,'2025-09-30','Sheffield Utd',5);
+            INSERT INTO snapshots VALUES(9,1,1794,0,'2025-08-31','Sheffield Utd',0,9);
+            INSERT INTO snapshots VALUES(10,1,1794,0,'2025-09-30','Sheffield Utd',5,10);
             INSERT INTO player_states VALUES(10,7,'Player','ST',1794);
         """)
         for day in range(1, 6):

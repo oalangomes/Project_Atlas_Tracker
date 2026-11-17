@@ -40,6 +40,9 @@ class HistoryQueryMixin:
             added_ids = sorted(set(after) - set(before), key=lambda pid: after[pid]["display_name"])
             removed_ids = sorted(set(before) - set(after), key=lambda pid: before[pid]["display_name"])
             changed = []
+            def observed_delta(before_value: Any, after_value: Any) -> int | float | None:
+                return after_value - before_value if before_value is not None and after_value is not None else None
+
             for player_id in sorted(set(before) & set(after), key=lambda pid: after[pid]["display_name"]):
                 a, b = before[player_id], after[player_id]
                 delta = {
@@ -47,9 +50,11 @@ class HistoryQueryMixin:
                     "display_name": b["display_name"],
                     "before": a,
                     "after": b,
-                    "overall_delta": (b.get("overall") or 0) - (a.get("overall") or 0),
-                    "potential_delta": (b.get("potential") or 0) - (a.get("potential") or 0),
-                    "wage_delta": (b.get("wage") or 0) - (a.get("wage") or 0),
+                    "overall_delta": observed_delta(a.get("overall"), b.get("overall")),
+                    "potential_delta": observed_delta(a.get("potential"), b.get("potential")),
+                    "wage_delta": observed_delta(a.get("wage"), b.get("wage")),
+                    "delta_source": {"careerId": career_id, "fromSnapshotId": from_id,
+                                     "toSnapshotId": to_id, "kind": "imported_snapshot_states"},
                     "changed_fields": [],
                 }
                 for field in ("overall", "potential", "team_ea_id", "primary_position", "jersey_number", "wage", "duration_months", "contract_valid_until"):

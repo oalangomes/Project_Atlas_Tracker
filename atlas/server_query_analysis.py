@@ -1261,7 +1261,8 @@ class AnalysisQueryMixin:
                     goals_for += aw; goals_against += hs
 
             managed_team_id = as_int(latest["managed_team_ea_id"])
-            match_intelligence = detailed_analysis(conn, career_id, selected_indices, managed_team_id)
+            match_intelligence = detailed_analysis(conn, career_id, selected_indices, managed_team_id,
+                                                   as_of_import_sequence=int(latest["import_sequence"]))
             league_history = self._league_history(conn, career_id, managed_team_id, int(latest["id"])) if managed_team_id is not None else []
             selected_history = [row for row in league_history if int(row["season_index"]) in selected_indices]
             levels = [as_int(row.get("league_level")) for row in selected_history]
