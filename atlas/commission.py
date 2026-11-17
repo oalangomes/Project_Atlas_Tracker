@@ -23,6 +23,7 @@ from .commission_role_policy import (CROSS_ROLE_METRIC_FIELDS, goalkeeper_match_
                                      goalkeeper_opponent_xg_evidence, player_role,
                                      prompt_evidence, role_relevance_conflict)
 from .positions import trusted_actual_position
+from .llm_credentials import load_config
 from .secret_protection import unprotect_secret
 
 MIN_USABLE_MINUTES = 300
@@ -3190,14 +3191,7 @@ GROQ_FALLBACK_MODELS = ("llama-3.1-8b-instant", "llama-3.3-70b-versatile", "open
 
 def read_llm_config(conn: Any) -> dict[str, Any]:
     """Read the provider saved by the Setup screen from app_settings."""
-    config: dict[str, Any] = {}
-    try:
-        row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
-        parsed = json.loads(row["value"]) if row else None
-        if isinstance(parsed, dict):
-            config = parsed
-    except (sqlite3.Error, ValueError, TypeError):
-        config = {}
+    config, _ = load_config(conn, migrate=False)
     provider = str(config.get("provider") or "ollama").strip().lower()
     if provider not in CLOUD_DEFAULT_MODELS and provider != "ollama":
         provider = "ollama"
@@ -3206,6 +3200,8 @@ def read_llm_config(conn: Any) -> dict[str, Any]:
         "provider": provider,
         "model": str(config.get("model") or "").strip(),
         "keys": {str(name).lower(): unprotect_secret(str(value or "").strip()) for name, value in raw_keys.items()},
+        "cloud_consent": config.get("cloud_consent") is True,
+        "cloud_failover_consent": config.get("cloud_failover_consent") is True,
     }
 
 
@@ -3217,7 +3213,7 @@ def resolve_report_model(conn: Any, requested: str | None = None) -> tuple[str, 
         model = (requested or config["model"]
                  or os.environ.get("ATLAS_OLLAMA_MODEL") or OLLAMA_DEFAULT_MODEL)
         return provider, model, ""
-    api_key = config["keys"].get(provider, "")
+    api_key = config["keys"].get(provider, "") if config["cloud_consent"] else ""
     requested_text = str(requested or "").strip()
     lowered = requested_text.lower()
     same_family = (
@@ -3347,7 +3343,9 @@ def _cloud_report_payload(provider: str, api_key: str, model: str, system: str,
             except urllib.error.HTTPError as exc:
                 error = f"HTTP {exc.code}"
                 if exc.code not in {400, 404, 408, 429, 500, 502, 503, 504}:
-                    raise
+                    # HTTPError includes the request URL, which contains the
+                    # Gemini key. Never propagate its raw string to a report.
+                    return None, error
                 if exc.code == 429:
                     detail = ""
                     try:
@@ -3452,6 +3450,8 @@ def _cloud_provider_plan(conn: Any, provider: str, model: str,
         return [(provider, model, api_key)]
     plan = [(provider, model, api_key)]
     config = read_llm_config(conn)
+    if not config["cloud_failover_consent"]:
+        return plan
     for name in CLOUD_PROVIDER_ORDER:
         if name == provider:
             continue
@@ -3654,6 +3654,10 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
             return {"available": False, "fallback": True, "cached": False,
                     "message": "Ollama indisponível ou modelo não instalado. Os dados do Atlas continuam disponíveis.", "context": context}
     elif not api_key:
+        if not read_llm_config(conn)["cloud_consent"]:
+            return {"available": False, "fallback": True, "cached": False,
+                    "message": "Envio para provedores cloud desativado. Ative o consentimento em Configurações > AI Analysis Engine.",
+                    "context": context}
         return {"available": False, "fallback": True, "cached": False,
                 "message": f"Nenhuma API key configurada para {provider}. Salve a chave em Configurações > AI Analysis Engine.", "context": context}
     language = str(context.get("language") or "pt-BR")
@@ -3938,7 +3942,8 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
              json.dumps(result, ensure_ascii=False, sort_keys=True)))
         return result
     except (OSError, ValueError, KeyError, TypeError, urllib.error.URLError, TimeoutError) as exc:
-        detail = str(exc).replace("\n", " ")[:160]
+        detail = ("falha do provedor ou prazo esgotado" if provider in CLOUD_DEFAULT_MODELS
+                  else str(exc).replace("\n", " ")[:160])
         provider_label = {"gemini": "Gemini", "groq": "Groq"}.get(provider, "Ollama")
         return {"available": False, "fallback": True, "cached": False, "model": selected,
                 "source_hash": source_hash, "report_version": REPORT_VERSION,

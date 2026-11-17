@@ -22,6 +22,7 @@ from .watcher import HotFolderWatcher
 from .match_stats_importer import MatchStatsImporter
 from .workspaces import WorkspaceManager
 from .career_reset import CareerResetService
+from .llm_credentials import load_config
 
 @dataclass
 class AppState:
@@ -48,6 +49,7 @@ class AppState:
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)"
             )
+            load_config(conn)
         if self.reference is None:
             self.reference = ReferenceImporter(self.database)
             self.reference.ensure_builtin()

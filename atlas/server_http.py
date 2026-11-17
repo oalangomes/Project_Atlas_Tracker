@@ -19,7 +19,7 @@ from .server_queries import QueryApiMixin
 from .server_state import AppState
 from .media_utils import season_start_from_date
 from .server_utils import as_int, career_clock, input_bool, latest_snapshot, parse_raw, rows_to_dicts
-from .secret_protection import protect_secret, unprotect_secret
+from .llm_credentials import public_config, update_config
 from .paths import write_snapshot_root, log_dir
 
 
@@ -72,7 +72,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             return
         finally:
             if parsed.path.startswith("/api/"):
-                self._log_slow_request("GET", self.path, time.perf_counter() - started)
+                self._log_slow_request("GET", parsed.path, time.perf_counter() - started)
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
@@ -86,7 +86,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             return
         finally:
             if parsed.path.startswith("/api/"):
-                self._log_slow_request("POST", self.path, time.perf_counter() - started)
+                self._log_slow_request("POST", parsed.path, time.perf_counter() - started)
 
     def _api_get(self, path: str, query: dict[str, list[str]]) -> None:
         if path == "/api/status":
@@ -100,20 +100,8 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             return
         if path == "/api/llm/config":
             with self.state.database.connect() as conn:
-                row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
-                try:
-                    config = json.loads(row["value"]) if row else {"provider": "ollama", "keys": {}}
-                except (ValueError, TypeError):
-                    config = {"provider": "ollama", "keys": {}}
-            if not isinstance(config, dict):
-                config = {"provider": "ollama", "keys": {}}
-            keys = config.get("keys") if isinstance(config.get("keys"), dict) else {}
-            stored = {name: unprotect_secret(str(keys.get(name) or "").strip()) for name in ("gemini", "groq")}
-            self._json({
-                        "provider": str(config.get("provider") or "ollama").strip().lower(),
-                        "model": str(config.get("model") or "").strip(),
-                        "configured": {name: bool(value) for name, value in stored.items()},
-                        "key_hints": {name: (f"…{value[-4:]}" if value else "") for name, value in stored.items()}})
+                response = public_config(conn)
+            self._json(response)
             return
         if path == "/api/media/status":
             self._json(self.state.media.status())
@@ -401,57 +389,9 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
 
     def _api_post(self, path: str, payload: dict[str, Any]) -> None:
         if path == "/api/llm/config":
-            # Merge instead of replacing: the Setup screen stores one key per cloud
-            # provider, so saving Groq must never erase the Gemini key (and vice versa).
-            requested = payload.get("provider")
             with self.state.database.connect() as conn:
-                row = conn.execute("SELECT value FROM app_settings WHERE key='llm_config'").fetchone()
-                try:
-                    config = json.loads(row["value"]) if row else {}
-                except (ValueError, TypeError):
-                    config = {}
-                if not isinstance(config, dict):
-                    config = {}
-                if requested is None:
-                    provider = str(config.get("provider") or "ollama").strip().lower()
-                else:
-                    provider = str(requested).strip().lower()
-                if provider not in {"ollama", "gemini", "groq"}:
-                    raise ValueError(f"Unknown AI provider: {provider}")
-                keys = dict(config.get("keys")) if isinstance(config.get("keys"), dict) else {}
-                incoming = payload.get("keys") if isinstance(payload.get("keys"), dict) else {}
-                for name, value in incoming.items():
-                    name = str(name).strip().lower()
-                    text = str(value or "").strip()
-                    if name in {"gemini", "groq"} and text:
-                        protected = protect_secret(text)
-                        if protected is None:
-                            raise ValueError("Protected credential storage is unavailable on this system.")
-                        keys[name] = protected
-                for name in payload.get("remove") or []:
-                    keys.pop(str(name).strip().lower(), None)
-                # Migrate any legacy plaintext keys to protected storage when possible.
-                migrated: dict[str, Any] = {}
-                for name, value in keys.items():
-                    text = str(value or "").strip()
-                    if text.startswith("dpapi:"):
-                        migrated[name] = text
-                    else:
-                        protected = protect_secret(text)
-                        if protected is None:
-                            migrated[name] = text
-                        else:
-                            migrated[name] = protected
-                keys = migrated
-                config["provider"] = provider
-                config["keys"] = keys
-                config["model"] = str(payload.get("model") or config.get("model") or "").strip()
-                conn.execute(
-                    "INSERT INTO app_settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-                    ("llm_config", json.dumps(config))
-                )
-            self._json({"ok": True, "provider": provider,
-                        "configured": {name: bool(str(keys.get(name) or "").strip()) for name in ("gemini", "groq")}})
+                response = update_config(conn, payload)
+            self._json(response)
             return
         match = re.fullmatch(r"/api/careers/(\d+)/finance/(setup|journal/post|journal/reverse|commitments/save|commitments/settle|recurring/save|recurring/run|budgets/adjust|forecasts/save|unresolved/resolve|periods/close|revenue/config|revenue/post|revenue/post-due|revenue/ignore|revenue/override)", path)
         if match:
@@ -717,7 +657,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                     if not available.get("available") or selected_model not in available.get("models", []):
                         raise ValueError("Ollama está offline ou o modelo configurado não está instalado.")
                 elif not api_key:
-                    raise ValueError(f"Nenhuma API key configurada para {provider}.")
+                    raise ValueError(f"Provedor {provider} sem chave disponível ou sem consentimento cloud.")
                 if not conn.execute("SELECT 1 FROM careers WHERE id=?", (career_id,)).fetchone():
                     raise ValueError("Carreira não encontrada.")
                 # Index 0 is a valid first season; never treat it as missing.

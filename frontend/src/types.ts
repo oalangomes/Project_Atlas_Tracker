@@ -135,7 +135,6 @@ interface AtlasState {
   manualQuickEntry: boolean;
   pendingLiveRender: boolean;
   llmProvider: string;
-  llmKeys: Record<string, string>;
 }
 
 interface TableHeader { label: string; cls?: string; sortable?: boolean; }

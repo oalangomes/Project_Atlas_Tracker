@@ -81,6 +81,8 @@ function bindContent() {
     $$<HTMLButtonElement>('[data-save-llm-config]', content).forEach(button => button.onclick = async () => {
         const provider = $<HTMLSelectElement>('[data-llm-provider]', content)?.value;
         if (!provider) return;
+        const cloudConsent = Boolean($<HTMLInputElement>('[data-llm-cloud-consent]', content)?.checked);
+        const cloudFailoverConsent = Boolean($<HTMLInputElement>('[data-llm-failover-consent]', content)?.checked);
         const keys: Record<string, string> = {};
         $$<HTMLInputElement>('[data-llm-key]', content).forEach(input => {
             const name = String(input.dataset.llmKey || '');
@@ -88,13 +90,16 @@ function bindContent() {
             if (name && value) keys[name] = value;
         });
         try {
-            await api('/api/llm/config', { method: 'POST', body: JSON.stringify({ provider, keys }) });
+            await api('/api/llm/config', { method: 'POST', body: JSON.stringify({
+                provider, keys, cloud_consent: cloudConsent, cloud_failover_consent: cloudFailoverConsent
+            }) });
             state.llmProvider = provider;
-            state.llmKeys = { ...state.llmKeys, ...keys };
             const saved = Object.keys(keys).length;
             toast(saved ? `AI configuration saved (${saved} key${saved > 1 ? 's' : ''})` : 'AI provider saved');
         } catch (error: any) {
             toast(`Error saving configuration: ${error.message}`);
+        } finally {
+            $$<HTMLInputElement>('[data-llm-key]', content).forEach(input => { input.value = ''; });
         }
         await renderSetup();
         applyIcons(content);
@@ -106,7 +111,6 @@ function bindContent() {
         if (!name || !confirm(`Remove the saved ${name} key?`)) return;
         try {
             await api('/api/llm/config', { method: 'POST', body: JSON.stringify({ remove: [name] }) });
-            delete state.llmKeys[name];
             toast(`${name} key removed`);
         } catch (error: any) {
             toast(`Error removing key: ${error.message}`);

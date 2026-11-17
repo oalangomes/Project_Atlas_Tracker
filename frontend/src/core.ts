@@ -54,7 +54,6 @@ interface AtlasState {
     manualQuickEntry: boolean;
     pendingLiveRender: boolean;
     llmProvider: string;
-    llmKeys: Record<string, string>;
 }
 
 const state: AtlasState = {
@@ -70,7 +69,7 @@ const state: AtlasState = {
     mediaType: "all", mediaStatus: "all", mediaSources: null,
     manualSeasonId: null, manualTab: "competitions", manualEditKind: null, manualEditId: null, manualDraftCompetitionId: null, manualQuickEntry: false,
     pendingLiveRender: false,
-    llmProvider: "ollama", llmKeys: {},
+    llmProvider: "ollama",
 };
 
 const $ = <T extends Element = any>(selector: string, root: ParentNode = document): T => root.querySelector(selector) as T;
@@ -349,15 +348,6 @@ async function api<T = JsonRecord>(path: string, options?: RequestInit): Promise
 }
 function setLLMProvider(provider: string): void {
     state.llmProvider = provider;
-}
-function setLLMKey(provider: string, key: string): void {
-    state.llmKeys[provider] = key;
-}
-function getLLMConfig() {
-    return {
-        provider: state.llmProvider,
-        keys: state.llmKeys
-    };
 }
 function loadLLMConfig(): void {
     // Removed localStorage fallback to prioritize DB config
