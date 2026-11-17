@@ -2,7 +2,15 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 4](entrega-4-desenvolvimento-sucessao.md).
 
-**Prioridade:** P2. **Estado:** planejada. **Dependências:** segurança da Entrega 0 e contratos de evidência, contexto, rotação e desenvolvimento. PR proposto 10 depende de PRs 1, 4 e 6–9.
+**Prioridade:** P1 para AT-024; P2 para AT-021–023. **Estado:** planejada; AT-020 adiado. **Dependências:** segurança e contratos de evidência. PR original 10 é histórico; valem [P04/P11](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+
+## Revisão Hub → Atlas
+
+**AT-020 é preservado como identificador histórico e retirado deste ciclo.** O corte 5A e seu checklist abaixo descrevem protocolo futuro, não trabalho exigido agora. Testes cloud funcionais controlados de AT-004/023 permanecem no escopo; nenhuma comparação de qualidade, latência ou custo entre modelos será chamada de benchmark executado.
+
+**AT-024 — Goleiros (novo, P1):** H11–H13 entram em serviço canônico consumido por partida, Player Profile, Comissão e semestre. Taxa de defesa do Hub usa chutes no alvo enfrentados; a taxa simples atual do perfil Atlas tem outro denominador. xGA−GA e /90 só são atribuídos quando um único GL tem minutos positivos no fixture; troca gera indeterminado. Não copiar índice composto sem calibrar pesos. Aceite: um GL, dois GL, dados ausentes e denominadores divergentes testados, com fórmula e fonte visíveis.
+
+AT-021–023 reutilizam os agregadores de H32–H34 para fichas integrais e relatório **semestral**, com recorte, cobertura, versão e avaliação esportiva independente. Pós-jogo e demais periodicidades originais continuam como requisitos, mas o semestre é o primeiro corte de auditoria. Geração histórica em lote permanece sujeita ao gate existente e não integra esta revisão.
 
 ## Objetivo e condição de conclusão
 
@@ -89,7 +97,7 @@ Antes de execução em lote, registrar carreira, intervalo, quantidade prevista,
 
 ## Validação e artefatos
 
-Entregar manifesto do conjunto, referências factuais, respostas sanitizadas, avaliação por cenário, matriz comparativa de modelos e registro dos gates. Verificar API, persistência, interface da Comissão, build e comportamento sem IA.
+Neste ciclo, entregar manifesto factual, respostas sanitizadas dos testes funcionais que forem executados, avaliação esportiva por cenário e registro dos gates. Verificar API, persistência, interface da Comissão, build e comportamento sem IA. Matriz comparativa entre modelos pertence ao AT-020 adiado.
 
 Simulados comprovam contratos e falhas controladas; resultados reais comprovam apenas o cenário executado. Não substituir o executor solicitado por outro nem usar texto produzido manualmente como resultado de modelo.
 
@@ -97,10 +105,11 @@ Simulados comprovam contratos e falhas controladas; resultados reais comprovam a
 
 Permitir desativar provedor ou relatório novo e conservar visão determinística. Preservar relatórios, evidências e avaliações por versão; não reclassificar resultado antigo como novo. Reverter prompt/modelo requer revisar compatibilidade de cache e aceite, sem restaurar exposição de credenciais.
 
-- [ ] AT-020 executado com evidências iguais e modelos identificados.
+- [ ] AT-020 permanece adiado e não é condição de saída deste ciclo.
+- [ ] AT-024 explicita denominadores e troca de GL no serviço canônico.
 - [ ] AT-021 avaliado de forma independente e com casos negativos.
 - [ ] AT-022 validado nos cinco tipos de relatório.
 - [ ] AT-023 comprova limites, cache, custo observável e consentimento.
 - [ ] Critérios factuais e esportivos de liberação cumpridos.
 - [ ] Geração histórica permanece condicionada ao gate real.
-- [ ] PR 10 possui evidência, reversão e checklist transversal.
+- [ ] P04/P11 possuem evidência, reversão e checklist transversal.

@@ -2,7 +2,7 @@
 
 [Voltar ao índice](README.md).
 
-Base documental: análise estática de 10/11/2026, commit `8f063cf`. Estado inicial de todos os pacotes: **planejado**. Este documento detalha a política recebida; não registra testes executados nem autoriza publicação, merge, homologação do jogo ou execução de provedores externos por si só.
+Base documental original: análise estática de 10/11/2026, commit `8f063cf`. Revisão de 17/11/2026: Atlas `2737b53a8bcfaebd0be813f92250b14ddc3a3969` e Hub `6f235e70746fe014b3a8aa92f1cbba2e7ca7d2d2`. AT-001/002 estão parcialmente implementados, sem aceite integral; AT-020 está adiado. O plano registra decisões futuras, não resultados de homologação ou benchmark.
 
 ## Unidade de trabalho e conclusão
 
@@ -26,30 +26,15 @@ Não preencher esses campos com resultados presumidos. Dados de teste devem pres
 
 ## Sequência recomendada de PRs
 
-Numeração proposta, sem correspondência automática com PRs existentes. Complexidade expressa dependências e risco; não é estimativa de prazo.
+A sequência vigente é [P01–P12 no plano de execução](plano-execucao-integracao-hub.md#prs-pequenos-propostos), com matriz individual H → AT → componente → PR → teste → aceite. São identificadores de planejamento, sem correspondência automática com PRs existentes. A sequência original de dez PRs, cujo último incluía benchmark AT-020, foi substituída. Os ATs originais permanecem nas seis entregas; AT-024/025 foram acrescidos.
 
-| Ordem | PR proposto | Pacotes principais | Dependência | Complexidade |
-| --- | --- | --- | --- | --- |
-| 1 | Segurança de credenciais e chamadas cloud | AT-001; parte de AT-004 | Nenhuma | Média |
-| 2 | Corte temporal e proveniência histórica | AT-002; parte de AT-004 | Nenhuma | Baixa–média |
-| 3 | Homologação e correções do AutoCapture | AT-003; testes pertinentes de AT-004 | Ambiente FC26/Live Editor | Alta |
-| 4 | Qualidade de dados e reconciliação de métricas | AT-005–AT-007; consolidação de AT-004 | PR 2 | Média |
-| 5 | Diário do Treinador e observações estruturadas | AT-008, AT-009 e integração inicial de AT-011 | PR 2 | Média |
-| 6 | Formação adversária estimada/confirmada | AT-010 e conclusão de AT-011 | PR 5 | Média–alta |
-| 7 | Análise contextual de rotação | AT-012, AT-013, AT-015; consumo de AT-014 existente | PRs 4 e 5 | Alta |
-| 8 | Profundidade funcional e sucessão | AT-014 e AT-019 | PR 4 | Média |
-| 9 | Comparador individual e desenvolvimento | AT-016–AT-018 | PRs 4 e 8 | Média–alta |
-| 10 | Benchmark de IA e relatórios consolidados | AT-020–AT-023 | PRs 1, 4 e 6–9 | Alta |
+P01/P02 fecham segurança e temporalidade; P03 fixa cobertura e fórmula; P04–P06 podem evoluir em paralelo depois disso. P07 tático só bloqueia alegações que precisam de XI/observação. P12 é homologação externa com uma cópia do save e não impede cálculos determinísticos baseados em dados já disponíveis. AT-004 acompanha cada contrato e teste cloud controlado. AT-020 permanece fora do ciclo.
 
-PRs 1, 2 e parte dos testes do PR 4 podem evoluir independentemente, sem implicar delegação automática a agentes. Recursos analíticos esperam a definição dos seus contratos de dados. O gate P0 completo continua obrigatório para a liberação das entregas dependentes.
-
-A numeração não exige execução estritamente serial: PR 8 pode preceder PR 7 se a comparação funcional depender de seu contrato novo. PR 7 pode inicialmente consumir a profundidade já existente em `positions.py`, sem duplicá-la. Os documentos de Entregas 3 e 4 compartilham AT-014 por referência; sua implementação pertence ao PR 8. AT-004 é transversal, com validação entregue junto aos comportamentos e consolidação no PR 4; não adiar segurança ou regressões de posições até esse PR.
-
-As subdivisões descritas nos documentos de entrega podem virar PRs menores quando necessário. Preservar as dependências, atualizar a matriz e manter cada mudança revisável e reversível.
+Cada PR registra IDs H/AT/BL, amostra, diferenças de fórmula e estado dos bloqueios. O fluxo API → tela → Comissão → relatório semestral usa um serviço canônico por métrica, sem gerador Hub paralelo.
 
 ## Checklist obrigatório por PR
 
-Estado inicial: **0/10 verificados para uma implementação deste plano**. Copiar para cada PR e marcar somente com evidência correspondente.
+Estado desta revisão: **nenhum PR funcional novo validado por este documento**. Copiar para cada PR e marcar somente com evidência correspondente.
 
 - [ ] Não modifica o save nem depende de escrita na memória do FC26.
 - [ ] Preserva isolamento por carreira, snapshot e período histórico.

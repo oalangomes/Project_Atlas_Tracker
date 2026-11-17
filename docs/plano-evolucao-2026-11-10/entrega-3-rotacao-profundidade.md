@@ -2,7 +2,13 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 2](entrega-2-contexto-tatico-diario.md) · Próxima: [Entrega 4](entrega-4-desenvolvimento-sucessao.md).
 
-**Prioridade:** P1. **Estado:** planejada. **Dependências:** Entregas 0, 1 e 2 para segurança, evidência e composição/contexto. PR proposto 7 depende de PRs 4 e 5. Formação rival estimada depende adicionalmente de PR 6; essa dimensão não pode bloquear comparações que já possuem dados suficientes em outros eixos.
+**Prioridade:** P1. **Estado:** planejada. **Dependências:** segurança, corte temporal e contrato de evidência. Contexto manual da Entrega 2 é necessário somente às afirmações táticas que o consomem. A sequência de PRs original abaixo é histórica; valem [P05/P08](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+
+## Revisão Hub → Atlas
+
+AT-012–015 preservados. H06/H09/H10/H21 ampliam forma, gestão de minutos, rival funcional e dificuldade pré-jogo com os serviços Atlas existentes. H20 só autoriza o rótulo “sem posse” se posse percentual real for confirmada; saldos de chances podem ser mostrados separadamente. H18 depende de XI confiável.
+
+**AT-025 — Defesa contextual e setores (novo, P1):** reaproveitar H14–H16 com ações diretas separadas de exposição coletiva *estimada por minutos*; publicar setores apenas com posição confiável, cobertura por fixture e corte de amostra. H17 entra como co-presença aproximada; “minutos juntos” factuais aguardam substituições cronológicas (BL-07/08). Implementação única em serviço de análise existente, consumida por Analysis, Comissão e relatório semestral. Aceite: fixtures com min/xGA ausentes se abstêm, métricas nunca afirmam causalidade e a tela distingue estimativa de evento individual.
 
 ## Objetivo e condição de conclusão
 

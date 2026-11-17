@@ -2,7 +2,11 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 1](entrega-1-qualidade-rastreabilidade.md) · Próxima: [Entrega 3](entrega-3-rotacao-profundidade.md).
 
-**Prioridade:** P1. **Estado:** planejada. **Dependências:** Entrega 0, especialmente AT-002; compatibilidade com o contrato de evidência AT-007. O núcleo de observações pode evoluir em paralelo à Entrega 1 após definição dos contratos comuns. PRs propostos 5 e 6.
+**Prioridade:** P1. **Estado:** planejada. **Dependências:** Entrega 0, especialmente AT-002; compatibilidade com o contrato de evidência AT-007. O núcleo de observações pode evoluir em paralelo à Entrega 1 após definição dos contratos comuns. PRs originais 5/6 são históricos; vale [P07](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+
+## Revisão Hub → Atlas
+
+H18/H35 reforçam o contrato de AT-009/010: formação do próprio clube derivada de cadastro não revela formação rival nem prova a posição efetivamente jogada. Estrutura de titulares exige XI completo e posição confiável; caso contrário, mostrar indeterminado. O Diário registra observação e revisão com autoria, fixture e momento. Relatórios de AT-011 citam a observação como manual, nunca como extração. Esta linha enriquece rotação, sem bloquear métricas que usam partidas e snapshots suficientes. [BL-04/09](backlog-metricas-hub.md) guardam os dados de captura ou anotação ainda necessários.
 
 ## Objetivo e condição de conclusão
 

@@ -2,7 +2,13 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 3](entrega-3-rotacao-profundidade.md) · Próxima: [Entrega 5](entrega-5-comissao-relatorios.md).
 
-**Prioridade:** P2 para AT-016–AT-019. AT-014 permanece P1 e é compartilhado com a Entrega 3. **Estado:** planejada. **Dependências:** Entregas 0 e 1. PR 8 depende de PR 4; PR 9 depende de PRs 4 e 8.
+**Prioridade:** P2 para AT-016–AT-019. AT-014 permanece P1 e é compartilhado com a Entrega 3. **Estado:** planejada. **Dependências:** contratos da Entrega 1. PRs originais 8/9 são históricos; valem [P06/P09/P10](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+
+## Revisão Hub → Atlas
+
+AT-016/017 reutilizam `atlas/positions.py`, Comissão e consultas históricas para H08/H10/H19/H22/H26/H29–H31. Comparar função **observada** com fonte e amostra; nota não deve ser repartida entre posições sem minutos por papel. A forma usa últimas cinco atuações na ordem esportiva. Índice posicional Sheffield requer calibração e não substitui adequação Atlas.
+
+AT-018 aproveita de H23–H25 a separação entre 5x5, 11x11 e minutos profissionais. Score 5x5 só avança após inventário campo a campo (BL-11); plano individual e transição podem avançar com fatos disponíveis. H28 exige plano completo sem limite legado de 40. AT-019 separa proteção interna de H27 da pressão externa: potencial não prova interesse do mercado. Plano e sucessão continuam recomendações revisáveis, sem contratar automaticamente.
 
 ## Objetivo e condição de conclusão
 

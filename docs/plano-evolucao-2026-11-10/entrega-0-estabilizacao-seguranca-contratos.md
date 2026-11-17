@@ -2,7 +2,15 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Próxima: [Entrega 1](entrega-1-qualidade-rastreabilidade.md).
 
-**Prioridade:** P0. **Estado:** planejada. **Dependências funcionais:** nenhuma. Homologação do AutoCapture exige FC26/Live Editor; testes reais cloud exigem provedor configurado e escopo consentido.
+**Prioridade:** P0. **Estado em 17/11:** AT-001/002 parcialmente implementados, validação integral pendente; AT-003/004 pendentes. **Dependências funcionais:** nenhuma. Homologação do AutoCapture exige FC26/Live Editor; testes reais cloud exigem provedor configurado e escopo controlado.
+
+## Revisão Hub → Atlas
+
+Preservados os quatro pacotes. AT-001/002 exigem fechar os gates originais: verificar chaves novas e legadas em armazenamento/API/frontend e consulta histórica sem observação futura. O commit `c0f1736` fornece implementação parcial, não aceite. AT-004 inclui testes cloud funcionais controlados, sem benchmark AT-020.
+
+AT-003 é uma linha de homologação separada: usar **uma cópia segura do save**, reutilizada em ciclos pós-partida com FC26/Live Editor, logs e export por partida. Nenhuma métrica determinística com dados já disponíveis fica parada apenas por AT-003; a publicação de campos dependentes da captura continua bloqueada. Ver [P01/P02/P12](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+
+As referências numéricas a PR 1–4 nas seções originais abaixo são históricas; P01/P02/P03/P12 definem a divisão vigente.
 
 ## Objetivo e condição de conclusão
 
@@ -71,7 +79,7 @@ A documentação registra falhas nativas do FC26 em transições pós-partida e 
 
 ### Cortes de implementação e homologação
 
-1. **Preparação verificável:** confirmar versões, configuração, cópia segura do save, backup e roteiro de restauração. Consultar o [histórico de hotfix pós-partida](../autocapture-postmatch-hotfix-2026-11-06.md). Definir antecipadamente quantidade de ciclos e cenários do lote de homologação, justificando a amostra.
+1. **Preparação verificável:** confirmar versões, configuração, cópia segura do save, backup e roteiro de restauração. O documento de hotfix citado na versão anterior deste plano não está neste checkout; consultar o código e os [testes de segurança pós-partida](../../tests/test_autocapture_postmatch_safety.py), sem tratá-los como homologação real. Definir antecipadamente quantidade de ciclos e cenários do lote de homologação, justificando a amostra.
 2. **Linha de base:** executar captura, final de partida, retorno ao Career Hub, reativação e importação com a configuração atual. Registrar ciclos bem-sucedidos e falhas, sem alterar automação antes de observar a base.
 3. **Correção restrita, se necessária:** modificar apenas handlers/ciclo relacionados ao problema reproduzido, preservando a leitura do jogo. Repetir o roteiro após cada alteração relevante.
 4. **Homologação repetida:** verificar arquivos produzidos, completude, vínculo correto de carreira/fixture, duplicação, reativação e importação no Atlas. Interrupção ou crash permanece resultado do lote, sem apagá-lo com uma nova tentativa.

@@ -2,7 +2,11 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 0](entrega-0-estabilizacao-seguranca-contratos.md) · Próxima: [Entrega 2](entrega-2-contexto-tatico-diario.md).
 
-**Prioridade:** P1. **Estado:** planejada. **Dependências:** contratos e gates da Entrega 0, especialmente AT-002. PR proposto 4, dependente do PR 2.
+**Prioridade:** P1. **Estado:** planejada. **Dependências:** contratos de segurança e corte temporal da Entrega 0, especialmente AT-002. A numeração de PR original abaixo é histórica; vale [P03](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+
+## Revisão Hub → Atlas
+
+AT-005–007 ganham um manifesto por fixture, indicador, fonte, período, unidade, amostra e estado de ausência, inspirado em H01/H32. Reconciliar H02–H05 e H07 nos agregadores de `atlas/match_stats.py` e `atlas/commission.py`. O Hub pode preencher ausentes com zero em resumos; o Atlas deve preservar indisponível e usar denominador de jogos cobertos. `xg_sheffield`, NPK-xG e xG derivado permanecem nomeados separadamente até teste de equivalência. Saída: API e menus atuais consumem o mesmo contrato; Top-N é resumo, não cobertura integral. Ver [BL-01–03](backlog-metricas-hub.md) e [P03](plano-execucao-integracao-hub.md).
 
 ## Objetivo e condição de conclusão
 

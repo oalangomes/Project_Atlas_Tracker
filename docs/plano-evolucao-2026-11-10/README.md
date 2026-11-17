@@ -1,12 +1,12 @@
 # Plano de evolução do Project Atlas Tracker
 
-Master revisada em **10/11/2026**, referência **`8f063cf`**, análise estática fornecida pelo treinador.
+Replanejado em **17/11/2026** com Atlas em `2737b53a8bcfaebd0be813f92250b14ddc3a3969` e Sheffield Hub em `6f235e70746fe014b3a8aa92f1cbba2e7ca7d2d2`. A base original de 10/11/2026 analisava `8f063cf`; suas seções abaixo são histórico de requisitos onde a revisão não as substitui.
 
 Repositório: [oalangomes/Project_Atlas_Tracker](https://github.com/oalangomes/Project_Atlas_Tracker).
 
-**Estado: planejamento registrado; execução das entregas não iniciada por esta documentação.** Os diagnósticos abaixo pertencem à análise estática recebida. Não equivalem a falhas reproduzidas, testes executados, homologação do Windows ou aceite esportivo. Antes de implementar, conferir o código e o estado do ambiente. Alterações locais preexistentes não integram automaticamente estas entregas.
+**Estado:** esta revisão é documental. AT-001/002 já têm implementação parcial anterior no commit `c0f1736`, mas os gates integrais permanecem abertos; AT-003 exige homologação real; AT-020 fica adiado fora deste ciclo. Nenhum outro AT é declarado implementado por este plano. As conclusões da base de 10/11 não equivalem a falhas reproduzidas ou aceite esportivo.
 
-Este conjunto preserva o plano completo e o divide por entregas. As subdivisões, contratos propostos e roteiros de validação detalham sua execução; não afirmam capacidades já implementadas. Nenhum item marcado como planejado representa aprovação, PR existente ou teste aprovado.
+As seis entregas e AT-001–AT-023 permanecem rastreáveis. A investigação do Hub adiciona AT-024 (goleiros) e AT-025 (defesa contextual), sem duplicar os serviços atuais. Os estados e a ordem vigentes estão na [matriz Hub → Atlas](matriz-reaproveitamento-hub-atlas.md), no [backlog de bloqueios](backlog-metricas-hub.md), no [plano de execução](plano-execucao-integracao-hub.md) e nas seções de revisão de cada entrega. Regras antigas de sequência de PR e AT-020 abaixo são substituídas por esses documentos.
 
 Para este ciclo, este conjunto é a referência de planejamento. O [roadmap anterior de integração cloud](../roadmap_cloud_integration.md) permanece como documento histórico: suas propostas de infraestrutura, modelos ou armazenamento não substituem os requisitos de segurança e reaproveitamento aqui definidos. Documentos existentes continuam como contexto e evidência a verificar, sem atualização retroativa de seus resultados.
 
@@ -15,12 +15,15 @@ Para este ciclo, este conjunto é a referência de planejamento. O [roadmap ante
 | Etapa | Prioridade | Documento | Pacotes | Resultado esperado |
 | --- | --- | --- | --- | --- |
 | Regras comuns | Todas | [Governança e validação](governanca-e-validacao.md) | Transversal | Critérios, evidências, rollback e sequência de PRs |
+| Reuso Hub | Todas | [Matriz Hub → Atlas](matriz-reaproveitamento-hub-atlas.md) | H01–H35 | Origem, fórmula, estado, destino e decisão |
+| Impedimentos | Todas | [Backlog](backlog-metricas-hub.md) | BL-01–BL-13 | Bloqueio, custo, benefício e condição de desbloqueio |
+| Execução vigente | Todas | [Plano de integração](plano-execucao-integracao-hub.md) | P01–P12 | Fases, PRs, testes e rastreabilidade |
 | Entrega 0 | P0 | [Estabilização, segurança e contratos](entrega-0-estabilizacao-seguranca-contratos.md) | AT-001–AT-004 | Proteger segredos, história e execução |
 | Entrega 1 | P1 | [Qualidade e rastreabilidade dos dados](entrega-1-qualidade-rastreabilidade.md) | AT-005–AT-007 | Contrato comum de evidências e métricas |
 | Entrega 2 | P1 | [Contexto tático e Diário do Treinador](entrega-2-contexto-tatico-diario.md) | AT-008–AT-011 | Contexto qualitativo persistente e atribuído |
-| Entrega 3 | P1 | [Rotação e profundidade funcional](entrega-3-rotacao-profundidade.md) | AT-012–AT-015 | Comparar composições com contexto e amostra |
+| Entrega 3 | P1 | [Rotação e profundidade funcional](entrega-3-rotacao-profundidade.md) | AT-012–AT-015, AT-025 | Comparar composições e defesa contextual com amostra |
 | Entrega 4 | P2 | [Desenvolvimento, funções e sucessão](entrega-4-desenvolvimento-sucessao.md) | AT-016–AT-019 | Comparação justa e planejamento interno |
-| Entrega 5 | P2 | [Comissão Técnica e relatórios](entrega-5-comissao-relatorios.md) | AT-020–AT-023 | Interpretação esportiva avaliada e rastreável |
+| Entrega 5 | P1/P2 | [Comissão Técnica e relatórios](entrega-5-comissao-relatorios.md) | AT-020–AT-024 (020 adiado) | Goleiros, interpretação e semestre rastreáveis |
 
 ## 1. Diagnóstico inicial: o que mudou desde a última revisão
 
@@ -86,13 +89,13 @@ Não introduzir LangChain, LangGraph ou outro orquestrador. Os relatórios são 
 
 ## 6. Dependências e unidades plausíveis de entrega
 
-- Entrega 0 não tem dependência funcional anterior e libera as demais. A homologação real do AutoCapture depende de FC26/Live Editor e não pode ser substituída por testes estáticos.
+- Segurança e corte temporal da Entrega 0 não têm dependência funcional anterior e precedem a liberação das novas evidências. AT-003 é gate específico da captura real com FC26/Live Editor; a sua pendência não bloqueia trabalho determinístico sobre dados já disponíveis.
 - Após contratos básicos da Entrega 0, Entregas 1 e 2 podem ser desenvolvidas em linhas independentes. A liberação completa continua sujeita aos gates comuns.
-- Entrega 3 depende da qualidade da Entrega 1 e da composição/contexto registrados na Entrega 2.
+- Entrega 3 depende da qualidade da Entrega 1; os segmentos de composição e tática dependem adicionalmente dos registros da Entrega 2. AT-025 pode avançar sobre fixtures elegíveis sem esse contexto manual.
 - Entrega 4 depende da Entrega 1; a comparação individual reutiliza a profundidade e sucessão definidas dentro da própria Entrega 4.
 - Entrega 5 depende da segurança e dos contratos analíticos das anteriores. Controles mínimos de chamadas pertencem desde já à Entrega 0; sua ampliação e avaliação ficam na Entrega 5.
 
-As entregas são marcos de produto; não precisam corresponder a um único PR. Cada documento contém cortes menores que preservam um resultado revisável e uma estratégia de reversão. A sequência de dez PRs e a distribuição de testes estão em [Governança](governanca-e-validacao.md#sequência-recomendada-de-prs).
+As entregas são marcos de produto; cada corte deve permanecer revisável e reversível. A sequência vigente de P01–P12 e a distribuição de testes estão no [plano de execução](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
 
 ## 7. Integração com os menus atuais
 
@@ -121,15 +124,17 @@ Captura espacial e eventos detalhados por minuto podem receber um spike separado
 
 Uma funcionalidade estatística confiável tem mais valor que relatórios dependentes de dados que o jogo não fornece.
 
-## 9. Ordem de valor esportivo
+## 9. Ordem de valor esportivo revisada
 
-Após segurança e estabilidade:
+Após segurança, corte temporal e contrato de cobertura:
 
-1. **Contexto tático persistente:** transformar observações do treinador em história reutilizável.
-2. **Análise de rotação:** mostrar quando a segunda equipe mantém, melhora ou reduz rendimento.
-3. **Profundidade funcional:** avaliar suficiência e adequação, além da quantidade por posição.
-4. **Comparador individual contextual:** considerar função e dificuldade na produção e evolução.
-5. **Relatórios interpretativos consolidados:** integrar descobertas em recomendações.
+1. **Métricas determinísticas e goleiros:** reconciliar fórmulas e medir apenas fixtures cobertos.
+2. **Defesa contextual e forma funcional:** expor estimativas, posição observada e amostra.
+3. **Rotação e profundidade:** comparar grupos usando dificuldade pré-jogo; acrescentar tática manual quando confirmada.
+4. **Base, mercado e histórico:** planos revisáveis com fonte e linha temporal.
+5. **Comissão e semestre:** consumir serviços canônicos, avaliar interpretação e registrar decisões.
+
+O Diário tático pode avançar em paralelo às etapas determinísticas. A ordem técnica detalhada está no [plano de execução](plano-execucao-integracao-hub.md#fases-e-dependências).
 
 ## 10. Parecer de arquitetura e produto preservado
 
@@ -147,9 +152,9 @@ A recomendação original é aprovar as seis entregas, começar por estabilizaç
 | 2. Cobertura da master | Este índice, seção 3 |
 | 3. Riscos prioritários | Este índice, seção 4, e Entrega 0 |
 | 4. Arquitetura-alvo | Este índice, seção 5 |
-| 5. Roadmap e seis entregas | Seis documentos de entrega, com todos os AT-001–AT-023 |
+| 5. Roadmap e seis entregas | Seis documentos de entrega, AT-001–AT-023 preservados e AT-024/025 acrescidos |
 | 6. Menus atuais | Este índice, seção 7 |
-| 7. Sequência de PRs | Governança, tabela de dez PRs |
+| 7. Sequência de PRs | Plano de execução P01–P12; a sequência original foi substituída |
 | 8. Política de qualidade | Governança, checklist de dez critérios e gates |
 | 9. Fora do ciclo | Este índice, seção 8 |
 | 10. Valor esportivo | Este índice, seção 9 |
