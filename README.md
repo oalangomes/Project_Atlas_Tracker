@@ -162,9 +162,13 @@ You normally do not need to configure an export path. Tracker performs a complet
 
 ## LUA scripts
 
-### `FC26_AutoCapture_v1.1.0.lua` — recommended
+### `FC26_AutoCapture_v1.1.1.lua` — recommended
 
-Run it once after loading a career. It creates a startup snapshot, monitors the next normally played match, and publishes a paired full snapshot plus detailed MatchStats package after each newly completed match. Leave the Live Editor LUA session running.
+Run it in the loaded Manager Career Hub **before entering the next match**. It creates a startup snapshot and arms detailed MatchStats capture. Leave the Live Editor LUA session running while playing the match. After the match, save the career and run AutoCapture again from the stable Career Hub to create the updated snapshot and arm the next capture. The current safety hotfix does not create a full snapshot or rearm MatchStats in the post-match transition.
+
+Running AutoCapture again while its monitor is still active only confirms that MatchStats is armed; it does **not** create another snapshot. For a manual snapshot in a stable Career Hub, run `FC26_Snapshot_v1.1.0.lua` instead.
+
+Starting AutoCapture near the end of a match can miss the match-start and final-candidate events. A later career snapshot can still contain the score, player ratings, and minutes, but it cannot reconstruct the detailed MatchStats package for that match.
 
 ### `FC26_MatchStatsExport_v1.1.0.lua`
 
@@ -207,7 +211,7 @@ Tracker resolves competitions by stable names and reference data when FC26 chang
 ## Troubleshooting
 
 - **No snapshot appears:** confirm that FC26 is in a loaded Manager Career, the LUA completed without an error, and a folder with a `READY` marker exists below `Documents\FC26 Export\Snapshots\ready`.
-- **No detailed match data appears:** use AutoCapture or run MatchStatsExport before a new match, then return to the Career Hub after the final whistle.
+- **No detailed match data appears:** check `Documents\FC26 Export\MatchStats\ready` for a completed package. If the capture remains in `MatchStats\incoming` as `.partial` with no `final_match_export_completed` entry in `00_progress.log`, arm AutoCapture or MatchStatsExport from the Career Hub **before** the next match and leave the LUA session running through the final whistle. A snapshot taken afterward cannot restore missed detailed match events.
 - **Wrong career detected:** open **Setup**, select the intended career profile, restart Tracker, and confirm the pending first snapshot.
 - **Port already in use:** close the other Tracker window/process and start again.
 - **Optional media conversion is unavailable:** run `install_optional_dependencies.bat`.
