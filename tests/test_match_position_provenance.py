@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import sqlite3
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from atlas.positions import trusted_actual_position, trusted_position_source
 from atlas.server_query_matches import (apply_historical_observed_positions,
-                                       historical_observed_positions)
+                                       historical_observed_positions, MatchQueryMixin)
 
 KEY = "841:20251025:0:0:1:1875"
 RATING_SOURCE = "career_playermatchratinghistory_position"
@@ -85,6 +87,45 @@ class TrustedPositionProvenanceTests(unittest.TestCase):
         finally:
             conn.close()
 
+    def test_historical_lookup_never_uses_later_or_unordered_snapshot(self):
+        conn = _build_position_db()
+        try:
+            conn.execute("INSERT INTO player_match_performances VALUES (1, ?, 21, 'RW', ?, '{}')",
+                         (KEY, LAST_MATCH_SOURCE))
+            conn.execute("INSERT INTO player_match_performances VALUES (3, ?, 21, 'ST', ?, '{}')",
+                         (KEY, LAST_MATCH_SOURCE))
+            conn.execute("INSERT INTO snapshots VALUES (4, 1, '2025-10-15', NULL, 1)")
+            conn.execute("INSERT INTO player_match_performances VALUES (4, ?, 22, 'CAM', ?, '{}')",
+                         (KEY, LAST_MATCH_SOURCE))
+            conn.execute("INSERT INTO snapshots VALUES (5, 2, '2025-09-01', 1, 1)")
+            conn.execute("INSERT INTO player_match_performances VALUES (5, ?, 23, 'GK', ?, '{}')",
+                         (KEY, LAST_MATCH_SOURCE))
+            selected = conn.execute("SELECT * FROM snapshots WHERE id=2").fetchone()
+            trusted = historical_observed_positions(conn, selected, KEY)
+            self.assertEqual(trusted[21]["position"], "RW")
+            self.assertEqual(trusted[21]["snapshot_id"], 1)
+            self.assertNotIn(22, trusted)
+            self.assertNotIn(23, trusted)
+        finally:
+            conn.close()
+
+    def test_equal_sequence_uses_only_earlier_id_and_missing_limit_abstains(self):
+        conn = _build_position_db()
+        try:
+            conn.execute("UPDATE snapshots SET import_sequence=11 WHERE id=2")
+            conn.execute("INSERT INTO snapshots VALUES (4, 1, '2025-12-02', 11, 1)")
+            conn.execute("INSERT INTO player_match_performances VALUES (4, ?, 11, 'ST', ?, '{}')",
+                         (KEY, LAST_MATCH_SOURCE))
+            selected = conn.execute("SELECT * FROM snapshots WHERE id=3").fetchone()
+            trusted = historical_observed_positions(conn, selected, KEY)
+            self.assertEqual(trusted[11]["position"], "CAM")
+            self.assertEqual(trusted[11]["import_sequence"], 11)
+            conn.execute("UPDATE snapshots SET import_sequence=NULL WHERE id=3")
+            selected_without_order = conn.execute("SELECT * FROM snapshots WHERE id=3").fetchone()
+            self.assertEqual(historical_observed_positions(conn, selected_without_order, KEY), {})
+        finally:
+            conn.close()
+
 
 class HistoricalObservedPositionBackfillTests(unittest.TestCase):
     def test_missing_position_is_backfilled_from_earlier_snapshot(self):
@@ -102,8 +143,50 @@ class HistoricalObservedPositionBackfillTests(unittest.TestCase):
             self.assertEqual(rows[0]["actual_position"], "CAM")
             self.assertEqual(rows[0]["actual_position_source"], LAST_MATCH_SOURCE)
             self.assertEqual(rows[0]["observedPositionBackfill"]["snapshotId"], 2)
+            self.assertEqual(rows[0]["observedPositionBackfill"]["importSequence"], 7)
             # Present positions are never overwritten.
             self.assertEqual(rows[1]["actual_position"], "GK")
+        finally:
+            conn.close()
+
+    def test_match_detail_uses_only_positions_known_at_selected_snapshot(self):
+        conn = _build_position_db()
+        try:
+            conn.execute("ALTER TABLE snapshots ADD COLUMN capabilities_json TEXT DEFAULT '{}'")
+            for field, kind in (("rating", "REAL"), ("minutes_played", "INTEGER"),
+                                ("display_name", "TEXT")):
+                conn.execute(f"ALTER TABLE player_match_performances ADD COLUMN {field} {kind}")
+            conn.execute("UPDATE player_match_performances SET rating=7, minutes_played=45, display_name='Player'")
+            conn.execute("CREATE TABLE fixtures (id INTEGER, home_team_ea_id INTEGER, away_team_ea_id INTEGER, competition_object_id INTEGER, static_competition_id INTEGER, stadium_ea_id INTEGER)")
+            conn.execute("INSERT INTO fixtures VALUES (99, NULL, NULL, NULL, NULL, NULL)")
+            conn.execute("CREATE TABLE fixture_observations (snapshot_id INTEGER, fixture_id INTEGER, fixture_key TEXT, is_completed INTEGER, home_score INTEGER, away_score INTEGER, home_penalties INTEGER, away_penalties INTEGER)")
+            conn.execute("INSERT INTO fixture_observations VALUES (3, 99, ?, 1, 1, 0, NULL, NULL)", (KEY,))
+            conn.execute("CREATE TABLE player_states (snapshot_id INTEGER, ea_player_id INTEGER, overall INTEGER, potential INTEGER, primary_position TEXT, team_ea_id INTEGER, team_name TEXT)")
+            conn.execute("CREATE TABLE roster_states (snapshot_id INTEGER, player_ea_id INTEGER, jersey_number INTEGER)")
+            conn.execute("CREATE TABLE competition_states (snapshot_id INTEGER, competition_object_id INTEGER)")
+            conn.execute("INSERT INTO snapshots VALUES (4, 1, '2026-01-01', 12, 1, '{}')")
+            conn.execute("INSERT INTO fixture_observations VALUES (4, 99, ?, 1, 9, 0, NULL, NULL)", (KEY,))
+            conn.execute("INSERT INTO player_match_performances (snapshot_id,fixture_key,player_ea_id,actual_position,actual_position_source,raw_json,rating,minutes_played,display_name) VALUES (4, ?, 11, 'ST', ?, '{}', 9, 45, 'Player')",
+                         (KEY, LAST_MATCH_SOURCE))
+
+            class Query(MatchQueryMixin):
+                state = SimpleNamespace(database=SimpleNamespace(connect=lambda: conn),
+                                        media=SimpleNamespace())
+                _snapshot = staticmethod(lambda db, snapshot_id: db.execute(
+                    "SELECT * FROM snapshots WHERE id=?", (snapshot_id,)).fetchone())
+                _season_start = staticmethod(lambda snapshot: 2025)
+                _enrich_fixtures = staticmethod(lambda rows, season_start, snapshot_id: rows)
+                _enrich_players = staticmethod(lambda rows: rows)
+
+            with patch("atlas.server_query_matches.reconstruct_match_stats", return_value={}), \
+                 patch("atlas.server_query_matches.detailed_match", return_value=None):
+                result = Query()._match_detail(3, 99)
+            player = next(item for item in result["performances"] if item["player_ea_id"] == 11)
+            self.assertEqual(player["actual_position"], "CAM")
+            self.assertEqual(player["observedPositionBackfill"],
+                             {"snapshotId": 2, "importSequence": 7})
+            self.assertEqual(result["performanceDiagnostics"]["historicalObservedPositionsBackfilled"], 1)
+            self.assertEqual([item["snapshot_id"] for item in result["history"]], [3])
         finally:
             conn.close()
 

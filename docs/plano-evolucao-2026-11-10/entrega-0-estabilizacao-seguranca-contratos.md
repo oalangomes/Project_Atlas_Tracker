@@ -2,7 +2,15 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Próxima: [Entrega 1](entrega-1-qualidade-rastreabilidade.md).
 
-**Prioridade:** P0. **Estado em 17/11:** AT-001/002 parcialmente implementados, validação integral pendente; AT-003/004 pendentes. **Dependências funcionais:** nenhuma. Homologação do AutoCapture exige FC26/Live Editor; testes reais cloud exigem provedor configurado e escopo controlado.
+**Prioridade:** P0. **Base em 17/11:** AT-001/002 parcialmente implementados, validação integral pendente; AT-003/004 pendentes. **Dependências funcionais:** nenhuma. Homologação do AutoCapture exige FC26/Live Editor; testes reais cloud exigem provedor configurado e escopo controlado.
+
+## Estado de implementação do primeiro corte
+
+P01 acrescenta migração automática das chaves legadas para proteção do usuário Windows, resposta pública com presença/sufixo sem devolver a chave, indicação de proteção indisponível ou chave bloqueada, formulário sem chave no estado frontend e consentimentos distintos para provedor cloud e reserva. Erros HTTP cloud e log de requisições deixam de carregar URL com chave. Testes sintéticos cobrem migração, preservação na falha, substituição, remoção, usuário sem acesso, consentimento, falha HTTP e failover. O build do frontend gera `atlas/static/app.js`.
+
+O teste funcional com provedor externo, a verificação de backups históricos anteriores à migração e o aceite operacional em instalação real permanecem pendentes; resultados sintéticos não os substituem. Chaves protegidas sob outro usuário Windows exigem substituição nesse usuário. A migração altera apenas a linha ativa de `app_settings` quando a aplicação inicia; backups e páginas antigas do SQLite não são saneados retroativamente.
+
+P02 restringe a recuperação de posições históricas à mesma carreira e a `import_sequence` anterior ao snapshot selecionado, usando ID apenas para desempate dentro da mesma sequência. Se a sequência estiver ausente, a recuperação se abstém. A resposta de partida conserva fonte, snapshot e sequência da posição recuperada; o histórico do fixture também exclui snapshots futuros. Testes cobrem futuro, outra carreira, empate, sequência desconhecida e consumo pelo detalhe da partida. A homologação com histórico real e os demais consumidores da Comissão continuam como gate de aceite.
 
 ## Revisão Hub → Atlas
 

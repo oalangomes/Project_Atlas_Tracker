@@ -35,18 +35,17 @@ def historical_observed_positions(conn: sqlite3.Connection, snapshot: sqlite3.Ro
     selected_id = int(snapshot["id"])
     career_id = snapshot["career_id"]
     if selected_sequence is None:
-        eligibility = "s.career_id=? AND pmp.snapshot_id<>? AND s.id<=?"
-        params: tuple[Any, ...] = (career_id, selected_id, selected_id)
-    else:
-        eligibility = ("s.career_id=? AND pmp.snapshot_id<>? "
-                       "AND (s.import_sequence IS NULL OR s.import_sequence < ? "
-                       "OR (s.import_sequence = ? AND s.id <= ?))")
-        params = (career_id, selected_id, selected_sequence, selected_sequence, selected_id)
+        # An ID is not a substitute for a missing canonical import sequence.
+        return result
+    eligibility = ("s.career_id=? AND s.import_sequence IS NOT NULL "
+                   "AND (s.import_sequence < ? "
+                   "OR (s.import_sequence = ? AND s.id < ?))")
+    params: tuple[Any, ...] = (career_id, selected_sequence, selected_sequence, selected_id)
     rows = conn.execute(
         f"""SELECT pmp.player_ea_id,pmp.actual_position,pmp.actual_position_source,pmp.snapshot_id,s.import_sequence
              FROM player_match_performances pmp JOIN snapshots s ON s.id=pmp.snapshot_id
             WHERE {eligibility} AND pmp.fixture_key=? AND COALESCE(pmp.actual_position,'')<>''
-            ORDER BY COALESCE(s.import_sequence, s.id) DESC, s.id DESC""",
+            ORDER BY s.import_sequence DESC, s.id DESC""",
         (*params, fixture_key),
     ).fetchall()
     for row in rows:
@@ -79,7 +78,10 @@ def apply_historical_observed_positions(rows: list[dict[str, Any]],
             continue
         item["actual_position"] = trusted_row["position"]
         item["actual_position_source"] = trusted_row["source"]
-        item["observedPositionBackfill"] = {"snapshotId": trusted_row["snapshot_id"]}
+        item["observedPositionBackfill"] = {
+            "snapshotId": trusted_row["snapshot_id"],
+            "importSequence": trusted_row["import_sequence"],
+        }
         filled += 1
     return filled
 
@@ -150,8 +152,11 @@ class MatchQueryMixin:
                 """SELECT s.id snapshot_id,s.career_date,s.import_sequence,fo.is_completed,
                           fo.home_score,fo.away_score,fo.home_penalties,fo.away_penalties
                    FROM fixture_observations fo JOIN snapshots s ON s.id=fo.snapshot_id
-                   WHERE s.career_id=? AND fo.fixture_key=? ORDER BY s.import_sequence""",
-                (snap["career_id"], row["fixture_key"]),
+                   WHERE s.career_id=? AND fo.fixture_key=?
+                     AND (s.import_sequence<? OR (s.import_sequence=? AND s.id<=?))
+                   ORDER BY s.import_sequence,s.id""",
+                (snap["career_id"], row["fixture_key"], snap["import_sequence"],
+                 snap["import_sequence"], snap["id"]),
             ).fetchall()
             reconstructed = reconstruct_match_stats(conn, snapshot_id).get(str(row["fixture_key"] or ""), {})
             detailed = detailed_match(conn, fixture_id, career_id=int(snap["career_id"]),
