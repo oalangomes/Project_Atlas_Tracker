@@ -10,7 +10,7 @@ from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
-from .match_lineups import match_lineup_phases
+from .match_lineups import match_lineup_phases, save_match_formation_estimates
 from .goalkeeper_metrics import fixture_goalkeepers
 from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
 from .positions import trusted_actual_position
@@ -181,6 +181,17 @@ class MatchQueryMixin:
                 historical_observed = historical_observed_positions(conn, snap, row["fixture_key"])
             else:
                 historical_observed = {}
+        if lineup_phases:
+            expected = sum(1 for team in lineup_phases["teams"]
+                           for phase in ("initial", "final") if team.get(f"{phase}Formation"))
+            with self.state.database.connect() as conn:
+                saved = conn.execute(
+                    "SELECT COUNT(*) FROM match_formation_estimates WHERE source_export_id=? AND model_id=?",
+                    (lineup_phases["sourceExportId"], lineup_phases["modelId"]),
+                ).fetchone()[0]
+            if saved < expected:
+                with self.state.database.transaction() as conn:
+                    save_match_formation_estimates(conn, lineup_phases)
         season_start = self._season_start(snap)
         match_item = dict(row)
         self._enrich_fixtures([match_item], season_start, snapshot_id)

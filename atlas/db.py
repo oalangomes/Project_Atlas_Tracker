@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterator
 from contextlib import contextmanager
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -331,6 +331,19 @@ CREATE TABLE IF NOT EXISTS match_team_detailed_stats (
     PRIMARY KEY(export_id, team_index)
 );
 CREATE INDEX IF NOT EXISTS idx_match_team_detailed_team ON match_team_detailed_stats(team_ea_id, export_id);
+
+CREATE TABLE IF NOT EXISTS match_formation_estimates (
+    source_export_id INTEGER NOT NULL REFERENCES match_stat_exports(id) ON DELETE CASCADE,
+    team_ea_id INTEGER NOT NULL,
+    phase TEXT NOT NULL CHECK(phase IN ('initial','final')),
+    model_id TEXT NOT NULL,
+    formation TEXT NOT NULL,
+    evidence_json TEXT NOT NULL,
+    saved_at TEXT NOT NULL,
+    PRIMARY KEY(source_export_id,team_ea_id,phase,model_id)
+);
+CREATE INDEX IF NOT EXISTS idx_match_formation_estimates_team
+ON match_formation_estimates(team_ea_id,source_export_id);
 
 CREATE TABLE IF NOT EXISTS contract_states (
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
@@ -1262,9 +1275,9 @@ class Database:
             finally:
                 probe.close()
         if 0 < existing_schema_version < SCHEMA_VERSION:
-            # P07 adds manual-only tables. Back up editable context and its
-            # identity references without copying multi-GB immutable exports.
-            if SCHEMA_VERSION == 2:
+            # P07 adds manual observations and derived estimates. Back up
+            # editable context without copying multi-GB immutable exports.
+            if SCHEMA_VERSION in (2, 3):
                 self.create_manual_context_backup(label=f"pre_schema_{SCHEMA_VERSION}")
             else:
                 self.create_backup(label=f"pre_schema_{SCHEMA_VERSION}")

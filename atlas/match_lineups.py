@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections import Counter
+from datetime import datetime, timezone
 from typing import Any
 
 from .match_stats import _new_completed_fixture
 from .positions import broad_position_group, canonical_position
 from .server_utils import as_int
+
+FORMATION_MODEL_ID = "atlas-match-formation-estimate-v1"
 
 
 def _line_shape(players: set[int], history: dict[int, dict[str, Any]]) -> str | None:
@@ -25,6 +28,24 @@ def _line_shape(players: set[int], history: dict[int, dict[str, Any]]) -> str | 
     if groups["GK"] != 1 or sum(groups.values()) != 11:
         return None
     return f'{groups["DEF"]}-{groups["MID"]}-{groups["ATT"]}'
+
+
+def _formation_shape(players: set[int], history: dict[int, dict[str, Any]]) -> tuple[str, str] | None:
+    """Separate tactical lines only when the recorded role bands support it."""
+    line_shape = _line_shape(players, history)
+    if not line_shape:
+        return None
+    positions = [canonical_position(history[player_id].get("actual_position"),
+                                    history[player_id].get("actual_position_id")) for player_id in players]
+    groups = Counter(positions)
+    defense, midfield, attack = (int(part) for part in line_shape.split("-"))
+    defensive_midfield = sum(groups[pos] for pos in ("RDM", "CDM", "LDM"))
+    central_midfield = sum(groups[pos] for pos in ("RCM", "CM", "LCM"))
+    advanced_midfield = sum(groups[pos] for pos in ("RAM", "CAM", "LAM", "RM", "LM"))
+    if (central_midfield == 0 and defensive_midfield > 0 and advanced_midfield > 0
+            and defensive_midfield + advanced_midfield == midfield and attack > 0):
+        return f"{defense}-{defensive_midfield}-{advanced_midfield}-{attack}", "role_bands"
+    return line_shape, "broad_lines"
 
 
 def _departures(starters: set[int], incoming: set[int],
@@ -128,12 +149,14 @@ def match_lineup_phases(conn: sqlite3.Connection, detailed: dict[str, Any] | Non
         # fresh starter record is needed before attributing this team's rows.
         if not any(changed(player_id) for player_id in starters):
             continue
-        initial = _line_shape(starters, history)
-        if not initial:
+        initial_shape = _formation_shape(starters, history)
+        if not initial_shape:
             continue
+        initial_lines = _line_shape(starters, history)
         minutes = [as_int(row.get("minutes_played")) for row in history.values()]
         duration = max((minute for minute in minutes if minute is not None), default=0)
-        final = None
+        final_shape = None
+        final_lines = None
         substitution_count = None
         if duration == 90:
             detailed_ids = {int(r["player_ea_id"]) for r in rows}
@@ -142,9 +165,36 @@ def match_lineup_phases(conn: sqlite3.Connection, detailed: dict[str, Any] | Non
                         and (p in detailed_ids or changed(p))}
             outgoing = _departures(starters, incoming, history, duration)
             if outgoing is not None:
-                final = _line_shape((starters - outgoing) | incoming, history)
-                if final:
+                final_players = (starters - outgoing) | incoming
+                final_shape = _formation_shape(final_players, history)
+                if final_shape:
+                    final_lines = _line_shape(final_players, history)
                     substitution_count = len(incoming)
-        result.append({"teamEaId": team_id, "initialLines": initial,
-                       "finalLines": final, "substitutionCount": substitution_count})
-    return {"sourceSnapshotId": int(export["snapshot_id"]), "teams": result} if result else None
+        result.append({"teamEaId": team_id, "initialLines": initial_lines,
+                       "initialFormation": initial_shape[0], "initialPrecision": initial_shape[1],
+                       "finalLines": final_lines,
+                       "finalFormation": final_shape[0] if final_shape else None,
+                       "finalPrecision": final_shape[1] if final_shape else None,
+                       "substitutionCount": substitution_count})
+    return {"modelId": FORMATION_MODEL_ID, "sourceExportId": int(detailed["exportId"]),
+            "sourceSnapshotId": int(export["snapshot_id"]), "teams": result} if result else None
+
+
+def save_match_formation_estimates(conn: sqlite3.Connection, phases: dict[str, Any]) -> None:
+    """Persist derived estimates with export and model provenance, apart from coach notes."""
+    now = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    for team in phases["teams"]:
+        for phase in ("initial", "final"):
+            formation = team.get(f"{phase}Formation")
+            if not formation:
+                continue
+            evidence = {"sourceSnapshotId": phases["sourceSnapshotId"],
+                        "lineShape": team[f"{phase}Lines"], "precision": team[f"{phase}Precision"],
+                        "substitutionCount": team["substitutionCount"] if phase == "final" else 0}
+            conn.execute(
+                "INSERT OR IGNORE INTO match_formation_estimates "
+                "(source_export_id,team_ea_id,phase,model_id,formation,evidence_json,saved_at) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (phases["sourceExportId"], team["teamEaId"], phase, phases["modelId"],
+                 formation, json.dumps(evidence, sort_keys=True), now),
+            )
