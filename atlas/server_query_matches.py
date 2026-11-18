@@ -182,11 +182,11 @@ class MatchQueryMixin:
             else:
                 historical_observed = {}
         if lineup_phases:
-            expected = sum(1 for team in lineup_phases["teams"]
-                           for phase in ("initial", "final") if team.get(f"{phase}Formation"))
+            expected = len(lineup_phases["teams"])
             with self.state.database.connect() as conn:
                 saved = conn.execute(
-                    "SELECT COUNT(*) FROM match_formation_estimates WHERE source_export_id=? AND model_id=?",
+                    "SELECT COUNT(*) FROM match_formation_estimates "
+                    "WHERE source_export_id=? AND model_id=? AND validity='active'",
                     (lineup_phases["sourceExportId"], lineup_phases["modelId"]),
                 ).fetchone()[0]
             if saved < expected:

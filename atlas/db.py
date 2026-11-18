@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterator
 from contextlib import contextmanager
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -340,6 +340,7 @@ CREATE TABLE IF NOT EXISTS match_formation_estimates (
     formation TEXT NOT NULL,
     evidence_json TEXT NOT NULL,
     saved_at TEXT NOT NULL,
+    validity TEXT NOT NULL DEFAULT 'active' CHECK(validity IN ('active','superseded')),
     PRIMARY KEY(source_export_id,team_ea_id,phase,model_id)
 );
 CREATE INDEX IF NOT EXISTS idx_match_formation_estimates_team
@@ -1277,13 +1278,22 @@ class Database:
         if 0 < existing_schema_version < SCHEMA_VERSION:
             # P07 adds manual observations and derived estimates. Back up
             # editable context without copying multi-GB immutable exports.
-            if SCHEMA_VERSION in (2, 3):
+            if SCHEMA_VERSION in (2, 3, 4):
                 self.create_manual_context_backup(label=f"pre_schema_{SCHEMA_VERSION}")
             else:
                 self.create_backup(label=f"pre_schema_{SCHEMA_VERSION}")
 
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
+            formation_columns = {row[1] for row in conn.execute("PRAGMA table_info(match_formation_estimates)")}
+            if "validity" not in formation_columns:
+                conn.execute("ALTER TABLE match_formation_estimates ADD COLUMN validity TEXT NOT NULL DEFAULT 'active'")
+            # Preserve older derived evidence for audit. Only the current
+            # initial-XI model is eligible for display or new estimates.
+            conn.execute("UPDATE match_formation_estimates SET validity='superseded' "
+                         "WHERE (phase='final' OR model_id IN "
+                         "('atlas-match-formation-estimate-v1','atlas-match-formation-estimate-v2')) "
+                         "AND validity='active'")
             version_row = conn.execute("SELECT value FROM app_meta WHERE key='schema_version'").fetchone()
             try:
                 previous_schema_version = int(version_row[0]) if version_row else 0
