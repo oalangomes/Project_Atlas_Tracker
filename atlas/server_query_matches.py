@@ -10,6 +10,7 @@ from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
+from .match_lineups import match_lineup_phases
 from .goalkeeper_metrics import fixture_goalkeepers
 from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
 from .positions import trusted_actual_position
@@ -162,6 +163,7 @@ class MatchQueryMixin:
             detailed = detailed_match(conn, fixture_id, career_id=int(snap["career_id"]),
                                       as_of_import_sequence=int(snap["import_sequence"]),
                                       season_index=int(snap["season_index"]))
+            lineup_phases = match_lineup_phases(conn, detailed, fixture_id) if detailed else None
             candidate_row = conn.execute(
                 """SELECT e.* FROM match_stat_exports e JOIN snapshots source ON source.id=e.snapshot_id
                    WHERE e.fixture_id=? AND e.career_id=? AND source.career_id=?
@@ -298,6 +300,7 @@ class MatchQueryMixin:
                 "sourceLabel": "Aus aufeinanderfolgenden Snapshots rekonstruiert" if reconstructed else "Cannot be reconstructed reliably",
             },
             "detailedStats": detailed or {"available": False, "modelId": "atlas-fc26-match-stats-v1"},
+            "lineupPhases": lineup_phases,
             "evidence": fixture_evidence(dict(snap), fixture_id, detailed, performance_items,
                                          dict(candidate_row) if candidate_row else None,
                                          event_date=row["date"] if "date" in row.keys() else None),

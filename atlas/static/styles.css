@@ -596,6 +596,9 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 .match-p0-provenance .match-coverage-section{margin:10px 12px 14px}
 .match-p0-unavailable{margin:12px 0 16px;font-size:13px}
 #p0-match-comparison,#p0-match-commission,#p0-match-players,#p0-match-positions{scroll-margin-top:80px}
+.match-lineup-hint{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--border,#263c58);color:var(--text,#edf4ff)}
+.match-lineup-hint strong{font-size:13px}
+.match-lineup-hint small{font-size:11px;color:var(--muted,#91a6c4)}
 @media(max-width:1150px){.match-p0-main{grid-template-columns:minmax(0,1fr)}.match-p0-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.match-p0-secondary{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}}
 @media(max-width:720px){.match-p0-metrics{padding:12px}.match-p0-legend{font-size:11px;gap:6px}.match-p0-metric-grid,.match-p0-secondary{grid-template-columns:1fr}.match-p0-metric{padding:12px}.match-p0-nav a{font-size:12px;padding:7px 9px}.match-p0-main{gap:12px}}
 
