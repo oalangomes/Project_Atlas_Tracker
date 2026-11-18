@@ -24,4 +24,4 @@ O papel de goleiro usa posição observada de fonte confiável quando presente; 
 
 Limite pendente: a captura FC26 não fornece post-shot xG nem cronologia confiável da troca de goleiros. Uma divisão temporal de xGA entre dois goleiros depende de nova fonte e validação futura.
 
-A localização global dos separadores decimais (por exemplo, vírgula em pt-BR) permanece no backlog de interface aprovado pelo usuário e não altera as fórmulas deste pacote.
+A apresentação numérica reutiliza `num()` da interface, que aplica `Intl.NumberFormat(atlasLanguage())`; em pt-BR, os indicadores exibem vírgula decimal. A formatação não altera as fórmulas deste pacote.
