@@ -12,7 +12,7 @@ from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
 from .goalkeeper_metrics import fixture_goalkeepers
 from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
-from .positions import trusted_actual_position
+from .positions import broad_position_group, canonical_position, trusted_actual_position
 from .server_utils import (
     age_on_date, aggregate_standings, annotate_knockout_progress, as_int, clean_raw,
     competition_format_info, contract_role_label, fixture_group_value, parse_fc_date,
@@ -86,6 +86,42 @@ def apply_historical_observed_positions(rows: list[dict[str, Any]],
         }
         filled += 1
     return filled
+
+
+def imported_match_tactics(performances: list[dict[str, Any]], team_ids: tuple[int, int]) -> list[dict[str, Any]]:
+    """Describe recorded positions and estimate only a complete starting XI's line distribution."""
+
+    result = []
+    for team_id in team_ids:
+        players = [item for item in performances
+                   if as_int(item.get("match_team_ea_id")) == team_id]
+        observed = [item for item in players if trusted_actual_position(
+            item.get("actual_position"), item.get("actual_position_source")) or (
+                (slot := as_int(item.get("rating_position_raw"))) is not None
+                and 0 <= slot <= 27 and (as_int(item.get("minutes_played")) or 0) > 0
+                and canonical_position(None, slot))]
+        starters = []
+        for item in players:
+            slot = as_int(item.get("rating_position_raw"))
+            if slot is None or not 0 <= slot <= 27 or (as_int(item.get("minutes_played")) or 0) <= 0:
+                continue
+            position = canonical_position(None, slot)
+            if position:
+                starters.append(position)
+        groups = [broad_position_group(position, default="Unknown") for position in starters]
+        counts = [groups.count(group) for group in ("DEF", "MID", "ATT")]
+        complete = (len(starters) == 11 and groups.count("GK") == 1
+                    and "Unknown" not in groups and 3 <= counts[0] <= 5
+                    and counts[1] > 0 and counts[2] > 0)
+        result.append({
+            "teamEaId": team_id,
+            "observedPositionCount": len(observed),
+            "participantCount": len(players),
+            "recordedStarterCount": len(starters),
+            "initialLineDistribution": "-".join(map(str, counts)) if complete else None,
+            "source": "FC26 match rating positions" if complete else None,
+        })
+    return result
 
 class MatchQueryMixin:
     def _matches(self, snapshot_id: int) -> dict[str, Any]:
@@ -280,6 +316,7 @@ class MatchQueryMixin:
             "coachDiary": diary,
             "match": match_item,
             "performances": performance_items,
+            "importedTactics": imported_match_tactics(performance_items, (home_team_id, away_team_id)),
             "performanceDiagnostics": {
                 "suppressedSnapshotDuplicates": suppressed_snapshot_duplicates,
                 "historicalObservedPositionsBackfilled": historical_backfill_count,

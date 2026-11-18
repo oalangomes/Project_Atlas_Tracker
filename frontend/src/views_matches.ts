@@ -83,61 +83,35 @@ function goalkeeperPlayerContext(side:any,keeper:any,interpretationLimit:string)
     </section>`;
 }
 
-function diaryLineupRow(item:any,players:any[]):string {
-    const id=Number(item?.playerEaId||0),known=players.some((p:any)=>Number(p.player_ea_id)===id);
-    const options=players.map((p:any)=>`<option value="${Number(p.player_ea_id)}" ${Number(p.player_ea_id)===id?"selected":""}>${esc(p.display_name||`EA ${p.player_ea_id}`)}</option>`).join("");
-    const manual=id>0&&!known;
-    return `<div class="coach-lineup-row" data-coach-lineup-row>
-      <label><span>Atleta</span><select data-coach-player><option value="">Selecione</option>${options}<option value="manual" ${manual?"selected":""}>Outro EA ID</option></select></label>
-      <label data-coach-manual-wrap ${manual?"":"hidden"}><span>EA ID</span><input data-coach-player-manual type="number" min="1" value="${manual?id:""}"></label>
-      <label><span>Titular</span><select data-coach-starter><option value="" ${item?.starter==null?"selected":""}>Não informado</option><option value="yes" ${item?.starter===true?"selected":""}>Sim</option><option value="no" ${item?.starter===false?"selected":""}>Não</option></select></label>
-      <label><span>Posição</span><input data-coach-position value="${esc(item?.observedPosition||"")}" placeholder="Ex.: GK"></label>
-      <label><span>Função</span><input data-coach-role maxlength="80" value="${esc(item?.role||"")}" placeholder="Opcional"></label>
-      <label><span>Entrou</span><input data-coach-on type="number" min="0" max="130" value="${item?.onMinute??""}" placeholder="min"></label>
-      <label><span>Saiu</span><input data-coach-off type="number" min="0" max="130" value="${item?.offMinute??""}" placeholder="min"></label>
-      <button class="button coach-lineup-remove" type="button" data-coach-remove aria-label="Remover atleta">×</button>
-    </div>`;
+function importedMatchTacticsPanel(d:any):string {
+    const homeId=Number(d.match?.home_team_ea_id),awayId=Number(d.match?.away_team_ea_id);
+    const teamId=Number(d.snapshot?.managed_team_ea_id);
+    const ownId=teamId===homeId||teamId===awayId?teamId:homeId;
+    const opponentId=ownId===homeId?awayId:homeId;
+    const imported=(id:number,title:string)=>{
+        const facts=(d.importedTactics||[]).find((item:any)=>Number(item.teamEaId)===id);
+        const positionCount=Number(facts?.observedPositionCount||0),participants=Number(facts?.participantCount||0);
+        return `<div class="coach-diary-imported-team"><strong>${title}</strong><span>${positionCount?`${num(positionCount)} posições de partida registradas em ${num(participants)} atletas`:"Posições de partida não disponíveis no export"}</span><span>${facts?.initialLineDistribution?`Distribuição do XI inicial: <b>${esc(facts.initialLineDistribution)}</b> <small>(estimativa pelas posições do FC26)</small>`:"Distribuição do XI inicial não determinável"}</span></div>`;
+    };
+    return `<section class="card coach-diary-imported"><div class="coach-diary-imported-heading"><strong>Escalação e posições registradas</strong><small>Dados importados do FC26; não precisam ser digitados.</small></div><div class="coach-diary-imported-grid">${imported(ownId,"Seu clube")}${imported(opponentId,"Adversário")}</div><p>A distribuição por linhas só aparece quando o export identifica onze titulares. Ela não confirma o esquema tático nem mudanças durante a partida.</p></section>`;
 }
 
 function matchDiaryPanel(d:any):string {
-    const current=d.coachDiary?.current, entry=current?.content||{}, shape=current?.formationContext||{status:"indeterminate"};
-    const ownShape=current?.ownFormationContext||{status:"indeterminate"};
-    const knownAtSnapshot=d.coachDiary?.knownAtSnapshot;
-    const labels:any={confirmed_manual:"Confirmada",estimated_manual:"Hipótese",estimated_observed_xi:"Estimada pelo XI",indeterminate:"Não informada"};
-    const teamId=Number(d.snapshot?.managed_team_ea_id);
-    const homeId=Number(d.match?.home_team_ea_id),awayId=Number(d.match?.away_team_ea_id);
-    const opponentId=teamId===homeId?awayId:homeId;
-    const playersFor=(id:number)=>(d.performances||[]).filter((p:any)=>Number(p.match_team_ea_id??p.team_ea_id)===id).sort((a:any,b:any)=>String(a.display_name||"").localeCompare(String(b.display_name||"")));
-    const ownPlayers=playersFor(teamId),opponentPlayers=playersFor(opponentId);
-    const lineup=(side:string,title:string,items:any[],players:any[])=>`<section class="coach-lineup-side" data-coach-lineup-side="${side}"><div class="coach-lineup-heading"><h4>${title}</h4><button class="button" type="button" data-coach-add="${side}">Adicionar atleta</button></div><div class="coach-lineup-rows" data-coach-rows>${(items||[]).map((item:any)=>diaryLineupRow(item,players)).join("")}</div></section>`;
-    const positionConflicts=(entry.ownLineup||[]).flatMap((item:any)=>{
-        const imported=(d.performances||[]).find((row:any)=>Number(row.player_ea_id)===Number(item.playerEaId));
-        const extracted=observedPositionOf(imported);
-        return extracted&&item.observedPosition&&canonicalPosition(extracted)!==canonicalPosition(item.observedPosition)
-            ? [`EA ${num(item.playerEaId)}: treinador ${esc(item.observedPosition)} · FC26 ${esc(extracted)}`] : [];
-    });
+    const current=d.coachDiary?.current, entry=current?.content||{}, knownAtSnapshot=d.coachDiary?.knownAtSnapshot;
+    const legacy=!!(entry.ownFormation||entry.opponentFormation||entry.opponentHypothesis||entry.opponentAlternative||entry.opponentEvidence||entry.opponentDefensiveLine||entry.ownLineup?.length||entry.opponentLineup?.length);
+    const legacyFacts=[entry.ownFormation?`Seu clube: ${esc(entry.ownFormation)}`:"",entry.opponentFormation?`Rival confirmado manualmente: ${esc(entry.opponentFormation)}`:"",entry.opponentHypothesis?`Hipótese rival: ${esc(entry.opponentHypothesis)}`:"",entry.opponentAlternative?`Alternativa rival: ${esc(entry.opponentAlternative)}`:"",entry.opponentDefensiveLine?`Linha rival: ${num(entry.opponentDefensiveLine)}`:"",entry.opponentEvidence?`Evidência anotada: ${esc(entry.opponentEvidence)}`:"",entry.ownLineup?.length?`${num(entry.ownLineup.length)} atletas do seu clube anotados manualmente`:"",entry.opponentLineup?.length?`${num(entry.opponentLineup.length)} atletas rivais anotados manualmente`:""].filter(Boolean);
     const history=(d.coachDiary?.revisions||[]).map((item:any)=>`<li>Rev. ${num(item.revision)} · ${esc(item.author)} · ${esc(item.recorded_at)} · ${item.active?"ativa":"invalidada"}<small class="table-subline">${esc(item.content?.note||"Sem nota textual")}</small></li>`).join("");
     return `<section class="card coach-diary" data-coach-diary-panel>
-      <header class="coach-diary-heading"><div><span class="coach-diary-eyebrow">CONTEXTO DA PARTIDA</span><h2>Diário do treinador</h2><p>Observações registradas por você para esta partida.</p></div><span class="coach-diary-state">${current?"Registrado":"Sem registro"}</span></header>
+      <header class="coach-diary-heading"><div><span class="coach-diary-eyebrow">CONTEXTO DA PARTIDA</span><h2>Diário do treinador</h2><p>Registre apenas o que você percebeu e os dados da partida não mostram.</p></div><span class="coach-diary-state">${current?"Registrado":"Sem registro"}</span></header>
       <div class="coach-diary-summary">
-        ${current?`<p class="coach-diary-note">${esc(entry.note||"Sem nota textual.").replace(/\n/g,"<br>")}</p><div class="coach-diary-meta">${esc(current.author)} · ${esc(current.observed_at?.slice(0,10)||"Data não informada")}${current.retrospective?" · Registro retrospectivo":""}</div>`:`<p class="coach-diary-empty">Nenhuma observação registrada. Acrescente uma nota se houver algo relevante que os dados da partida não mostram.</p>`}
-        ${current&&(ownShape.formation||shape.formation||shape.defensiveLine)?`<div class="coach-diary-chips">${ownShape.formation?`<span>Seu clube: ${esc(ownShape.formation)}</span>`:""}${shape.formation?`<span>Rival: ${esc(shape.formation)} · ${esc(labels[shape.status]||"")}</span>`:""}${shape.defensiveLine?`<span>Linha rival: ${num(shape.defensiveLine)}</span>`:""}</div>`:""}
-        ${positionConflicts.length?`<p class="coach-diary-caution">Posições divergentes: ${positionConflicts.join("; ")}</p>`:""}
+        ${current?`<p class="coach-diary-note">${esc(entry.note||"Sem nota textual.").replace(/\n/g,"<br>")}</p><div class="coach-diary-meta">${esc(current.author)} · ${esc(current.observed_at?.slice(0,10)||"Data não informada")}${current.retrospective?" · Registro retrospectivo":""}</div>`:`<p class="coach-diary-empty">Nenhuma observação registrada.</p>`}
         ${!current&&knownAtSnapshot?`<p class="coach-diary-caution">Registro atual invalidado. A revisão ${num(knownAtSnapshot.revision)} estava ativa no snapshot.</p>`:""}
       </div>
       <details class="coach-diary-editor"><summary>${current?"Editar observação":"Adicionar observação"}</summary>
         <form data-coach-diary-form class="coach-diary-form">
           <div class="coach-diary-fields"><label><span>Autor / treinador</span><input name="author" required maxlength="120" value="${esc(current?.author||"")}" placeholder="Seu nome"></label><label><span>Data da observação</span><input name="observedAt" type="date" value="${esc(current?.observed_at?.slice(0,10)||d.match?.date||"")}"></label></div>
-          <label><span>Nota da partida</span><textarea name="note" rows="4" maxlength="5000" placeholder="O que você observou nesta partida?">${esc(entry.note||"")}</textarea></label>
-          <details class="coach-diary-advanced" ${entry.ownFormation||entry.opponentFormation||entry.opponentHypothesis||entry.opponentEvidence||entry.opponentDefensiveLine?"open":""}><summary>Contexto tático <small>opcional</small></summary>
-            <div class="coach-diary-fields"><label><span>Formação do seu clube</span><input name="ownFormation" placeholder="Ex.: 4-2-3-1" value="${esc(entry.ownFormation||"")}"></label><label><span>Linha defensiva rival</span><select name="opponentDefensiveLine"><option value="">Não informada</option>${[3,4,5].map(n=>`<option value="${n}" ${entry.opponentDefensiveLine===n?"selected":""}>${n} jogadores</option>`).join("")}</select></label></div>
-            <div class="coach-diary-fields"><label><span>Formação rival confirmada</span><input name="opponentFormation" placeholder="Ex.: 5-4-1" value="${esc(entry.opponentFormation||"")}"></label><label><span>Hipótese de formação rival</span><input name="opponentHypothesis" placeholder="Ex.: 5-4-1" value="${esc(entry.opponentHypothesis||"")}"></label></div>
-            <div class="coach-diary-fields"><label><span>Formação alternativa</span><input name="opponentAlternative" value="${esc(entry.opponentAlternative||"")}"></label><label><span>Evidência observada</span><input name="opponentEvidence" maxlength="1200" value="${esc(entry.opponentEvidence||"")}" placeholder="O que sustenta a leitura?"></label></div>
-          </details>
-          <details class="coach-diary-advanced" ${entry.ownLineup?.length||entry.opponentLineup?.length?"open":""}><summary>Atletas e posições observadas <small>opcional</small></summary>
-            <p class="coach-diary-help">Adicione apenas os atletas que você observou. Deixe posição e minutos em branco quando não souber.</p>
-            ${lineup("own","Seu clube",entry.ownLineup||[],ownPlayers)}${lineup("opponent","Adversário",entry.opponentLineup||[],opponentPlayers)}
-          </details>
+          <label><span>O que os dados não mostram?</span><textarea name="note" rows="4" maxlength="5000" ${legacy?"":"required"} placeholder="Ex.: ajustes feitos durante o jogo, pressão, comportamento sem bola...">${esc(entry.note||"")}</textarea></label>
+          ${legacy?`<details class="coach-diary-legacy"><summary>Contexto tático manual de revisões anteriores</summary><p>Dados manuais preservados ao editar a nota:</p><ul>${legacyFacts.map((fact:string)=>`<li>${fact}</li>`).join("")}</ul><label><input type="checkbox" name="discardLegacy"> Remover esses dados manuais ao salvar</label></details>`:""}
           <div class="coach-diary-actions"><button class="button primary" type="submit">${current?"Salvar revisão":"Salvar observação"}</button>${current?'<button class="button" type="button" data-coach-diary-invalidate>Invalidar registro</button>':""}</div>
           <p class="coach-diary-status" data-coach-diary-status aria-live="polite"></p>
         </form>
@@ -152,41 +126,18 @@ function bindMatchDiary(d:any):void {
     if(!panel||!form)return;
     const status=panel.querySelector<HTMLElement>("[data-coach-diary-status]");
     const refresh=(response:any)=>{d.coachDiary=response;panel.outerHTML=matchDiaryPanel(d);bindMatchDiary(d);};
-    const lineupPlayers=(side:string)=>{
-        const teamId=Number(d.snapshot?.managed_team_ea_id);
-        const opponentId=teamId===Number(d.match?.home_team_ea_id)?Number(d.match?.away_team_ea_id):Number(d.match?.home_team_ea_id);
-        return (d.performances||[]).filter((p:any)=>Number(p.match_team_ea_id??p.team_ea_id)===(side==="own"?teamId:opponentId)).sort((a:any,b:any)=>String(a.display_name||"").localeCompare(String(b.display_name||"")));
-    };
-    form.addEventListener("click",(event)=>{
-        const target=event.target as HTMLElement;
-        const add=target.closest<HTMLButtonElement>("[data-coach-add]");
-        if(add){const side=add.dataset.coachAdd||"own";form.querySelector(`[data-coach-lineup-side="${side}"] [data-coach-rows]`)?.insertAdjacentHTML("beforeend",diaryLineupRow({},lineupPlayers(side)));return;}
-        const remove=target.closest<HTMLButtonElement>("[data-coach-remove]");
-        if(remove)remove.closest("[data-coach-lineup-row]")?.remove();
-    });
-    form.addEventListener("change",(event)=>{
-        const player=(event.target as HTMLElement).closest<HTMLSelectElement>("[data-coach-player]");
-        if(player){const manual=player.closest("[data-coach-lineup-row]")?.querySelector<HTMLElement>("[data-coach-manual-wrap]");if(manual)manual.hidden=player.value!=="manual";}
-    });
-    const readLineup=(side:string)=>[...form.querySelectorAll<HTMLElement>(`[data-coach-lineup-side="${side}"] [data-coach-lineup-row]`)].map((row,index)=>{
-        const value=(selector:string)=>String(row.querySelector<HTMLInputElement|HTMLSelectElement>(selector)?.value||"").trim();
-        const selection=value("[data-coach-player]");
-        const playerEaId=Number(selection==="manual"?value("[data-coach-player-manual]"):selection);
-        if(!Number.isInteger(playerEaId)||playerEaId<=0)throw new Error(`${side==="own"?"Seu clube":"Adversário"}, atleta ${index+1}: selecione um jogador ou informe o EA ID.`);
-        const minute=(selector:string)=>{const raw=value(selector);if(!raw)return null;const parsed=Number(raw);if(!Number.isInteger(parsed)||parsed<0||parsed>130)throw new Error(`Atleta ${index+1}: minuto deve estar entre 0 e 130.`);return parsed;};
-        const starter=value("[data-coach-starter]");
-        return {playerEaId,starter:starter==="yes"?true:starter==="no"?false:null,observedPosition:value("[data-coach-position]")||null,role:value("[data-coach-role]")||null,onMinute:minute("[data-coach-on]"),offMinute:minute("[data-coach-off]")};
-    });
     form.onsubmit=async(event)=>{
         event.preventDefault();
         try {
             const fields=new FormData(form), get=(key:string)=>String(fields.get(key)||"").trim();
+            if(fields.has("discardLegacy")&&!get("note"))throw new Error("Escreva uma nota para manter o Diário ou invalide o registro.");
+            const prior=fields.has("discardLegacy")?{}:d.coachDiary?.current?.content||{};
             const payload={snapshotId:Number(state.snapshotId),expectedRevision:d.coachDiary?.current?.revision||d.coachDiary?.revisions?.[0]?.revision||0,
-                author:get("author"),observedAt:get("observedAt"),note:get("note"),ownFormation:get("ownFormation"),
-                opponentDefensiveLine:get("opponentDefensiveLine"),opponentFormation:get("opponentFormation"),
-                opponentHypothesis:get("opponentHypothesis"),opponentAlternative:get("opponentAlternative"),
-                opponentEvidence:get("opponentEvidence"),ownLineup:readLineup("own"),
-                opponentLineup:readLineup("opponent")};
+                author:get("author"),observedAt:get("observedAt"),note:get("note"),
+                ownFormation:prior.ownFormation,opponentDefensiveLine:prior.opponentDefensiveLine,
+                opponentFormation:prior.opponentFormation,opponentHypothesis:prior.opponentHypothesis,
+                opponentAlternative:prior.opponentAlternative,opponentEvidence:prior.opponentEvidence,
+                ownLineup:prior.ownLineup,opponentLineup:prior.opponentLineup};
             const response=await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/save`,
                 {method:"POST",body:JSON.stringify(payload)});
             refresh(response);
@@ -328,7 +279,7 @@ async function renderMatch() {
 
     content.innerHTML = `<div class="content-inner wide">${pageHead("Match report", `${dateText(m.date)} · ${esc(timeText(m.time))}`, `<button class="button" data-route="match-center">Match Center</button>`)}
       <section class="card fixture-hero"><div class="fixture-meta"><span class="inline-identity">${identityLogo(d.competitionIdentity,m.competition_name,"inline-logo")}${competitionLink(m.competition_object_id,m.competition_name)}</span> · ${m.is_completed?"COMPLETED":"SCHEDULED"}</div><div class="fixture-scoreboard"><div class="fixture-club">${identityLogo(d.homeIdentity,m.home_team_name,"fixture-club-logo")}<h2>${clubLink(m.home_team_ea_id,m.home_team_name)}</h2></div><div class="fixture-score">${m.is_completed?`${num(m.home_score)} : ${num(m.away_score)}`:"VS"}<small>${m.home_penalties!=null||m.away_penalties!=null?`Penalty shoot-out ${num(m.home_penalties)}:${num(m.away_penalties)}`:esc(m.managed_team_result||"")}</small></div><div class="fixture-club">${identityLogo(d.awayIdentity,m.away_team_name,"fixture-club-logo")}<h2>${clubLink(m.away_team_ea_id,m.away_team_name)}</h2></div></div></section>
-      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison||`<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${matchDiaryPanel(d)}${events}
+      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison||`<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${importedMatchTacticsPanel(d)}${matchDiaryPanel(d)}${events}
       <section id="p0-match-players" class="card match-performance-section"><header class="card-header"><div><h2>Player performances</h2><p>${hasDetailed?"Direct FC26 match data for exported participants":"Detailed MatchStats unavailable; ratings and conservative snapshot reconstruction are shown when recorded"}</p></div></header>${d.performances.length?performanceBody:`<div class="card-body muted">No player performances were exported for this match.</div>`}</section>
       ${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings",d.capabilities?.matchRatings?"Available":"Partial","ratings and minutes")}${metric("Detailed FC26 data",hasDetailed?"Available":"Not available",hasDetailed?`${num(detailed.players?.length||0)} participants`:"snapshot data fallback",hasDetailed?"green":"amber")}${metric("Events",hasDetailed?num(detailed.events?.length||0):"–",hasDetailed?"not chronological · no confirmed minutes":"no detailed source")}${metric("Link confidence",hasDetailed?`${num(detailed.linkageConfidence*100,0)} %`:"–","import linkage metadata")}${metric("xG model",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG + NPK-xG":"NPK-xG"):"–",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG = NPK-xG + 0.7 × penalty attempts":"direct FC26 NPK value"):"")}</div><p class="data-note">${esc(detailed.xgNote||"")} ${esc(detailed.eventTimingNote||"")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
     </div>`;
