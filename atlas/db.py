@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterator
 from contextlib import contextmanager
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -704,6 +704,34 @@ CREATE TABLE IF NOT EXISTS manual_change_log (
 );
 CREATE INDEX IF NOT EXISTS idx_manual_change_log_career ON manual_change_log(career_id, id DESC);
 
+CREATE TABLE IF NOT EXISTS manual_match_diary (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    career_id INTEGER NOT NULL REFERENCES careers(id),
+    fixture_id INTEGER NOT NULL REFERENCES fixtures(id),
+    revision INTEGER NOT NULL DEFAULT 1,
+    author TEXT NOT NULL,
+    observed_at TEXT,
+    recorded_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 1,
+    content_json TEXT NOT NULL,
+    UNIQUE(career_id, fixture_id)
+);
+CREATE INDEX IF NOT EXISTS idx_manual_match_diary_career ON manual_match_diary(career_id, fixture_id);
+CREATE TABLE IF NOT EXISTS manual_match_diary_revisions (
+    diary_id INTEGER NOT NULL REFERENCES manual_match_diary(id),
+    revision INTEGER NOT NULL,
+    author TEXT NOT NULL,
+    recorded_at TEXT NOT NULL,
+    active INTEGER NOT NULL,
+    content_json TEXT NOT NULL,
+    PRIMARY KEY(diary_id, revision)
+);
+CREATE TRIGGER IF NOT EXISTS immutable_manual_match_diary_revisions_update
+BEFORE UPDATE ON manual_match_diary_revisions BEGIN SELECT RAISE(ABORT, 'immutable diary revision'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_manual_match_diary_revisions_delete
+BEFORE DELETE ON manual_match_diary_revisions BEGIN SELECT RAISE(ABORT, 'immutable diary revision'); END;
+
 
 -- v0.10.0 Financial Core. All finance records belong to Atlas career seasons.
 CREATE TABLE IF NOT EXISTS finance_profiles (
@@ -1234,7 +1262,12 @@ class Database:
             finally:
                 probe.close()
         if 0 < existing_schema_version < SCHEMA_VERSION:
-            self.create_backup(label=f"pre_schema_{SCHEMA_VERSION}")
+            # P07 adds manual-only tables. Back up editable context and its
+            # identity references without copying multi-GB immutable exports.
+            if SCHEMA_VERSION == 2:
+                self.create_manual_context_backup(label=f"pre_schema_{SCHEMA_VERSION}")
+            else:
+                self.create_backup(label=f"pre_schema_{SCHEMA_VERSION}")
 
         with self.connect() as conn:
             conn.executescript(SCHEMA_SQL)
@@ -1389,6 +1422,54 @@ class Database:
         path.mkdir(parents=True, exist_ok=True)
         return path
 
+    def create_manual_context_backup(self, label: str = "manual_context") -> Path:
+        """Preserve editable tables and career/fixture identities before additive migrations."""
+        with self.write_guard():
+            safe_label = re.sub(r"[^a-zA-Z0-9_-]+", "_", label.strip()) or "manual_context"
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            target = self.backup_dir() / f"atlas_manual_{stamp}_{safe_label}.sqlite3"
+            suffix = 1
+            while target.exists():
+                target = self.backup_dir() / f"atlas_manual_{stamp}_{safe_label}_{suffix}.sqlite3"
+                suffix += 1
+            source = sqlite3.connect(self.path, timeout=30.0)
+            destination = sqlite3.connect(target)
+            try:
+                source.execute("BEGIN")
+                destination.execute("PRAGMA foreign_keys=OFF")
+                tables = source.execute("""SELECT name,sql FROM sqlite_master WHERE type='table'
+                    AND sql IS NOT NULL AND (name IN ('app_meta','careers','snapshots','fixtures')
+                    OR name LIKE 'manual_%') ORDER BY name""").fetchall()
+                counts: dict[str, int] = {}
+                for name, ddl in tables:
+                    destination.execute(ddl)
+                    columns = source.execute(f'PRAGMA table_info("{name}")').fetchall()
+                    placeholders = ",".join("?" for _ in columns)
+                    rows = source.execute(f'SELECT * FROM "{name}"').fetchall()
+                    if rows:
+                        destination.executemany(f'INSERT INTO "{name}" VALUES({placeholders})', rows)
+                    counts[name] = len(rows)
+                destination.execute("CREATE TABLE atlas_backup_manifest(table_name TEXT PRIMARY KEY,row_count INTEGER NOT NULL)")
+                destination.executemany("INSERT INTO atlas_backup_manifest VALUES(?,?)", counts.items())
+                destination.commit()
+                if destination.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                    raise sqlite3.DatabaseError("Manual context backup failed integrity check.")
+                for name, count in counts.items():
+                    if destination.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0] != count:
+                        raise sqlite3.DatabaseError(f"Manual context backup differs for {name}.")
+            except Exception:
+                destination.close()
+                source.close()
+                target.unlink(missing_ok=True)
+                raise
+            finally:
+                try:
+                    destination.close()
+                    source.close()
+                except sqlite3.Error:
+                    pass
+            return target
+
     def create_backup(self, label: str = "manual") -> Path:
         # Keep in-process writers out while the backup snapshot is established.
         # SQLite backup itself is online-safe; this guard mainly prevents Atlas'
@@ -1414,13 +1495,16 @@ class Database:
 
     def list_backups(self) -> list[dict[str, object]]:
         result: list[dict[str, object]] = []
-        for path in sorted(self.backup_dir().glob("atlas_core_*.sqlite3"), reverse=True):
+        paths = [*self.backup_dir().glob("atlas_core_*.sqlite3"),
+                 *self.backup_dir().glob("atlas_manual_*.sqlite3")]
+        for path in sorted(paths, key=lambda item: item.stat().st_mtime, reverse=True):
             stat = path.stat()
             result.append({
                 "name": path.name,
                 "path": str(path),
                 "size": stat.st_size,
                 "modifiedAt": datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat().replace("+00:00", "Z"),
+                "scope": "manual_context" if path.name.startswith("atlas_manual_") else "full",
             })
         return result[:100]
 

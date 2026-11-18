@@ -8,6 +8,7 @@ from typing import Any
 from . import __version__
 from .db import Database
 from .manual_data import ManualDataService
+from .match_diary import MatchDiaryService
 from .financial import FinancialService, PROFILE_FILE
 from .finance_core import FinanceCoreService
 from .player_finance import PlayerFinanceService
@@ -33,6 +34,7 @@ class AppState:
     media: MediaLibrary | None = None
     reference: ReferenceImporter | None = None
     manual: ManualDataService | None = None
+    diary: MatchDiaryService | None = None
     financial: FinancialService | None = None
     finance_core: FinanceCoreService | None = None
     player_finance: PlayerFinanceService | None = None
@@ -58,6 +60,8 @@ class AppState:
             self.media = MediaLibrary(self.database)
         if self.manual is None:
             self.manual = ManualDataService(self.database)
+        if self.diary is None:
+            self.diary = MatchDiaryService(self.database)
         if self.financial is None:
             profile_path = Path(__file__).resolve().parents[1] / "reference" / "financial" / PROFILE_FILE
             self.financial = FinancialService(self.database, profile_path)

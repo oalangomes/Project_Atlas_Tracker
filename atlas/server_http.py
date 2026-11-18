@@ -240,6 +240,12 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             self._json(self.state.manual.overview(int(match.group(1))))
             return
 
+        match = re.fullmatch(r"/api/careers/(\d+)/matches/(\d+)/diary", path)
+        if match:
+            snapshot_id = as_int((query.get("snapshotId") or [None])[0])
+            self._json(self.state.diary.get(int(match.group(1)), int(match.group(2)), snapshot_id))
+            return
+
         match = re.fullmatch(r"/api/careers/(\d+)/players/search", path)
         if match:
             text = (query.get("q") or [""])[0].strip()
@@ -388,6 +394,13 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         self._json({"error": f"API endpoint not found: {self.command} {path}"}, 404)
 
     def _api_post(self, path: str, payload: dict[str, Any]) -> None:
+        match = re.fullmatch(r"/api/careers/(\d+)/matches/(\d+)/diary/(save|invalidate)", path)
+        if match:
+            career_id, fixture_id = int(match.group(1)), int(match.group(2))
+            action = match.group(3)
+            self._json(self.state.diary.save(career_id, fixture_id, payload) if action == "save"
+                       else self.state.diary.invalidate(career_id, fixture_id, payload))
+            return
         if path == "/api/llm/config":
             with self.state.database.connect() as conn:
                 response = update_config(conn, payload)

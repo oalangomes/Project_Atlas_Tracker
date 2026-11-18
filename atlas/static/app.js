@@ -1046,6 +1046,102 @@ function goalkeeperMatchView(evidence, match, players) {
     }).join("");
     return `<section class="grid two-col" aria-label="Goalkeeper context">${cards}</section><p class="data-note">${esc(evidence.interpretationLimit || "")} Opponent xG is based on NPK-xG plus modelled penalty attempts only when penalty context is available.</p>`;
 }
+function diaryLineupText(items) {
+    return (items || []).map((item) => [item.playerEaId, item.starter === true ? "sim" : item.starter === false ? "não" : "?",
+        item.observedPosition || "", item.role || "", item.onMinute ?? "", item.offMinute ?? ""].join("; ")).join("\n");
+}
+function diaryLineupParse(value) {
+    return value.split(/\r?\n/).map(line => line.trim()).filter(Boolean).map((line, index) => {
+        const [id, starter, position, role, on, off] = line.split(";").map(part => part.trim());
+        const playerEaId = Number(id);
+        if (!Number.isInteger(playerEaId) || playerEaId <= 0)
+            throw new Error(`Linha ${index + 1}: informe um EA ID válido.`);
+        const starterValue = starter?.toLowerCase();
+        if (!["sim", "não", "nao", "?", ""].includes(starterValue || ""))
+            throw new Error(`Linha ${index + 1}: titular deve ser sim, não ou ?.`);
+        const minute = (text) => {
+            if (!text)
+                return null;
+            const value = Number(text);
+            if (!Number.isInteger(value) || value < 0 || value > 130)
+                throw new Error(`Linha ${index + 1}: minuto inválido.`);
+            return value;
+        };
+        return { playerEaId, starter: starterValue === "sim" ? true : ["não", "nao"].includes(starterValue || "") ? false : null,
+            observedPosition: position || null, role: role || null, onMinute: minute(on), offMinute: minute(off) };
+    });
+}
+function matchDiaryPanel(d) {
+    const current = d.coachDiary?.current, content = current?.content || {}, shape = current?.formationContext || { status: "indeterminate" };
+    const historical = d.coachDiary?.knownAtSnapshot;
+    const ownShape = current?.ownFormationContext || { status: "indeterminate" };
+    const positionConflicts = (content.ownLineup || []).flatMap((item) => {
+        const imported = (d.performances || []).find((row) => Number(row.player_ea_id) === Number(item.playerEaId));
+        const extracted = observedPositionOf(imported);
+        return extracted && item.observedPosition && canonicalPosition(extracted) !== canonicalPosition(item.observedPosition)
+            ? [`EA ${num(item.playerEaId)}: treinador ${esc(item.observedPosition)} · FC26 ${esc(extracted)}`] : [];
+    });
+    const label = { confirmed_manual: "Confirmada pelo treinador", estimated_manual: "Hipótese do treinador",
+        estimated_observed_xi: "Estimada a partir de XI observado", indeterminate: "Indeterminada" };
+    const history = (d.coachDiary?.revisions || []).map((item) => `<li>Rev. ${num(item.revision)} · ${esc(item.author)} · ${esc(item.recorded_at)} · ${item.active ? "ativa" : "invalidada"}<small class="table-subline">${esc(item.content?.note || "Sem nota textual")}</small></li>`).join("");
+    return `<section class="card pad" data-coach-diary-panel><h2 class="card-title">Diário do Treinador</h2>
+      <p class="data-note">Observação manual vinculada a esta partida. ${current?.retrospective ? `Registro ou revisão posterior ao snapshot exibido; contexto retrospectivo. ${current.knownAtSnapshot ? `Conhecido à época: revisão ${num(current.knownAtSnapshot.revision)} de ${esc(current.knownAtSnapshot.author)}.` : "Nenhuma revisão era conhecida à época."}` : "Revisões ficam preservadas e atribuídas."}</p>
+      ${!current && historical ? `<p class="data-note">Registro atual invalidado. No snapshot, a revisão ${num(historical.revision)} de ${esc(historical.author)} estava ativa: ${esc(historical.content?.note || "sem nota textual")}.</p>` : ""}
+      <p><strong>Formação própria:</strong> ${esc(label[ownShape.status] || "Indeterminada")}${ownShape.formation ? ` · ${esc(ownShape.formation)}` : ""} · <strong>Formação rival:</strong> ${esc(label[shape.status] || "Indeterminada")}${shape.formation ? ` · ${esc(shape.formation)}` : ""}${shape.alternative ? ` · alternativa ${esc(shape.alternative)}` : ""}${shape.defensiveLine ? ` · linha de ${num(shape.defensiveLine)}` : ""}</p>
+      ${positionConflicts.length ? `<p class="data-note">Posições divergentes (fontes preservadas): ${positionConflicts.join("; ")}</p>` : ""}
+      ${shape.support ? `<p class="data-note">${esc(shape.support)}</p>` : ""}
+      <form data-coach-diary-form class="grid">
+        <div class="grid two-col"><label>Autor / treinador<input name="author" required maxlength="120" value="${esc(current?.author || "")}"></label><label>Data da observação<input name="observedAt" type="date" value="${esc(current?.observed_at?.slice(0, 10) || d.match?.date || "")}"></label></div>
+        <label>Nota da partida<textarea name="note" rows="4" maxlength="5000">${esc(content.note || "")}</textarea></label>
+        <div class="grid two-col"><label>Formação própria observada<input name="ownFormation" placeholder="Ex.: 4-2-3-1" value="${esc(content.ownFormation || "")}"></label><label>Linha defensiva rival observada<select name="opponentDefensiveLine"><option value="">N/D</option>${[3, 4, 5].map(n => `<option value="${n}" ${content.opponentDefensiveLine === n ? "selected" : ""}>${n}</option>`).join("")}</select></label></div>
+        <div class="grid two-col"><label>Formação rival confirmada por observação<input name="opponentFormation" placeholder="Ex.: 5-4-1" value="${esc(content.opponentFormation || "")}"></label><label>Hipótese de formação rival<input name="opponentHypothesis" placeholder="Se não confirmada" value="${esc(content.opponentHypothesis || "")}"></label></div>
+        <div class="grid two-col"><label>Alternativa à hipótese<input name="opponentAlternative" value="${esc(content.opponentAlternative || "")}"></label><label>Evidência observada<input name="opponentEvidence" maxlength="1200" value="${esc(content.opponentEvidence || "")}"></label></div>
+        <p class="data-note">Escalações parciais são aceitas. Uma linha por atleta: EA ID; titular (sim/não/?); posição observada; função; minuto de entrada; minuto de saída. Deixe minutos e posição vazios quando desconhecidos.</p>
+        <div class="grid two-col"><label>Seu clube<textarea name="ownLineup" rows="5" placeholder="12345; sim; CB; zagueiro; ;">${esc(diaryLineupText(content.ownLineup || []))}</textarea></label><label>Adversário<textarea name="opponentLineup" rows="5" placeholder="67890; sim; ST; atacante; ;">${esc(diaryLineupText(content.opponentLineup || []))}</textarea></label></div>
+        <div><button class="button primary" type="submit">${current ? "Salvar revisão" : "Salvar observação"}</button>${current ? '<button class="button" type="button" data-coach-diary-invalidate>Invalidar registro</button>' : ""}</div>
+        <p class="data-note" data-coach-diary-status aria-live="polite"></p>
+      </form>${history ? `<details><summary>Histórico de revisões</summary><ol>${history}</ol></details>` : ""}</section>`;
+}
+function bindMatchDiary(d) {
+    const panel = content.querySelector("[data-coach-diary-panel]");
+    const form = panel?.querySelector("[data-coach-diary-form]");
+    if (!panel || !form)
+        return;
+    const status = panel.querySelector("[data-coach-diary-status]");
+    const refresh = (response) => { d.coachDiary = response; panel.outerHTML = matchDiaryPanel(d); bindMatchDiary(d); };
+    form.onsubmit = async (event) => {
+        event.preventDefault();
+        try {
+            const fields = new FormData(form), get = (key) => String(fields.get(key) || "").trim();
+            const payload = { snapshotId: Number(state.snapshotId), expectedRevision: d.coachDiary?.current?.revision || d.coachDiary?.revisions?.[0]?.revision || 0,
+                author: get("author"), observedAt: get("observedAt"), note: get("note"), ownFormation: get("ownFormation"),
+                opponentDefensiveLine: get("opponentDefensiveLine"), opponentFormation: get("opponentFormation"),
+                opponentHypothesis: get("opponentHypothesis"), opponentAlternative: get("opponentAlternative"),
+                opponentEvidence: get("opponentEvidence"), ownLineup: diaryLineupParse(get("ownLineup")),
+                opponentLineup: diaryLineupParse(get("opponentLineup")) };
+            const response = await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/save`, { method: "POST", body: JSON.stringify(payload) });
+            refresh(response);
+        }
+        catch (error) {
+            if (status)
+                status.textContent = error?.message || "Não foi possível salvar.";
+        }
+    };
+    const invalidate = panel.querySelector("[data-coach-diary-invalidate]");
+    if (invalidate)
+        invalidate.onclick = async () => {
+            try {
+                const author = String(new FormData(form).get("author") || "").trim();
+                await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/invalidate`, { method: "POST", body: JSON.stringify({ author, expectedRevision: d.coachDiary?.current?.revision }) });
+                const response = await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary?snapshotId=${state.snapshotId}`);
+                refresh(response);
+            }
+            catch (error) {
+                if (status)
+                    status.textContent = error?.message || "Não foi possível invalidar.";
+            }
+        };
+}
 async function renderMatch() {
     const d = await api(`/api/snapshots/${state.snapshotId}/matches/${Number(state.routeData.id)}`), m = d.match;
     const stadium = d.stadium, detailed = d.detailedStats || {}, hasDetailed = !!detailed.available;
@@ -1172,10 +1268,11 @@ async function renderMatch() {
     const p0Navigation = `<nav class="match-p0-nav" aria-label="${esc(p0T.nav)}"><a href="#p0-match-comparison">${esc(p0T.stats)}</a><a href="#p0-match-commission">${esc(p0T.commission)}</a><a href="#p0-match-players">${esc(p0T.players)}</a></nav>`;
     content.innerHTML = `<div class="content-inner wide">${pageHead("Match report", `${dateText(m.date)} · ${esc(timeText(m.time))}`, `<button class="button" data-route="match-center">Match Center</button>`)}
       <section class="card fixture-hero"><div class="fixture-meta"><span class="inline-identity">${identityLogo(d.competitionIdentity, m.competition_name, "inline-logo")}${competitionLink(m.competition_object_id, m.competition_name)}</span> · ${m.is_completed ? "COMPLETED" : "SCHEDULED"}</div><div class="fixture-scoreboard"><div class="fixture-club">${identityLogo(d.homeIdentity, m.home_team_name, "fixture-club-logo")}<h2>${clubLink(m.home_team_ea_id, m.home_team_name)}</h2></div><div class="fixture-score">${m.is_completed ? `${num(m.home_score)} : ${num(m.away_score)}` : "VS"}<small>${m.home_penalties != null || m.away_penalties != null ? `Penalty shoot-out ${num(m.home_penalties)}:${num(m.away_penalties)}` : esc(m.managed_team_result || "")}</small></div><div class="fixture-club">${identityLogo(d.awayIdentity, m.away_team_name, "fixture-club-logo")}<h2>${clubLink(m.away_team_ea_id, m.away_team_name)}</h2></div></div></section>
-      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison || `<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${events}
+      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison || `<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${matchDiaryPanel(d)}${events}
       <section id="p0-match-players" class="card match-performance-section"><header class="card-header"><div><h2>Player performances</h2><p>${hasDetailed ? "Direct FC26 match data for exported participants" : "Detailed MatchStats unavailable; ratings and conservative snapshot reconstruction are shown when recorded"}</p></div></header>${d.performances.length ? performanceBody : `<div class="card-body muted">No player performances were exported for this match.</div>`}</section>
       ${hasDetailed ? goalkeeperMatchView(detailed.goalkeeperEvidence, m, detailed.players || []) : ""}${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings", d.capabilities?.matchRatings ? "Available" : "Partial", "ratings and minutes")}${metric("Detailed FC26 data", hasDetailed ? "Available" : "Not available", hasDetailed ? `${num(detailed.players?.length || 0)} participants` : "snapshot data fallback", hasDetailed ? "green" : "amber")}${metric("Events", hasDetailed ? num(detailed.events?.length || 0) : "–", hasDetailed ? "not chronological · no confirmed minutes" : "no detailed source")}${metric("Link confidence", hasDetailed ? `${num(detailed.linkageConfidence * 100, 0)} %` : "–", "import linkage metadata")}${metric("xG model", hasDetailed ? (homeStats.expected_goals_derived != null || awayStats.expected_goals_derived != null ? "Team-xG + NPK-xG" : "NPK-xG") : "–", hasDetailed ? (homeStats.expected_goals_derived != null || awayStats.expected_goals_derived != null ? "Team-xG = NPK-xG + 0.7 × penalty attempts" : "direct FC26 NPK value") : "")}</div><p class="data-note">${esc(detailed.xgNote || "")} ${esc(detailed.eventTimingNote || "")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
     </div>`;
+    bindMatchDiary(d);
     const queuedReportJobs = (automaticReportQueue.scheduled || []).filter((job) => job?.job_id);
     if (queuedReportJobs.length) {
         void (async () => {

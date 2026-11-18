@@ -273,8 +273,11 @@ class MatchQueryMixin:
         capabilities = parse_raw(snap["capabilities_json"])
         capabilities["reconstructedMatchStats"] = bool(reconstructed)
         capabilities["detailedPlayerMatchStats"] = bool(detailed)
+        diary_service = getattr(self.state, "diary", None)
+        diary = diary_service.get(int(snap["career_id"]), fixture_id, snapshot_id) if diary_service else None
         return {
             "snapshot": dict(snap),
+            "coachDiary": diary,
             "match": match_item,
             "performances": performance_items,
             "performanceDiagnostics": {
