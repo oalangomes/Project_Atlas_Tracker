@@ -8,8 +8,8 @@ from contextlib import closing
 from pathlib import Path
 
 from atlas.db import Database
-from atlas.match_lineups import (_departures, _formation_shape, _line_shape,
-                                 match_lineup_phases, save_match_formation_estimates)
+from atlas.match_lineups import (_formation_shape, _line_shape, match_lineup_phases,
+                                 save_match_formation_estimates)
 
 
 class MatchLineupPhasesTests(unittest.TestCase):
@@ -24,17 +24,22 @@ class MatchLineupPhasesTests(unittest.TestCase):
                         source_export_id INTEGER,team_ea_id INTEGER,phase TEXT,model_id TEXT,
                         formation TEXT,evidence_json TEXT,saved_at TEXT,
                         PRIMARY KEY(source_export_id,team_ea_id,phase,model_id))""")
-                    for model in ("atlas-match-formation-estimate-v1", "atlas-match-formation-estimate-v2"):
+                    for model, phase in (("atlas-match-formation-estimate-v1", "initial"),
+                                         ("atlas-match-formation-estimate-v2", "initial"),
+                                         ("atlas-match-formation-estimate-v2", "final"),
+                                         ("atlas-match-formation-estimate-v3", "initial")):
                         conn.execute("""INSERT INTO match_formation_estimates
                             (source_export_id,team_ea_id,phase,model_id,formation,evidence_json,saved_at)
-                            VALUES(36,1929,'initial',?,?,'{}','2026-01-10')""",
-                            (model, "3-2-4-1" if model.endswith("v1") else "4-2-3-1"))
+                            VALUES(36,1929,?,?,?,'{}','2026-01-10')""",
+                            (phase, model, "3-2-4-1" if phase == "final" else "4-2-3-1"))
             db = Database(path)
             with db.connect() as conn:
                 models = [tuple(row) for row in conn.execute(
-                    "SELECT model_id,validity FROM match_formation_estimates ORDER BY model_id")]
-            self.assertEqual(models, [("atlas-match-formation-estimate-v1", "superseded"),
-                                      ("atlas-match-formation-estimate-v2", "active")])
+                    "SELECT model_id,phase,validity FROM match_formation_estimates ORDER BY model_id,phase")]
+            self.assertEqual(models, [("atlas-match-formation-estimate-v1", "initial", "superseded"),
+                                      ("atlas-match-formation-estimate-v2", "final", "superseded"),
+                                      ("atlas-match-formation-estimate-v2", "initial", "superseded"),
+                                      ("atlas-match-formation-estimate-v3", "initial", "active")])
 
     def test_position_bands_refine_4231_and_keep_523(self) -> None:
         tactical = ["GK", "RB", "RCB", "LCB", "LB", "RDM", "LDM", "RM", "CAM", "LM", "ST"]
@@ -44,26 +49,10 @@ class MatchLineupPhasesTests(unittest.TestCase):
         history = {i: {"actual_position": pos} for i, pos in enumerate(defensive, start=1)}
         self.assertEqual(_formation_shape(set(history), history), ("5-2-3", "broad_lines"))
 
-    def test_substitution_changes_final_line_distribution(self) -> None:
+    def test_incomplete_starter_positions_are_not_inferred(self) -> None:
         positions = ["GK", "RB", "RCB", "LCB", "LB", "RM", "RCM", "CM", "LCM", "LM", "ST"]
         history = {index: {"actual_position": position, "minutes_played": "90"}
                    for index, position in enumerate(positions, start=1)}
-        history[6]["minutes_played"] = "51"
-        history[12] = {"actual_position": "ST", "minutes_played": "39"}
-        starters, incoming = set(range(1, 12)), {12}
-        outgoing = _departures(starters, incoming, history, 90)
-        self.assertEqual(outgoing, {6})
-        self.assertEqual(_line_shape(starters, history), "4-5-1")
-        self.assertEqual(_line_shape((starters - outgoing) | incoming, history), "4-4-2")
-
-    def test_incomplete_or_ambiguous_substitution_is_not_inferred(self) -> None:
-        positions = ["GK", "RB", "RCB", "LCB", "LB", "RM", "RCM", "CM", "LCM", "LM", "ST"]
-        history = {index: {"actual_position": position, "minutes_played": "90"}
-                   for index, position in enumerate(positions, start=1)}
-        history[6]["minutes_played"] = "88"
-        history[7]["minutes_played"] = "88"
-        history[12] = {"actual_position": "CM", "minutes_played": "4"}
-        self.assertIsNone(_departures(set(range(1, 12)), {12}, history, 90))
         del history[3]["actual_position"]
         self.assertIsNone(_line_shape(set(range(1, 12)), history))
 
@@ -103,8 +92,7 @@ class MatchLineupPhasesTests(unittest.TestCase):
                      (json.dumps({"team_id": "100", "player_id": "12", "actual_position": "ST", "minutes_played": "39"}),))
         phases = match_lineup_phases(conn, detail, 9)
         self.assertEqual(phases["teams"][0]["initialFormation"], "4-5-1")
-        self.assertIsNone(phases["teams"][0]["finalFormation"])
-        self.assertEqual(phases["teams"][0]["finalUncertainty"], "cross_line_substitution")
+        self.assertNotIn("finalFormation", phases["teams"][0])
         conn.execute("""CREATE TABLE match_formation_estimates(
             source_export_id INTEGER,team_ea_id INTEGER,phase TEXT,model_id TEXT,
             formation TEXT,evidence_json TEXT,saved_at TEXT,
@@ -114,13 +102,13 @@ class MatchLineupPhasesTests(unittest.TestCase):
         conn.execute("UPDATE generic_snapshot_rows SET raw_json=? WHERE snapshot_id=2 AND json_extract(raw_json,'$.player_id')='12'",
                      (json.dumps({"team_id": "100", "player_id": "12", "actual_position": "RM", "minutes_played": "39"}),))
         phases = match_lineup_phases(conn, detail, 9)
-        self.assertEqual(phases["teams"][0]["finalFormation"], "4-5-1")
-        self.assertEqual(phases["teams"][0]["substitutionCount"], 1)
+        self.assertEqual(phases["teams"][0]["initialFormation"], "4-5-1")
+        self.assertNotIn("finalFormation", phases["teams"][0])
         save_match_formation_estimates(conn, phases)
         stored = conn.execute("SELECT phase,formation,evidence_json FROM match_formation_estimates ORDER BY phase").fetchall()
         self.assertEqual([(row["phase"], row["formation"]) for row in stored],
-                         [("final", "4-5-1"), ("initial", "4-5-1")])
-        self.assertEqual(json.loads(stored[0]["evidence_json"])["substitutionCount"], 1)
+                         [("initial", "4-5-1")])
+        self.assertEqual(json.loads(stored[0]["evidence_json"])["lineShape"], "4-5-1")
 
 
 if __name__ == "__main__":

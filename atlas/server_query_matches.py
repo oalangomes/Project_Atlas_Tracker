@@ -182,8 +182,7 @@ class MatchQueryMixin:
             else:
                 historical_observed = {}
         if lineup_phases:
-            expected = sum(1 for team in lineup_phases["teams"]
-                           for phase in ("initial", "final") if team.get(f"{phase}Formation"))
+            expected = len(lineup_phases["teams"])
             with self.state.database.connect() as conn:
                 saved = conn.execute(
                     "SELECT COUNT(*) FROM match_formation_estimates "

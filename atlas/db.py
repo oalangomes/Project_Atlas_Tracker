@@ -1288,10 +1288,12 @@ class Database:
             formation_columns = {row[1] for row in conn.execute("PRAGMA table_info(match_formation_estimates)")}
             if "validity" not in formation_columns:
                 conn.execute("ALTER TABLE match_formation_estimates ADD COLUMN validity TEXT NOT NULL DEFAULT 'active'")
-            # Keep the earlier derived evidence for audit, while excluding its
-            # unsupported cross-line formation estimates from current reads.
+            # Preserve older derived evidence for audit. Only the current
+            # initial-XI model is eligible for display or new estimates.
             conn.execute("UPDATE match_formation_estimates SET validity='superseded' "
-                         "WHERE model_id='atlas-match-formation-estimate-v1' AND validity='active'")
+                         "WHERE (phase='final' OR model_id IN "
+                         "('atlas-match-formation-estimate-v1','atlas-match-formation-estimate-v2')) "
+                         "AND validity='active'")
             version_row = conn.execute("SELECT value FROM app_meta WHERE key='schema_version'").fetchone()
             try:
                 previous_schema_version = int(version_row[0]) if version_row else 0
