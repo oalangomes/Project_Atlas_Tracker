@@ -87,7 +87,7 @@ async function renderLoans() {
 function transferMoneyFull(value: any): string {
     const amount=Number(value);
     if(!Number.isFinite(amount)) return "–";
-    return new Intl.NumberFormat("en-GB", {style:"currency", currency:"EUR", maximumFractionDigits:0}).format(amount);
+    return new Intl.NumberFormat(atlasLanguage(), {style:"currency", currency:"EUR", maximumFractionDigits:0}).format(amount);
 }
 function transferCalendarDisplay(value: any): string {
     const text=String(value||""); const match=text.match(/^(\d{2})-(\d{2})$/);

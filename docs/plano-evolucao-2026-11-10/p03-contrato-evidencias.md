@@ -48,6 +48,8 @@ que contribuíram para o numerador. A Comissão Técnica expõe
 `metric_coverage` para seu perfil de equipe e calcula precisão de passes
 somente com pares observados na mesma partida. `METRIC_VERSION=4` e
 `REPORT_VERSION=35` invalidam resultados antigos com semântica diferente.
+Na interface, o idioma selecionado define separadores numéricos e monetários;
+contagens aparecem sem casas decimais e NPK-xG, xG derivado e xA exibem três.
 
 ## Reconciliação e limites
 
@@ -73,6 +75,8 @@ tests -q` (160 testes) e `npm run build` passaram; `git diff --check` passou. Te
 novos cobrem exportação completa, parcial e ausente; carreira e importação
 futura; correção posterior; zero versus ausência; denominadores, posição e
 deltas GER/POT.
-Não houve medição de desempenho nem inspeção visual em navegador nesta
-entrega. Reverter o commit restaura o contrato anterior; não há migração
+Não houve medição de desempenho nem inspeção visual sistemática automatizada.
+O usuário inspecionou o Match Center e aprovou o visual em 18/11/2026; os
+demais cenários não foram confirmados visualmente nessa revisão. Reverter os
+commits restaura o contrato anterior; não há migração
 para desfazer. Caches anteriores perdem elegibilidade pela versão.

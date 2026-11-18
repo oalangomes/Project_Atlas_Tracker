@@ -93,7 +93,7 @@ function commissionFollowupForm(requests, params) {
     return `<form class="commission-followup-form" data-commission-followup data-snapshot-id="${Number(params.snapshot_id || 0)}" data-mode="${esc(params.mode || "")}" data-fixture-id="${Number(params.fixture_id || 0)}" data-player-ea-id="${Number(params.player_ea_id || 0)}" data-model="${esc(params.model || "")}">${prior}<h4>${esc(tr("moreContextTitle"))}</h4><p>${esc(tr("moreContextHelp"))}</p>${fields}<button class="button" type="submit">${esc(tr("sendContext"))}</button></form>`;
 }
 function rawId(value) { const n = Number(value); return Number.isSafeInteger(n) && n > 0 ? String(n) : ""; }
-function compact(value) { const n = Number(value); return Number.isFinite(n) ? new Intl.NumberFormat("en-GB", { notation: "compact", maximumFractionDigits: 1 }).format(n) : "–"; }
+function compact(value) { const n = Number(value); return Number.isFinite(n) ? new Intl.NumberFormat(atlasLanguage(), { notation: "compact", maximumFractionDigits: 1 }).format(n) : "–"; }
 function money(value) {
     const n = Number(value);
     if (!Number.isFinite(n))
@@ -311,7 +311,8 @@ function matchEvidenceMarkup(evidence) {
         return "";
     const states = { complete: "Complete", partial: "Partial", unlinked: "Unlinked", absent: "Absent" };
     const source = evidence.source || {};
-    const rows = (evidence.teams || []).flatMap((team) => (team.indicators || []).map((indicator) => `<tr><td>${team.teamIndex === 0 ? "Home" : "Away"}</td><td>${esc(indicator.label)}</td><td class="num">${indicator.value == null ? "–" : num(indicator.value, 3)}</td><td>${esc(indicator.unit)}</td><td>${indicator.state === "available" ? statusBadge(indicator.origin === "derived" ? "Derived" : "FC26", indicator.origin === "derived" ? "blue" : "good") : statusBadge("Absent", "warn")}</td><td><small>${esc(indicator.reason || indicator.formula || "")}</small></td></tr>`));
+    const decimalIndicators = new Set(["npk_expected_goals", "expected_goals_derived", "expected_assists"]);
+    const rows = (evidence.teams || []).flatMap((team) => (team.indicators || []).map((indicator) => `<tr><td>${team.teamIndex === 0 ? "Home" : "Away"}</td><td>${esc(indicator.label)}</td><td class="num">${indicator.value == null ? "–" : num(indicator.value, decimalIndicators.has(indicator.key) ? 3 : 0)}</td><td>${esc(indicator.unit)}</td><td>${indicator.state === "available" ? statusBadge(indicator.origin === "derived" ? "Derived" : "FC26", indicator.origin === "derived" ? "blue" : "good") : statusBadge("Absent", "warn")}</td><td><small>${esc(indicator.reason || indicator.formula || "")}</small></td></tr>`));
     const positions = evidence.positions || [];
     const observed = positions.filter((position) => position.state === "observed").length;
     return `<div class="data-note">MatchStats: ${statusBadge(states[evidence.state] || evidence.state, evidence.state === "complete" ? "good" : "warn")} · career ${num(evidence.careerId)} · snapshot ${num(evidence.snapshotId)} · fixture ${num(evidence.fixtureId)} · contract ${esc(evidence.version)} · source snapshot ${source.sourceSnapshotId == null ? "–" : num(source.sourceSnapshotId)} · export ${source.exportId == null ? "–" : num(source.exportId)}${evidence.reason ? ` · ${esc(evidence.reason)}` : ""}</div>${rows.length ? table([{ label: "Side" }, { label: "Indicator" }, { label: "Value", cls: "num" }, { label: "Unit" }, { label: "Origin" }, { label: "Method / absence" }], rows) : ""}${positions.length ? `<p class="data-note">Observed match positions: ${num(observed)} / ${num(positions.length)}. Natural position is kept separate; ${num(positions.filter((position) => position.backfilledFromEarlierSnapshot).length)} positions came from an earlier eligible snapshot.</p>` : ""}`;
@@ -1415,7 +1416,7 @@ function transferMoneyFull(value) {
     const amount = Number(value);
     if (!Number.isFinite(amount))
         return "–";
-    return new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(amount);
+    return new Intl.NumberFormat(atlasLanguage(), { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(amount);
 }
 function transferCalendarDisplay(value) {
     const text = String(value || "");
