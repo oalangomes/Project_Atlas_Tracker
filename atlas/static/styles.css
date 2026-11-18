@@ -736,17 +736,6 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 .coach-diary-note{margin:0 0 7px;font-size:14px;line-height:1.6;white-space:normal}
 .coach-diary-meta{color:var(--muted);font-size:11px}
 .coach-diary-caution{color:var(--muted);font-size:12px;line-height:1.5;margin:9px 0 0}
-.coach-diary-imported{margin:0 0 16px;padding:15px 20px;background:rgba(6,19,32,.42)}
-.coach-diary-imported-heading{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:11px}
-.coach-diary-imported-heading strong{font-size:13px}
-.coach-diary-imported-heading small,.coach-diary-imported>p{color:var(--muted);font-size:11px;line-height:1.5}
-.coach-diary-imported>p{margin:11px 0 0}
-.coach-diary-imported-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.coach-diary-imported-team{display:grid;gap:6px;padding:12px;border:1px solid var(--line);border-radius:9px;background:rgba(7,21,34,.72)}
-.coach-diary-imported-team strong{font-size:12px}
-.coach-diary-imported-team span{color:var(--muted);font-size:12px;line-height:1.45}
-.coach-diary-imported-team b{color:var(--text);font-size:15px}
-.coach-diary-imported-team small{font-size:11px}
 .coach-diary-editor,.coach-diary-history{border-top:1px solid var(--line)}
 .coach-diary-editor>summary,.coach-diary-history>summary{cursor:pointer;padding:13px 20px;color:var(--blue);font-size:13px;font-weight:750}
 .coach-diary-editor>summary:hover,.coach-diary-history>summary:hover{background:rgba(94,166,255,.08)}
@@ -778,4 +767,4 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 .goalkeeper-player-support>div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:8px 0;font-size:12px}
 .goalkeeper-player-support strong{flex:none;font-variant-numeric:tabular-nums}
 .goalkeeper-player-limit,.goalkeeper-player-source{font-size:11px;line-height:1.5;color:var(--muted);margin:11px 0 0}
-@media(max-width:720px){.coach-diary-heading{align-items:flex-start}.coach-diary-imported-grid{grid-template-columns:1fr}.goalkeeper-player-key,.goalkeeper-player-support{grid-template-columns:1fr}}
+@media(max-width:720px){.coach-diary-heading{align-items:flex-start}.goalkeeper-player-key,.goalkeeper-player-support{grid-template-columns:1fr}}

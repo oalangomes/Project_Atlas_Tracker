@@ -83,19 +83,6 @@ function goalkeeperPlayerContext(side:any,keeper:any,interpretationLimit:string)
     </section>`;
 }
 
-function importedMatchTacticsPanel(d:any):string {
-    const homeId=Number(d.match?.home_team_ea_id),awayId=Number(d.match?.away_team_ea_id);
-    const teamId=Number(d.snapshot?.managed_team_ea_id);
-    const ownId=teamId===homeId||teamId===awayId?teamId:homeId;
-    const opponentId=ownId===homeId?awayId:homeId;
-    const imported=(id:number,title:string)=>{
-        const facts=(d.importedTactics||[]).find((item:any)=>Number(item.teamEaId)===id);
-        const positionCount=Number(facts?.observedPositionCount||0),participants=Number(facts?.participantCount||0);
-        return `<div class="coach-diary-imported-team"><strong>${title}</strong><span>${positionCount?`${num(positionCount)} posições de partida registradas em ${num(participants)} atletas`:"Posições de partida não disponíveis no export"}</span><span>${facts?.initialLineDistribution?`Distribuição do XI inicial: <b>${esc(facts.initialLineDistribution)}</b> <small>(estimativa pelas posições do FC26)</small>`:"Distribuição do XI inicial não determinável"}</span></div>`;
-    };
-    return `<section class="card coach-diary-imported"><div class="coach-diary-imported-heading"><strong>Escalação e posições registradas</strong><small>Dados importados do FC26; não precisam ser digitados.</small></div><div class="coach-diary-imported-grid">${imported(ownId,"Seu clube")}${imported(opponentId,"Adversário")}</div><p>A distribuição por linhas só aparece quando o export identifica onze titulares. Ela não confirma o esquema tático nem mudanças durante a partida.</p></section>`;
-}
-
 function matchDiaryPanel(d:any):string {
     const current=d.coachDiary?.current, entry=current?.content||{}, knownAtSnapshot=d.coachDiary?.knownAtSnapshot;
     const legacy=!!(entry.ownFormation||entry.opponentFormation||entry.opponentHypothesis||entry.opponentAlternative||entry.opponentEvidence||entry.opponentDefensiveLine||entry.ownLineup?.length||entry.opponentLineup?.length);
@@ -277,7 +264,7 @@ async function renderMatch() {
 
     content.innerHTML = `<div class="content-inner wide">${pageHead("Match report", `${dateText(m.date)} · ${esc(timeText(m.time))}`, `<button class="button" data-route="match-center">Match Center</button>`)}
       <section class="card fixture-hero"><div class="fixture-meta"><span class="inline-identity">${identityLogo(d.competitionIdentity,m.competition_name,"inline-logo")}${competitionLink(m.competition_object_id,m.competition_name)}</span> · ${m.is_completed?"COMPLETED":"SCHEDULED"}</div><div class="fixture-scoreboard"><div class="fixture-club">${identityLogo(d.homeIdentity,m.home_team_name,"fixture-club-logo")}<h2>${clubLink(m.home_team_ea_id,m.home_team_name)}</h2></div><div class="fixture-score">${m.is_completed?`${num(m.home_score)} : ${num(m.away_score)}`:"VS"}<small>${m.home_penalties!=null||m.away_penalties!=null?`Penalty shoot-out ${num(m.home_penalties)}:${num(m.away_penalties)}`:esc(m.managed_team_result||"")}</small></div><div class="fixture-club">${identityLogo(d.awayIdentity,m.away_team_name,"fixture-club-logo")}<h2>${clubLink(m.away_team_ea_id,m.away_team_name)}</h2></div></div></section>
-      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison||`<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${importedMatchTacticsPanel(d)}${matchDiaryPanel(d)}${events}
+      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison||`<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${matchDiaryPanel(d)}${events}
       <section id="p0-match-players" class="card match-performance-section"><header class="card-header"><div><h2>Player performances</h2><p>${hasDetailed?"Direct FC26 match data for exported participants":"Detailed MatchStats unavailable; ratings and conservative snapshot reconstruction are shown when recorded"}</p></div></header>${d.performances.length?performanceBody:`<div class="card-body muted">No player performances were exported for this match.</div>`}</section>
       ${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings",d.capabilities?.matchRatings?"Available":"Partial","ratings and minutes")}${metric("Detailed FC26 data",hasDetailed?"Available":"Not available",hasDetailed?`${num(detailed.players?.length||0)} participants`:"snapshot data fallback",hasDetailed?"green":"amber")}${metric("Events",hasDetailed?num(detailed.events?.length||0):"–",hasDetailed?"not chronological · no confirmed minutes":"no detailed source")}${metric("Link confidence",hasDetailed?`${num(detailed.linkageConfidence*100,0)} %`:"–","import linkage metadata")}${metric("xG model",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG + NPK-xG":"NPK-xG"):"–",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG = NPK-xG + 0.7 × penalty attempts":"direct FC26 NPK value"):"")}</div><p class="data-note">${esc(detailed.xgNote||"")} ${esc(detailed.eventTimingNote||"")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
     </div>`;
