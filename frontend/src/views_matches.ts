@@ -46,9 +46,9 @@ function detailedStatText(key:string,value:any):string {
     if(key==="npk_expected_goals"||key==="expected_assists") return num(value,2);
     return num(value,Number(value)%1?2:0);
 }
-function detailedPlayerDrawer(p:any,analysis=""):string {
+function detailedPlayerDrawer(p:any,analysis="",goalkeeperContext=""):string {
     const s=p.detailedStats||{};
-    if(!Object.keys(s).length&&!analysis) return "";
+    if(!Object.keys(s).length&&!analysis&&!goalkeeperContext) return "";
     const context=[
       ["xG+xA /90",s.xg_plus_xa_per90==null?"–":num(s.xg_plus_xa_per90,2)],
       ["xG per shot",s.xg_per_shot==null?"–":num(s.xg_per_shot,3)],
@@ -56,7 +56,7 @@ function detailedPlayerDrawer(p:any,analysis=""):string {
       ["Duels",s.combined_duel_success_pct==null?"–":`${num(s.combined_duel_success_pct,1)} %`],
       ["Possession balance",Number(s.possession_balance)>=0?`+${num(s.possession_balance)}`:num(s.possession_balance)]
     ];
-    return `<details class="match-player-details"><summary>Match profile & all metrics</summary>${analysis}<div class="match-context-strip">${context.map((x:any)=>`<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join("")}</div><div class="detailed-stat-groups">${detailedStatGroups.map((g:any)=>{const items=g.keys.filter((k:string)=>s[k]!=null);return items.length?`<div class="detailed-stat-group"><h4>${esc(g.label)}</h4>${items.map((k:string)=>`<div><span>${esc(detailedStatLabels[k]||k)}</span><strong>${detailedStatText(k,s[k])}</strong></div>`).join("")}</div>`:"";}).join("")}</div></details>`;
+    return `<details class="match-player-details"><summary>${goalkeeperContext?"Análise do goleiro e métricas":"Match profile & all metrics"}</summary>${analysis}${goalkeeperContext}${goalkeeperContext?"":`<div class="match-context-strip">${context.map((x:any)=>`<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join("")}</div>`}<div class="detailed-stat-groups">${detailedStatGroups.map((g:any)=>{const items=g.keys.filter((k:string)=>s[k]!=null);return items.length?`<div class="detailed-stat-group"><h4>${esc(g.label)}</h4>${items.map((k:string)=>`<div><span>${esc(detailedStatLabels[k]||k)}</span><strong>${detailedStatText(k,s[k])}</strong></div>`).join("")}</div>`:"";}).join("")}</div></details>`;
 }
 function matchComparisonRow(label:string,left:any,right:any,format:(v:any)=>string=(v:any)=>num(v)):string {
     const hasLeft=left!=null&&Number.isFinite(Number(left)),hasRight=right!=null&&Number.isFinite(Number(right));
@@ -65,75 +65,85 @@ function matchComparisonRow(label:string,left:any,right:any,format:(v:any)=>stri
     return `<div class="match-stat-row"><strong class="left">${left==null?"–":format(left)}</strong><div class="match-stat-label"><span>${esc(label)}</span>${bars}</div><strong>${right==null?"–":format(right)}</strong></div>`;
 }
 
-function goalkeeperMatchView(evidence:any, match:any, players:any[]):string {
-    if (!evidence?.sides?.length) return "";
-    const reasons:Record<string,string>={multiple_goalkeepers:"Two goalkeepers played; team context cannot be assigned to one player.",uncertain_minutes:"Goalkeeper minutes are incomplete.",no_goalkeeper:"No goalkeeper could be identified in this export.",missing_save_rate_input:"Saves, goals conceded or opponent shots on target are missing.",team_saves_mismatch:"Player saves differ from team saves.",goal_concession_mismatch:"Player and team goals conceded differ.",shots_on_target_mismatch:"Saves plus goals conceded do not equal opponent shots on target.",no_shots_on_target:"No opponent shots on target.",missing_goal_concession_pair:"Player or team goals conceded are missing.",missing_total_opponent_xg:"Total opponent xG cannot be derived from this export."};
-    const cards=evidence.sides.map((side:any)=>{
-        const teamName=Number(side.teamEaId)===Number(match.home_team_ea_id)?match.home_team_name:match.away_team_name;
-        const keepers=(side.keepers||[]).map((keeper:any)=>{
-            const player=players.find((item:any)=>Number(item.playerEaId)===Number(keeper.playerEaId));
-            return `<p>${playerLink(keeper.playerEaId,player?.displayName||`Player ${keeper.playerEaId}`)} · ${keeper.minutes==null?"–":num(keeper.minutes)} min · ${keeper.saves==null?"–":num(keeper.saves)} saves · ${keeper.goalsConceded==null?"–":num(keeper.goalsConceded)} conceded <small>(${esc(keeper.positionBasis)} position)</small></p>`;
-        }).join("")||'<p class="muted">No goalkeeper row</p>';
-        const values=side.metrics||{};
-        const show=(value:any,precision=1)=>value==null?"–":num(value,precision);
-        return `<article class="card pad"><h3 class="card-title">${esc(teamName||"Team")}</h3>${keepers}<div class="grid metrics compact">${metric("Opponent shots on target",show(values.opponentShotsOnTarget,0),"team export")}${metric("Save rate",values.saveRatePct==null?"–":`${show(values.saveRatePct)} %`,"saves / opponent shots on target")}${metric("Saves / 90",show(values.savesPer90,2),"goalkeeper export")}${metric("Conceded / 90",show(values.goalsConcededPer90,2),"requires team reconciliation")}${metric("Opponent xG",show(values.opponentXg,2),"conventional total xG")}${metric("xGA − GA",show(values.goalsPrevented,2),"chance-quality context")}${metric("xGA − GA / 90",show(values.goalsPreventedPer90,2),"chance-quality context")}</div>${side.saveRateReason?`<p class="data-note">Save rate unavailable: ${esc(reasons[side.saveRateReason]||side.saveRateReason)}</p>`:""}${side.goalsPreventedReason?`<p class="data-note">xGA − GA unavailable: ${esc(reasons[side.goalsPreventedReason]||side.goalsPreventedReason)}</p>`:""}</article>`;
-    }).join("");
-    return `<section class="grid two-col" aria-label="Goalkeeper context">${cards}</section><p class="data-note">${esc(evidence.interpretationLimit||"")} Opponent xG is based on NPK-xG plus modelled penalty attempts only when penalty context is available.</p>`;
+function goalkeeperPlayerContext(side:any,keeper:any,interpretationLimit:string):string {
+    const reasons:Record<string,string>={multiple_goalkeepers:"Mais de um goleiro atuou; os dados coletivos não podem ser atribuídos individualmente.",uncertain_minutes:"Minutos dos goleiros incompletos.",no_goalkeeper:"Goleiro não identificado.",missing_save_rate_input:"Faltam defesas, gols sofridos ou chutes no alvo.",team_saves_mismatch:"Defesas individuais diferem do total da equipe.",goal_concession_mismatch:"Gols sofridos pelo jogador e pela equipe diferem.",shots_on_target_mismatch:"Defesas mais gols sofridos não correspondem aos chutes no alvo.",no_shots_on_target:"O adversário não finalizou no alvo.",missing_goal_concession_pair:"Falta o número de gols sofridos pelo jogador ou pela equipe.",missing_total_opponent_xg:"xG total do adversário indisponível."};
+    const values=side.metrics||{};
+    const show=(value:any,precision=1)=>value==null?"–":num(value,precision);
+    const row=(label:string,value:string)=>`<div><span>${label}</span><strong>${value}</strong></div>`;
+    const limits=[side.saveRateReason,side.goalsPreventedReason].filter(Boolean).filter((reason:string,index:number,items:string[])=>items.indexOf(reason)===index).map((reason:string)=>reasons[reason]||reason);
+    return `<section class="goalkeeper-player-context" aria-label="Análise do goleiro">
+      <div class="goalkeeper-player-context-head"><h4>Análise do goleiro</h4><span>${keeper.minutes==null?"Minutos N/D":`${show(keeper.minutes,0)} min`} · ${keeper.saves==null?"Defesas N/D":`${show(keeper.saves,0)} defesas`} · ${keeper.goalsConceded==null?"Gols sofridos N/D":`${show(keeper.goalsConceded,0)} gols sofridos`}</span></div>
+      <div class="goalkeeper-player-key">
+        <div><span>Taxa de defesa</span><strong>${values.saveRatePct==null?"–":`${show(values.saveRatePct)} %`}</strong><small>Defesas ÷ finalizações no alvo do adversário</small></div>
+        <div><span>xGA − gols sofridos</span><strong>${show(values.goalsPrevented,2)}</strong><small>Contexto das chances; não mede mérito individual</small></div>
+      </div>
+      <div class="goalkeeper-player-support">${row("Finalizações no alvo do adversário",show(values.opponentShotsOnTarget,0))}${row("Defesas / 90",show(values.savesPer90,2))}${row("Gols sofridos / 90",show(values.goalsConcededPer90,2))}${row("xG do adversário",show(values.opponentXg,2))}${row("xGA − gols sofridos / 90",show(values.goalsPreventedPer90,2))}</div>
+      ${limits.length?`<p class="goalkeeper-player-limit">${esc(limits.join(" "))}</p>`:""}
+      <p class="goalkeeper-player-source">Fonte: atuação do goleiro e estatísticas coletivas FC26. ${esc(interpretationLimit||"")}</p>
+    </section>`;
 }
 
-function diaryLineupText(items:any[]):string {
-    return (items||[]).map((item:any)=>[item.playerEaId,item.starter===true?"sim":item.starter===false?"não":"?",
-        item.observedPosition||"",item.role||"",item.onMinute??"",item.offMinute??""].join("; ")).join("\n");
-}
-
-function diaryLineupParse(value:string):any[] {
-    return value.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map((line,index)=>{
-        const [id,starter,position,role,on,off]=line.split(";").map(part=>part.trim());
-        const playerEaId=Number(id);
-        if(!Number.isInteger(playerEaId)||playerEaId<=0)throw new Error(`Linha ${index+1}: informe um EA ID válido.`);
-        const starterValue=starter?.toLowerCase();
-        if(!["sim","não","nao","?",""].includes(starterValue||""))throw new Error(`Linha ${index+1}: titular deve ser sim, não ou ?.`);
-        const minute=(text:string|undefined)=>{
-            if(!text)return null;
-            const value=Number(text);
-            if(!Number.isInteger(value)||value<0||value>130)throw new Error(`Linha ${index+1}: minuto inválido.`);
-            return value;
-        };
-        return {playerEaId,starter:starterValue==="sim"?true:["não","nao"].includes(starterValue||"")?false:null,
-            observedPosition:position||null,role:role||null,onMinute:minute(on),offMinute:minute(off)};
-    });
+function diaryLineupRow(item:any,players:any[]):string {
+    const id=Number(item?.playerEaId||0),known=players.some((p:any)=>Number(p.player_ea_id)===id);
+    const options=players.map((p:any)=>`<option value="${Number(p.player_ea_id)}" ${Number(p.player_ea_id)===id?"selected":""}>${esc(p.display_name||`EA ${p.player_ea_id}`)}</option>`).join("");
+    const manual=id>0&&!known;
+    return `<div class="coach-lineup-row" data-coach-lineup-row>
+      <label><span>Atleta</span><select data-coach-player><option value="">Selecione</option>${options}<option value="manual" ${manual?"selected":""}>Outro EA ID</option></select></label>
+      <label data-coach-manual-wrap ${manual?"":"hidden"}><span>EA ID</span><input data-coach-player-manual type="number" min="1" value="${manual?id:""}"></label>
+      <label><span>Titular</span><select data-coach-starter><option value="" ${item?.starter==null?"selected":""}>Não informado</option><option value="yes" ${item?.starter===true?"selected":""}>Sim</option><option value="no" ${item?.starter===false?"selected":""}>Não</option></select></label>
+      <label><span>Posição</span><input data-coach-position value="${esc(item?.observedPosition||"")}" placeholder="Ex.: GK"></label>
+      <label><span>Função</span><input data-coach-role maxlength="80" value="${esc(item?.role||"")}" placeholder="Opcional"></label>
+      <label><span>Entrou</span><input data-coach-on type="number" min="0" max="130" value="${item?.onMinute??""}" placeholder="min"></label>
+      <label><span>Saiu</span><input data-coach-off type="number" min="0" max="130" value="${item?.offMinute??""}" placeholder="min"></label>
+      <button class="button coach-lineup-remove" type="button" data-coach-remove aria-label="Remover atleta">×</button>
+    </div>`;
 }
 
 function matchDiaryPanel(d:any):string {
-    const current=d.coachDiary?.current, content=current?.content||{}, shape=current?.formationContext||{status:"indeterminate"};
-    const historical=d.coachDiary?.knownAtSnapshot;
+    const current=d.coachDiary?.current, entry=current?.content||{}, shape=current?.formationContext||{status:"indeterminate"};
     const ownShape=current?.ownFormationContext||{status:"indeterminate"};
-    const positionConflicts=(content.ownLineup||[]).flatMap((item:any)=>{
+    const knownAtSnapshot=d.coachDiary?.knownAtSnapshot;
+    const labels:any={confirmed_manual:"Confirmada",estimated_manual:"Hipótese",estimated_observed_xi:"Estimada pelo XI",indeterminate:"Não informada"};
+    const teamId=Number(d.snapshot?.managed_team_ea_id);
+    const homeId=Number(d.match?.home_team_ea_id),awayId=Number(d.match?.away_team_ea_id);
+    const opponentId=teamId===homeId?awayId:homeId;
+    const playersFor=(id:number)=>(d.performances||[]).filter((p:any)=>Number(p.match_team_ea_id??p.team_ea_id)===id).sort((a:any,b:any)=>String(a.display_name||"").localeCompare(String(b.display_name||"")));
+    const ownPlayers=playersFor(teamId),opponentPlayers=playersFor(opponentId);
+    const lineup=(side:string,title:string,items:any[],players:any[])=>`<section class="coach-lineup-side" data-coach-lineup-side="${side}"><div class="coach-lineup-heading"><h4>${title}</h4><button class="button" type="button" data-coach-add="${side}">Adicionar atleta</button></div><div class="coach-lineup-rows" data-coach-rows>${(items||[]).map((item:any)=>diaryLineupRow(item,players)).join("")}</div></section>`;
+    const positionConflicts=(entry.ownLineup||[]).flatMap((item:any)=>{
         const imported=(d.performances||[]).find((row:any)=>Number(row.player_ea_id)===Number(item.playerEaId));
         const extracted=observedPositionOf(imported);
         return extracted&&item.observedPosition&&canonicalPosition(extracted)!==canonicalPosition(item.observedPosition)
             ? [`EA ${num(item.playerEaId)}: treinador ${esc(item.observedPosition)} · FC26 ${esc(extracted)}`] : [];
     });
-    const label:any={confirmed_manual:"Confirmada pelo treinador",estimated_manual:"Hipótese do treinador",
-        estimated_observed_xi:"Estimada a partir de XI observado",indeterminate:"Indeterminada"};
     const history=(d.coachDiary?.revisions||[]).map((item:any)=>`<li>Rev. ${num(item.revision)} · ${esc(item.author)} · ${esc(item.recorded_at)} · ${item.active?"ativa":"invalidada"}<small class="table-subline">${esc(item.content?.note||"Sem nota textual")}</small></li>`).join("");
-    return `<section class="card pad" data-coach-diary-panel><h2 class="card-title">Diário do Treinador</h2>
-      <p class="data-note">Observação manual vinculada a esta partida. ${current?.retrospective?`Registro ou revisão posterior ao snapshot exibido; contexto retrospectivo. ${current.knownAtSnapshot?`Conhecido à época: revisão ${num(current.knownAtSnapshot.revision)} de ${esc(current.knownAtSnapshot.author)}.`:"Nenhuma revisão era conhecida à época."}`:"Revisões ficam preservadas e atribuídas."}</p>
-      ${!current&&historical?`<p class="data-note">Registro atual invalidado. No snapshot, a revisão ${num(historical.revision)} de ${esc(historical.author)} estava ativa: ${esc(historical.content?.note||"sem nota textual")}.</p>`:""}
-      <p><strong>Formação própria:</strong> ${esc(label[ownShape.status]||"Indeterminada")}${ownShape.formation?` · ${esc(ownShape.formation)}`:""} · <strong>Formação rival:</strong> ${esc(label[shape.status]||"Indeterminada")}${shape.formation?` · ${esc(shape.formation)}`:""}${shape.alternative?` · alternativa ${esc(shape.alternative)}`:""}${shape.defensiveLine?` · linha de ${num(shape.defensiveLine)}`:""}</p>
-      ${positionConflicts.length?`<p class="data-note">Posições divergentes (fontes preservadas): ${positionConflicts.join("; ")}</p>`:""}
-      ${shape.support?`<p class="data-note">${esc(shape.support)}</p>`:""}
-      <form data-coach-diary-form class="grid">
-        <div class="grid two-col"><label>Autor / treinador<input name="author" required maxlength="120" value="${esc(current?.author||"")}"></label><label>Data da observação<input name="observedAt" type="date" value="${esc(current?.observed_at?.slice(0,10)||d.match?.date||"")}"></label></div>
-        <label>Nota da partida<textarea name="note" rows="4" maxlength="5000">${esc(content.note||"")}</textarea></label>
-        <div class="grid two-col"><label>Formação própria observada<input name="ownFormation" placeholder="Ex.: 4-2-3-1" value="${esc(content.ownFormation||"")}"></label><label>Linha defensiva rival observada<select name="opponentDefensiveLine"><option value="">N/D</option>${[3,4,5].map(n=>`<option value="${n}" ${content.opponentDefensiveLine===n?"selected":""}>${n}</option>`).join("")}</select></label></div>
-        <div class="grid two-col"><label>Formação rival confirmada por observação<input name="opponentFormation" placeholder="Ex.: 5-4-1" value="${esc(content.opponentFormation||"")}"></label><label>Hipótese de formação rival<input name="opponentHypothesis" placeholder="Se não confirmada" value="${esc(content.opponentHypothesis||"")}"></label></div>
-        <div class="grid two-col"><label>Alternativa à hipótese<input name="opponentAlternative" value="${esc(content.opponentAlternative||"")}"></label><label>Evidência observada<input name="opponentEvidence" maxlength="1200" value="${esc(content.opponentEvidence||"")}"></label></div>
-        <p class="data-note">Escalações parciais são aceitas. Uma linha por atleta: EA ID; titular (sim/não/?); posição observada; função; minuto de entrada; minuto de saída. Deixe minutos e posição vazios quando desconhecidos.</p>
-        <div class="grid two-col"><label>Seu clube<textarea name="ownLineup" rows="5" placeholder="12345; sim; CB; zagueiro; ;">${esc(diaryLineupText(content.ownLineup||[]))}</textarea></label><label>Adversário<textarea name="opponentLineup" rows="5" placeholder="67890; sim; ST; atacante; ;">${esc(diaryLineupText(content.opponentLineup||[]))}</textarea></label></div>
-        <div><button class="button primary" type="submit">${current?"Salvar revisão":"Salvar observação"}</button>${current?'<button class="button" type="button" data-coach-diary-invalidate>Invalidar registro</button>':""}</div>
-        <p class="data-note" data-coach-diary-status aria-live="polite"></p>
-      </form>${history?`<details><summary>Histórico de revisões</summary><ol>${history}</ol></details>`:""}</section>`;
+    return `<section class="card coach-diary" data-coach-diary-panel>
+      <header class="coach-diary-heading"><div><span class="coach-diary-eyebrow">CONTEXTO DA PARTIDA</span><h2>Diário do treinador</h2><p>Observações registradas por você para esta partida.</p></div><span class="coach-diary-state">${current?"Registrado":"Sem registro"}</span></header>
+      <div class="coach-diary-summary">
+        ${current?`<p class="coach-diary-note">${esc(entry.note||"Sem nota textual.").replace(/\n/g,"<br>")}</p><div class="coach-diary-meta">${esc(current.author)} · ${esc(current.observed_at?.slice(0,10)||"Data não informada")}${current.retrospective?" · Registro retrospectivo":""}</div>`:`<p class="coach-diary-empty">Nenhuma observação registrada. Acrescente uma nota se houver algo relevante que os dados da partida não mostram.</p>`}
+        ${current&&(ownShape.formation||shape.formation||shape.defensiveLine)?`<div class="coach-diary-chips">${ownShape.formation?`<span>Seu clube: ${esc(ownShape.formation)}</span>`:""}${shape.formation?`<span>Rival: ${esc(shape.formation)} · ${esc(labels[shape.status]||"")}</span>`:""}${shape.defensiveLine?`<span>Linha rival: ${num(shape.defensiveLine)}</span>`:""}</div>`:""}
+        ${positionConflicts.length?`<p class="coach-diary-caution">Posições divergentes: ${positionConflicts.join("; ")}</p>`:""}
+        ${!current&&knownAtSnapshot?`<p class="coach-diary-caution">Registro atual invalidado. A revisão ${num(knownAtSnapshot.revision)} estava ativa no snapshot.</p>`:""}
+      </div>
+      <details class="coach-diary-editor"><summary>${current?"Editar observação":"Adicionar observação"}</summary>
+        <form data-coach-diary-form class="coach-diary-form">
+          <div class="coach-diary-fields"><label><span>Autor / treinador</span><input name="author" required maxlength="120" value="${esc(current?.author||"")}" placeholder="Seu nome"></label><label><span>Data da observação</span><input name="observedAt" type="date" value="${esc(current?.observed_at?.slice(0,10)||d.match?.date||"")}"></label></div>
+          <label><span>Nota da partida</span><textarea name="note" rows="4" maxlength="5000" placeholder="O que você observou nesta partida?">${esc(entry.note||"")}</textarea></label>
+          <details class="coach-diary-advanced" ${entry.ownFormation||entry.opponentFormation||entry.opponentHypothesis||entry.opponentEvidence||entry.opponentDefensiveLine?"open":""}><summary>Contexto tático <small>opcional</small></summary>
+            <div class="coach-diary-fields"><label><span>Formação do seu clube</span><input name="ownFormation" placeholder="Ex.: 4-2-3-1" value="${esc(entry.ownFormation||"")}"></label><label><span>Linha defensiva rival</span><select name="opponentDefensiveLine"><option value="">Não informada</option>${[3,4,5].map(n=>`<option value="${n}" ${entry.opponentDefensiveLine===n?"selected":""}>${n} jogadores</option>`).join("")}</select></label></div>
+            <div class="coach-diary-fields"><label><span>Formação rival confirmada</span><input name="opponentFormation" placeholder="Ex.: 5-4-1" value="${esc(entry.opponentFormation||"")}"></label><label><span>Hipótese de formação rival</span><input name="opponentHypothesis" placeholder="Ex.: 5-4-1" value="${esc(entry.opponentHypothesis||"")}"></label></div>
+            <div class="coach-diary-fields"><label><span>Formação alternativa</span><input name="opponentAlternative" value="${esc(entry.opponentAlternative||"")}"></label><label><span>Evidência observada</span><input name="opponentEvidence" maxlength="1200" value="${esc(entry.opponentEvidence||"")}" placeholder="O que sustenta a leitura?"></label></div>
+          </details>
+          <details class="coach-diary-advanced" ${entry.ownLineup?.length||entry.opponentLineup?.length?"open":""}><summary>Atletas e posições observadas <small>opcional</small></summary>
+            <p class="coach-diary-help">Adicione apenas os atletas que você observou. Deixe posição e minutos em branco quando não souber.</p>
+            ${lineup("own","Seu clube",entry.ownLineup||[],ownPlayers)}${lineup("opponent","Adversário",entry.opponentLineup||[],opponentPlayers)}
+          </details>
+          <div class="coach-diary-actions"><button class="button primary" type="submit">${current?"Salvar revisão":"Salvar observação"}</button>${current?'<button class="button" type="button" data-coach-diary-invalidate>Invalidar registro</button>':""}</div>
+          <p class="coach-diary-status" data-coach-diary-status aria-live="polite"></p>
+        </form>
+      </details>
+      ${history?`<details class="coach-diary-history"><summary>Histórico de revisões</summary><ol>${history}</ol></details>`:""}
+    </section>`;
 }
 
 function bindMatchDiary(d:any):void {
@@ -142,6 +152,31 @@ function bindMatchDiary(d:any):void {
     if(!panel||!form)return;
     const status=panel.querySelector<HTMLElement>("[data-coach-diary-status]");
     const refresh=(response:any)=>{d.coachDiary=response;panel.outerHTML=matchDiaryPanel(d);bindMatchDiary(d);};
+    const lineupPlayers=(side:string)=>{
+        const teamId=Number(d.snapshot?.managed_team_ea_id);
+        const opponentId=teamId===Number(d.match?.home_team_ea_id)?Number(d.match?.away_team_ea_id):Number(d.match?.home_team_ea_id);
+        return (d.performances||[]).filter((p:any)=>Number(p.match_team_ea_id??p.team_ea_id)===(side==="own"?teamId:opponentId)).sort((a:any,b:any)=>String(a.display_name||"").localeCompare(String(b.display_name||"")));
+    };
+    form.addEventListener("click",(event)=>{
+        const target=event.target as HTMLElement;
+        const add=target.closest<HTMLButtonElement>("[data-coach-add]");
+        if(add){const side=add.dataset.coachAdd||"own";form.querySelector(`[data-coach-lineup-side="${side}"] [data-coach-rows]`)?.insertAdjacentHTML("beforeend",diaryLineupRow({},lineupPlayers(side)));return;}
+        const remove=target.closest<HTMLButtonElement>("[data-coach-remove]");
+        if(remove)remove.closest("[data-coach-lineup-row]")?.remove();
+    });
+    form.addEventListener("change",(event)=>{
+        const player=(event.target as HTMLElement).closest<HTMLSelectElement>("[data-coach-player]");
+        if(player){const manual=player.closest("[data-coach-lineup-row]")?.querySelector<HTMLElement>("[data-coach-manual-wrap]");if(manual)manual.hidden=player.value!=="manual";}
+    });
+    const readLineup=(side:string)=>[...form.querySelectorAll<HTMLElement>(`[data-coach-lineup-side="${side}"] [data-coach-lineup-row]`)].map((row,index)=>{
+        const value=(selector:string)=>String(row.querySelector<HTMLInputElement|HTMLSelectElement>(selector)?.value||"").trim();
+        const selection=value("[data-coach-player]");
+        const playerEaId=Number(selection==="manual"?value("[data-coach-player-manual]"):selection);
+        if(!Number.isInteger(playerEaId)||playerEaId<=0)throw new Error(`${side==="own"?"Seu clube":"Adversário"}, atleta ${index+1}: selecione um jogador ou informe o EA ID.`);
+        const minute=(selector:string)=>{const raw=value(selector);if(!raw)return null;const parsed=Number(raw);if(!Number.isInteger(parsed)||parsed<0||parsed>130)throw new Error(`Atleta ${index+1}: minuto deve estar entre 0 e 130.`);return parsed;};
+        const starter=value("[data-coach-starter]");
+        return {playerEaId,starter:starter==="yes"?true:starter==="no"?false:null,observedPosition:value("[data-coach-position]")||null,role:value("[data-coach-role]")||null,onMinute:minute("[data-coach-on]"),offMinute:minute("[data-coach-off]")};
+    });
     form.onsubmit=async(event)=>{
         event.preventDefault();
         try {
@@ -150,8 +185,8 @@ function bindMatchDiary(d:any):void {
                 author:get("author"),observedAt:get("observedAt"),note:get("note"),ownFormation:get("ownFormation"),
                 opponentDefensiveLine:get("opponentDefensiveLine"),opponentFormation:get("opponentFormation"),
                 opponentHypothesis:get("opponentHypothesis"),opponentAlternative:get("opponentAlternative"),
-                opponentEvidence:get("opponentEvidence"),ownLineup:diaryLineupParse(get("ownLineup")),
-                opponentLineup:diaryLineupParse(get("opponentLineup"))};
+                opponentEvidence:get("opponentEvidence"),ownLineup:readLineup("own"),
+                opponentLineup:readLineup("opponent")};
             const response=await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/save`,
                 {method:"POST",body:JSON.stringify(payload)});
             refresh(response);
@@ -201,8 +236,16 @@ async function renderMatch() {
     const eventTeamName=(idx:any)=>{const team=teamByIndex.get(Number(idx)),id=Number(team?.teamEaId);return id===Number(m.home_team_ea_id)?m.home_team_name:id===Number(m.away_team_ea_id)?m.away_team_name:`Team ${num(Number(idx)+1)}`;};
     const events=hasDetailed?`<section class="card"><header class="card-header"><div><h2>Event overview</h2><p>Exported events — no inferred chronology or match minute</p></div></header><div class="match-event-grid">${(detailed.events||[]).length?(detailed.events||[]).map((e:any)=>`<div class="match-event ${esc(e.type)}"><span class="event-icon">${e.type==="yellow_card"?"▰":e.type==="red_card"?"■":e.type==="motm"?"★":e.type==="goal"||e.type==="penalty_goal"?"●":"•"}</span><div><strong>${esc(eventNames.get(Number(e.playerEaId))||e.displayName||`Player ${e.playerEaId}`)}</strong><small>${esc(e.label)}${Number(e.count)>1?` ×${num(e.count)}`:""}</small></div><span>${esc(eventTeamName(e.teamIndex))}</span></div>`).join(""):`<div class="card-body muted">No exported events for this match.</div>`}</div><div class="data-note">${esc(detailed.eventTimingNote||"")}</div></section>`:"";
     const matchPlayerAnalysisHtml=new Map<number,string>();
+    const ownGoalkeeperSide=(detailed.goalkeeperEvidence?.sides||[]).find((side:any)=>Number(side.teamEaId)===Number(d.snapshot?.managed_team_ea_id));
+    const goalkeeperContextFor=(p:any)=>{
+        if(Number(p.match_team_ea_id??p.team_ea_id)!==Number(d.snapshot?.managed_team_ea_id))return "";
+        const keeper=ownGoalkeeperSide?.keepers?.find((item:any)=>Number(item.playerEaId)===Number(p.player_ea_id));
+        if(!keeper||keeper.minutes===0)return "";
+        if(ownGoalkeeperSide.state==="single_goalkeeper"&&Number(ownGoalkeeperSide.eligibleKeeperId)!==Number(p.player_ea_id))return "";
+        return goalkeeperPlayerContext(ownGoalkeeperSide,keeper,detailed.goalkeeperEvidence?.interpretationLimit||"");
+    };
     const performanceRow=(p:any)=>{const s=p.detailedStats||p.reconstructedStats||{};const detailedRow=!!p.detailedStats;const observedPosition=observedPositionOf(p);return `<tr>
-        <td><div class="player-line">${playerPortrait(p.media,p.display_name,"table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id,p.display_name)}${detailedPlayerDrawer(p,matchPlayerAnalysisHtml.get(Number(p.player_ea_id))||"")}</div></div></td>
+        <td><div class="player-line">${playerPortrait(p.media,p.display_name,"table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id,p.display_name)}${detailedPlayerDrawer(p,matchPlayerAnalysisHtml.get(Number(p.player_ea_id))||"",goalkeeperContextFor(p))}</div></div></td>
         <td class="center" data-sort="${positionOrder(observedPosition??p.primary_position,p.primary_position_id)}">${observedPosition?`${positionBadge(observedPosition)}<small class="match-position-source">Observed</small>`:`${positionBadge(p.primary_position)}<small class="match-position-source">Registered · observed N/D</small>`}</td><td class="num">${num(s.minutes_played??p.minutes_played)}</td><td class="num"><b>${s.game_rating!=null?num(s.game_rating,1):p.rating?num(p.rating,1):"–"}</b></td>
         <td class="num">${detailedRow?`${num(s.goals_derived)}/${num(s.assists)}`:s.source?`${num(s.goals)}/${num(s.assists)}`:"–"}</td><td class="num">${detailedRow?num(s.npk_expected_goals,2):"–"}</td><td class="num">${detailedRow?num(s.expected_assists,2):"–"}</td><td class="num">${detailedRow?`${num(s.shots_on_target)}/${num(s.shots)}`:"–"}</td><td class="num">${detailedRow&&s.pass_accuracy_pct_derived!=null?`${num(s.pass_accuracy_pct_derived,1)} %`:"–"}</td><td class="num">${detailedRow?num(s.key_passes):"–"}</td><td class="num">${detailedRow?num(s.possession_won):"–"}</td><td class="num">${detailedRow?num(s.possession_lost):"–"}</td><td>${detailedRow?statusBadge("FC26 Detail","good"):s.source?statusBadge("Snapshot-Delta","blue"):statusBadge(p.join_status||"Direct")}</td></tr>`;};
     const performanceHeaders=[{label:"Player"},{label:"Pos.",cls:"center"},{label:"Min.",cls:"num"},{label:"Rating",cls:"num"},{label:"G/A",cls:"num"},{label:"NPK-xG",cls:"num"},{label:"xA",cls:"num"},{label:"SoT/Sh",cls:"num"},{label:"Pass %",cls:"num"},{label:"Key P.",cls:"num"},{label:"Ball +",cls:"num"},{label:"Ball -",cls:"num"},{label:"Source"}];
@@ -287,7 +330,7 @@ async function renderMatch() {
       <section class="card fixture-hero"><div class="fixture-meta"><span class="inline-identity">${identityLogo(d.competitionIdentity,m.competition_name,"inline-logo")}${competitionLink(m.competition_object_id,m.competition_name)}</span> · ${m.is_completed?"COMPLETED":"SCHEDULED"}</div><div class="fixture-scoreboard"><div class="fixture-club">${identityLogo(d.homeIdentity,m.home_team_name,"fixture-club-logo")}<h2>${clubLink(m.home_team_ea_id,m.home_team_name)}</h2></div><div class="fixture-score">${m.is_completed?`${num(m.home_score)} : ${num(m.away_score)}`:"VS"}<small>${m.home_penalties!=null||m.away_penalties!=null?`Penalty shoot-out ${num(m.home_penalties)}:${num(m.away_penalties)}`:esc(m.managed_team_result||"")}</small></div><div class="fixture-club">${identityLogo(d.awayIdentity,m.away_team_name,"fixture-club-logo")}<h2>${clubLink(m.away_team_ea_id,m.away_team_name)}</h2></div></div></section>
       ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison||`<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${matchDiaryPanel(d)}${events}
       <section id="p0-match-players" class="card match-performance-section"><header class="card-header"><div><h2>Player performances</h2><p>${hasDetailed?"Direct FC26 match data for exported participants":"Detailed MatchStats unavailable; ratings and conservative snapshot reconstruction are shown when recorded"}</p></div></header>${d.performances.length?performanceBody:`<div class="card-body muted">No player performances were exported for this match.</div>`}</section>
-      ${hasDetailed?goalkeeperMatchView(detailed.goalkeeperEvidence,m,detailed.players||[]):""}${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings",d.capabilities?.matchRatings?"Available":"Partial","ratings and minutes")}${metric("Detailed FC26 data",hasDetailed?"Available":"Not available",hasDetailed?`${num(detailed.players?.length||0)} participants`:"snapshot data fallback",hasDetailed?"green":"amber")}${metric("Events",hasDetailed?num(detailed.events?.length||0):"–",hasDetailed?"not chronological · no confirmed minutes":"no detailed source")}${metric("Link confidence",hasDetailed?`${num(detailed.linkageConfidence*100,0)} %`:"–","import linkage metadata")}${metric("xG model",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG + NPK-xG":"NPK-xG"):"–",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG = NPK-xG + 0.7 × penalty attempts":"direct FC26 NPK value"):"")}</div><p class="data-note">${esc(detailed.xgNote||"")} ${esc(detailed.eventTimingNote||"")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
+      ${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings",d.capabilities?.matchRatings?"Available":"Partial","ratings and minutes")}${metric("Detailed FC26 data",hasDetailed?"Available":"Not available",hasDetailed?`${num(detailed.players?.length||0)} participants`:"snapshot data fallback",hasDetailed?"green":"amber")}${metric("Events",hasDetailed?num(detailed.events?.length||0):"–",hasDetailed?"not chronological · no confirmed minutes":"no detailed source")}${metric("Link confidence",hasDetailed?`${num(detailed.linkageConfidence*100,0)} %`:"–","import linkage metadata")}${metric("xG model",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG + NPK-xG":"NPK-xG"):"–",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG = NPK-xG + 0.7 × penalty attempts":"direct FC26 NPK value"):"")}</div><p class="data-note">${esc(detailed.xgNote||"")} ${esc(detailed.eventTimingNote||"")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
     </div>`;
     bindMatchDiary(d);
     const queuedReportJobs=(automaticReportQueue.scheduled||[]).filter((job:any)=>job?.job_id);
