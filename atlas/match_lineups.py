@@ -12,7 +12,7 @@ from .match_stats import _new_completed_fixture
 from .positions import broad_position_group, canonical_position
 from .server_utils import as_int
 
-FORMATION_MODEL_ID = "atlas-match-formation-estimate-v1"
+FORMATION_MODEL_ID = "atlas-match-formation-estimate-v2"
 
 
 def _line_shape(players: set[int], history: dict[int, dict[str, Any]]) -> str | None:
@@ -46,6 +46,24 @@ def _formation_shape(players: set[int], history: dict[int, dict[str, Any]]) -> t
             and defensive_midfield + advanced_midfield == midfield and attack > 0):
         return f"{defense}-{defensive_midfield}-{advanced_midfield}-{attack}", "role_bands"
     return line_shape, "broad_lines"
+
+
+def _role_signature(players: set[int], history: dict[int, dict[str, Any]]) -> Counter[str]:
+    """Counts roles by line; a cross-line replacement can conceal a repositioning."""
+    signature: Counter[str] = Counter()
+    for player_id in players:
+        row = history[player_id]
+        position = canonical_position(row.get("actual_position"), row.get("actual_position_id"))
+        if position in {"RDM", "CDM", "LDM"}:
+            role = "DM"
+        elif position in {"RCM", "CM", "LCM"}:
+            role = "CM"
+        elif position in {"RAM", "CAM", "LAM", "RM", "LM"}:
+            role = "AM_WIDE"
+        else:
+            role = broad_position_group(position, default="UNKNOWN")
+        signature[role] += 1
+    return signature
 
 
 def _departures(starters: set[int], incoming: set[int],
@@ -157,6 +175,7 @@ def match_lineup_phases(conn: sqlite3.Connection, detailed: dict[str, Any] | Non
         duration = max((minute for minute in minutes if minute is not None), default=0)
         final_shape = None
         final_lines = None
+        final_uncertainty = None
         substitution_count = None
         if duration == 90:
             detailed_ids = {int(r["player_ea_id"]) for r in rows}
@@ -166,15 +185,19 @@ def match_lineup_phases(conn: sqlite3.Connection, detailed: dict[str, Any] | Non
             outgoing = _departures(starters, incoming, history, duration)
             if outgoing is not None:
                 final_players = (starters - outgoing) | incoming
-                final_shape = _formation_shape(final_players, history)
-                if final_shape:
-                    final_lines = _line_shape(final_players, history)
-                    substitution_count = len(incoming)
+                if _role_signature(starters, history) != _role_signature(final_players, history):
+                    final_uncertainty = "cross_line_substitution"
+                else:
+                    final_shape = _formation_shape(final_players, history)
+                    if final_shape:
+                        final_lines = _line_shape(final_players, history)
+                        substitution_count = len(incoming)
         result.append({"teamEaId": team_id, "initialLines": initial_lines,
                        "initialFormation": initial_shape[0], "initialPrecision": initial_shape[1],
                        "finalLines": final_lines,
                        "finalFormation": final_shape[0] if final_shape else None,
                        "finalPrecision": final_shape[1] if final_shape else None,
+                       "finalUncertainty": final_uncertainty,
                        "substitutionCount": substitution_count})
     return {"modelId": FORMATION_MODEL_ID, "sourceExportId": int(detailed["exportId"]),
             "sourceSnapshotId": int(export["snapshot_id"]), "teams": result} if result else None
