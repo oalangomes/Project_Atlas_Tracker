@@ -259,6 +259,17 @@ class KeeperRoleContextTests(unittest.TestCase):
         self.assertEqual(signal["goalkeeper_recorded_outcomes"]["saves"], 4)
         self.assertEqual(signal["goalkeeper_recorded_outcomes"]["goals_conceded"], 1)
 
+        context["facts"].append({"id": "goalkeeper_evidence", "value": {"sides": [{
+            "state": "multiple_goalkeepers", "keepers": [{"playerEaId": 10}, {"playerEaId": 12}],
+            "eligibleKeeperId": None,
+        }]}})
+        self.assertNotIn("goalkeeper_match_context", player_role(context))
+        context["facts"][-1]["value"]["sides"][0].update({
+            "state": "single_goalkeeper", "eligibleKeeperId": 10,
+            "metrics": {"saveRatePct": 80.0},
+        })
+        self.assertEqual(player_role(context)["goalkeeper_match_context"]["contextual_metrics"]["saveRatePct"], 80.0)
+
         refs = {fact["id"] for fact in context["facts"]}
         claim = {"text": "O adversário registrou xG de 2,4; o goleiro fez 4 defesas e sofreu 1 gol.",
                  "kind": "fact", "limitations": "", "fact_refs": ["selected_match_player", "matchstats"]}

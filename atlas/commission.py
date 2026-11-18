@@ -32,7 +32,7 @@ MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 4
-REPORT_VERSION = 35
+REPORT_VERSION = 36
 MATCH_PLAYER_REPORT_CONTRACT = 8
 MATCH_CONTEXT_REPORT_CONTRACT = 1
 MATCH_REPORT_CONTRACT = 2
@@ -1096,6 +1096,13 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                                       (str(item["actual_position"]).upper(), str(item["actual_position_source"]))
                                       for item in observed_rows
                                       if trusted_actual_position(item["actual_position"], item["actual_position_source"])}
+                from .goalkeeper_metrics import fixture_goalkeepers
+                goalkeeper_evidence = fixture_goalkeepers(
+                    teams, detailed.get("players") or [],
+                    observed_positions={player_id: {"position": position, "source": source}
+                                        for player_id, (position, source) in observed_positions.items()})
+                fact("goalkeeper_evidence", "Goalkeeper attribution and contextual indicators",
+                     goalkeeper_evidence, "linked FC26 MatchStats and trusted observed position when available")
                 player_facts = []
                 for item in detailed.get("players") or []:
                     player_id = int(item["playerEaId"])

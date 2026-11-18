@@ -10,6 +10,7 @@ from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
+from .goalkeeper_metrics import fixture_goalkeepers
 from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
 from .positions import trusted_actual_position
 from .server_utils import (
@@ -260,6 +261,15 @@ class MatchQueryMixin:
             elif as_int(item.get("team_ea_id")) in {home_team_id, away_team_id}:
                 item["match_team_ea_id"] = as_int(item.get("team_ea_id"))
                 item["match_team_index"] = 0 if as_int(item.get("team_ea_id")) == home_team_id else 1
+        if detailed:
+            observed_positions = {}
+            for item in performance_items:
+                position = trusted_actual_position(item.get("actual_position"), item.get("actual_position_source"))
+                player_id = as_int(item.get("player_ea_id"))
+                if position and player_id is not None:
+                    observed_positions[player_id] = {"position": position, "source": item["actual_position_source"]}
+            detailed["goalkeeperEvidence"] = fixture_goalkeepers(
+                detailed["teams"], detailed["players"], observed_positions=observed_positions)
         capabilities = parse_raw(snap["capabilities_json"])
         capabilities["reconstructedMatchStats"] = bool(reconstructed)
         capabilities["detailedPlayerMatchStats"] = bool(detailed)

@@ -158,6 +158,15 @@ def goalkeeper_match_context(context: dict[str, Any], selected: dict[str, Any]) 
     if context.get("mode") != "match_player":
         return None
     facts = _fact_map(context)
+    goalkeeper_evidence = facts.get("goalkeeper_evidence")
+    side = None
+    if goalkeeper_evidence is not None:
+        selected_id = selected.get("player_ea_id")
+        side = next((item for item in goalkeeper_evidence.get("sides", [])
+                     if any(str(keeper.get("playerEaId")) == str(selected_id)
+                            for keeper in item.get("keepers", []))), None)
+        if not side or side.get("state") != "single_goalkeeper" or str(side.get("eligibleKeeperId")) != str(selected_id):
+            return None
     match = facts.get("match") or {}
     opponent_id = match.get("opponent_ea_id")
     selected_team = selected.get("team_ea_id")
@@ -194,6 +203,9 @@ def goalkeeper_match_context(context: dict[str, Any], selected: dict[str, Any]) 
         "opponent_xg_scope": xg_scope,
         "opponent_shots_on_target": _number(team_stats.get("shots_on_target")),
         "goalkeeper_recorded_outcomes": goalkeeper_stats,
+        "contextual_metrics": (side or {}).get("metrics"),
+        "save_rate_reason": (side or {}).get("saveRateReason"),
+        "goals_prevented_reason": (side or {}).get("goalsPreventedReason"),
         "fact_refs": ["matchstats", "selected_match_player"],
         "interpretation_limit": (
             "These are same-match team chance-quality and goalkeeper outcome facts; "

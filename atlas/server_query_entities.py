@@ -21,6 +21,7 @@ from .match_stats import (
     reconstructed_player_matches, detailed_player_matches, detailed_player_season_history,
     detailed_player_season_summary,
 )
+from .goalkeeper_metrics import contexts_for_exports, summarize_keeper_matches
 
 def _static_asset_version(path: Path) -> str:
     try:
@@ -420,6 +421,19 @@ class EntityQueryMixin:
             reconstructed_matches = reconstructed_player_matches(conn, snapshot_id, player_id)
             detailed_matches = detailed_player_matches(conn, int(snap["career_id"]), player_id,
                                                        as_of_import_sequence=int(snap["import_sequence"]))
+            goalkeeper_season = None
+            if str(state["primary_position"] or "").upper() == "GK":
+                contexts = contexts_for_exports(conn, [int(match["exportId"]) for match in detailed_matches])
+                season_sides = []
+                for match in detailed_matches:
+                    evidence = contexts.get(int(match["exportId"])) or {}
+                    side = next((item for item in evidence.get("sides", [])
+                                 if any(keeper.get("playerEaId") == player_id for keeper in item.get("keepers", []))), None)
+                    if side:
+                        match["goalkeeperEvidence"] = side
+                        if int(match["seasonIndex"]) == int(snap["season_index"]):
+                            season_sides.append(side)
+                goalkeeper_season = summarize_keeper_matches(season_sides)
             detailed_season_stats = detailed_player_season_summary(
                 conn, int(snap["career_id"]), player_id, season_indices=[int(snap["season_index"])],
                 as_of_import_sequence=int(snap["import_sequence"]))
@@ -717,6 +731,7 @@ class EntityQueryMixin:
             "performances": performance_items,
             "reconstructedMatches": reconstructed_matches,
             "detailedMatches": detailed_matches,
+            "goalkeeperSeason": goalkeeper_season,
             "detailedSeasonStats": detailed_season_stats,
             "detailedSeasonHistory": detailed_season_history,
             "history": history_items,

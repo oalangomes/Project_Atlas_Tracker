@@ -537,6 +537,8 @@ def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int 
     if len(teams) == 2:
         _add_team_expected_goals_from_opponent_penalty(teams[0]["stats"], teams[1]["stats"])
         _add_team_expected_goals_from_opponent_penalty(teams[1]["stats"], teams[0]["stats"])
+    from .goalkeeper_metrics import fixture_goalkeepers
+    goalkeeper_evidence = fixture_goalkeepers(teams, players)
     return {
         "modelId": DETAILED_MODEL_ID,
         "available": True,
@@ -550,6 +552,7 @@ def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int 
         "snapshotId": export["snapshot_id"],
         "teams": teams,
         "players": players,
+        "goalkeeperEvidence": goalkeeper_evidence,
         "events": _match_events(players),
         "eventChronologyAvailable": False,
         "eventTimingAvailable": False,
