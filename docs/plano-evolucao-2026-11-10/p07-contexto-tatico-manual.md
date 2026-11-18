@@ -11,7 +11,7 @@ Implementação de AT-008–011 e H18/H35 sobre Match Report e Comissão. O Diá
 
 ## Formação e proveniência
 
-- Na interface, o Diário solicita apenas autor, data e observação livre. Posições, escalações e formações não são mais pedidos ao treinador. Registros manuais anteriores continuam preservados nas revisões e podem ser removidos explicitamente ao salvar uma nova revisão.
+- Na interface, o Diário solicita apenas a observação livre. O horário do registro é automático e a autoria é identificada internamente como usuário local. Posições, escalações e formações não são pedidos ao treinador. Registros manuais anteriores continuam preservados nas revisões e podem ser removidos explicitamente ao salvar uma nova revisão.
 - O Match Report mostra a cobertura das posições de partida importadas para cada equipe. Quando os dados do FC26 trazem exatamente onze titulares com posições de partida válidas, o Atlas apresenta a distribuição inicial por linhas (defesa, meio, ataque) como **estimativa do XI**, separada da observação manual. Ela não confirma o esquema tático nem alterações durante o jogo. Sem XI completo, mostra indisponibilidade; a posição natural cadastrada não é usada para completar lacunas.
 - No contrato histórico da API, formação própria e rival são campos separados. Uma formação explícita do treinador é `confirmed_manual`; hipótese explícita com evidência é `estimated_manual`; onze titulares com posições **observadas manualmente** permitem `estimated_observed_xi`. Sem isso, a resposta é `indeterminate`.
 - Uma linha defensiva de cinco isolada fica registrada como linha de cinco, sem completar automaticamente o sistema rival. Posições naturais do elenco e formação própria não são usadas para inferir o adversário.

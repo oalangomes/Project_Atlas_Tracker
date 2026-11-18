@@ -1063,16 +1063,15 @@ function matchDiaryPanel(d) {
     const current = d.coachDiary?.current, entry = current?.content || {}, knownAtSnapshot = d.coachDiary?.knownAtSnapshot;
     const legacy = !!(entry.ownFormation || entry.opponentFormation || entry.opponentHypothesis || entry.opponentAlternative || entry.opponentEvidence || entry.opponentDefensiveLine || entry.ownLineup?.length || entry.opponentLineup?.length);
     const legacyFacts = [entry.ownFormation ? `Seu clube: ${esc(entry.ownFormation)}` : "", entry.opponentFormation ? `Rival confirmado manualmente: ${esc(entry.opponentFormation)}` : "", entry.opponentHypothesis ? `Hipótese rival: ${esc(entry.opponentHypothesis)}` : "", entry.opponentAlternative ? `Alternativa rival: ${esc(entry.opponentAlternative)}` : "", entry.opponentDefensiveLine ? `Linha rival: ${num(entry.opponentDefensiveLine)}` : "", entry.opponentEvidence ? `Evidência anotada: ${esc(entry.opponentEvidence)}` : "", entry.ownLineup?.length ? `${num(entry.ownLineup.length)} atletas do seu clube anotados manualmente` : "", entry.opponentLineup?.length ? `${num(entry.opponentLineup.length)} atletas rivais anotados manualmente` : ""].filter(Boolean);
-    const history = (d.coachDiary?.revisions || []).map((item) => `<li>Rev. ${num(item.revision)} · ${esc(item.author)} · ${esc(item.recorded_at)} · ${item.active ? "ativa" : "invalidada"}<small class="table-subline">${esc(item.content?.note || "Sem nota textual")}</small></li>`).join("");
+    const history = (d.coachDiary?.revisions || []).map((item) => `<li>Rev. ${num(item.revision)} · ${esc(item.recorded_at)} · ${item.active ? "ativa" : "invalidada"}<small class="table-subline">${esc(item.content?.note || "Sem nota textual")}</small></li>`).join("");
     return `<section class="card coach-diary" data-coach-diary-panel>
       <header class="coach-diary-heading"><div><span class="coach-diary-eyebrow">CONTEXTO DA PARTIDA</span><h2>Diário do treinador</h2><p>Registre apenas o que você percebeu e os dados da partida não mostram.</p></div><span class="coach-diary-state">${current ? "Registrado" : "Sem registro"}</span></header>
       <div class="coach-diary-summary">
-        ${current ? `<p class="coach-diary-note">${esc(entry.note || "Sem nota textual.").replace(/\n/g, "<br>")}</p><div class="coach-diary-meta">${esc(current.author)} · ${esc(current.observed_at?.slice(0, 10) || "Data não informada")}${current.retrospective ? " · Registro retrospectivo" : ""}</div>` : `<p class="coach-diary-empty">Nenhuma observação registrada.</p>`}
+        ${current ? `<p class="coach-diary-note">${esc(entry.note || "Sem nota textual.").replace(/\n/g, "<br>")}</p>${current.retrospective ? '<p class="coach-diary-meta">Registro retrospectivo</p>' : ""}` : `<p class="coach-diary-empty">Nenhuma observação registrada.</p>`}
         ${!current && knownAtSnapshot ? `<p class="coach-diary-caution">Registro atual invalidado. A revisão ${num(knownAtSnapshot.revision)} estava ativa no snapshot.</p>` : ""}
       </div>
       <details class="coach-diary-editor"><summary>${current ? "Editar observação" : "Adicionar observação"}</summary>
         <form data-coach-diary-form class="coach-diary-form">
-          <div class="coach-diary-fields"><label><span>Autor / treinador</span><input name="author" required maxlength="120" value="${esc(current?.author || "")}" placeholder="Seu nome"></label><label><span>Data da observação</span><input name="observedAt" type="date" value="${esc(current?.observed_at?.slice(0, 10) || d.match?.date || "")}"></label></div>
           <label><span>O que os dados não mostram?</span><textarea name="note" rows="4" maxlength="5000" ${legacy ? "" : "required"} placeholder="Ex.: ajustes feitos durante o jogo, pressão, comportamento sem bola...">${esc(entry.note || "")}</textarea></label>
           ${legacy ? `<details class="coach-diary-legacy"><summary>Contexto tático manual de revisões anteriores</summary><p>Dados manuais preservados ao editar a nota:</p><ul>${legacyFacts.map((fact) => `<li>${fact}</li>`).join("")}</ul><label><input type="checkbox" name="discardLegacy"> Remover esses dados manuais ao salvar</label></details>` : ""}
           <div class="coach-diary-actions"><button class="button primary" type="submit">${current ? "Salvar revisão" : "Salvar observação"}</button>${current ? '<button class="button" type="button" data-coach-diary-invalidate>Invalidar registro</button>' : ""}</div>
@@ -1097,7 +1096,7 @@ function bindMatchDiary(d) {
                 throw new Error("Escreva uma nota para manter o Diário ou invalide o registro.");
             const prior = fields.has("discardLegacy") ? {} : d.coachDiary?.current?.content || {};
             const payload = { snapshotId: Number(state.snapshotId), expectedRevision: d.coachDiary?.current?.revision || d.coachDiary?.revisions?.[0]?.revision || 0,
-                author: get("author"), observedAt: get("observedAt"), note: get("note"),
+                author: "Usuário local", observedAt: d.coachDiary?.current?.observed_at || null, note: get("note"),
                 ownFormation: prior.ownFormation, opponentDefensiveLine: prior.opponentDefensiveLine,
                 opponentFormation: prior.opponentFormation, opponentHypothesis: prior.opponentHypothesis,
                 opponentAlternative: prior.opponentAlternative, opponentEvidence: prior.opponentEvidence,
@@ -1114,8 +1113,7 @@ function bindMatchDiary(d) {
     if (invalidate)
         invalidate.onclick = async () => {
             try {
-                const author = String(new FormData(form).get("author") || "").trim();
-                await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/invalidate`, { method: "POST", body: JSON.stringify({ author, expectedRevision: d.coachDiary?.current?.revision }) });
+                await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/invalidate`, { method: "POST", body: JSON.stringify({ author: "Usuário local", expectedRevision: d.coachDiary?.current?.revision }) });
                 const response = await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary?snapshotId=${state.snapshotId}`);
                 refresh(response);
             }
