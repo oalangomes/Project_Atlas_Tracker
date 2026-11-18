@@ -10,6 +10,7 @@ from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
+from .match_lineups import match_lineup_phases, save_match_formation_estimates
 from .goalkeeper_metrics import fixture_goalkeepers
 from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
 from .positions import trusted_actual_position
@@ -87,6 +88,7 @@ def apply_historical_observed_positions(rows: list[dict[str, Any]],
         filled += 1
     return filled
 
+
 class MatchQueryMixin:
     def _matches(self, snapshot_id: int) -> dict[str, Any]:
         with self.state.database.connect() as conn:
@@ -161,6 +163,7 @@ class MatchQueryMixin:
             detailed = detailed_match(conn, fixture_id, career_id=int(snap["career_id"]),
                                       as_of_import_sequence=int(snap["import_sequence"]),
                                       season_index=int(snap["season_index"]))
+            lineup_phases = match_lineup_phases(conn, detailed, fixture_id) if detailed else None
             candidate_row = conn.execute(
                 """SELECT e.* FROM match_stat_exports e JOIN snapshots source ON source.id=e.snapshot_id
                    WHERE e.fixture_id=? AND e.career_id=? AND source.career_id=?
@@ -178,6 +181,17 @@ class MatchQueryMixin:
                 historical_observed = historical_observed_positions(conn, snap, row["fixture_key"])
             else:
                 historical_observed = {}
+        if lineup_phases:
+            expected = sum(1 for team in lineup_phases["teams"]
+                           for phase in ("initial", "final") if team.get(f"{phase}Formation"))
+            with self.state.database.connect() as conn:
+                saved = conn.execute(
+                    "SELECT COUNT(*) FROM match_formation_estimates WHERE source_export_id=? AND model_id=?",
+                    (lineup_phases["sourceExportId"], lineup_phases["modelId"]),
+                ).fetchone()[0]
+            if saved < expected:
+                with self.state.database.transaction() as conn:
+                    save_match_formation_estimates(conn, lineup_phases)
         season_start = self._season_start(snap)
         match_item = dict(row)
         self._enrich_fixtures([match_item], season_start, snapshot_id)
@@ -273,8 +287,11 @@ class MatchQueryMixin:
         capabilities = parse_raw(snap["capabilities_json"])
         capabilities["reconstructedMatchStats"] = bool(reconstructed)
         capabilities["detailedPlayerMatchStats"] = bool(detailed)
+        diary_service = getattr(self.state, "diary", None)
+        diary = diary_service.get(int(snap["career_id"]), fixture_id, snapshot_id) if diary_service else None
         return {
             "snapshot": dict(snap),
+            "coachDiary": diary,
             "match": match_item,
             "performances": performance_items,
             "performanceDiagnostics": {
@@ -294,6 +311,7 @@ class MatchQueryMixin:
                 "sourceLabel": "Aus aufeinanderfolgenden Snapshots rekonstruiert" if reconstructed else "Cannot be reconstructed reliably",
             },
             "detailedStats": detailed or {"available": False, "modelId": "atlas-fc26-match-stats-v1"},
+            "lineupPhases": lineup_phases,
             "evidence": fixture_evidence(dict(snap), fixture_id, detailed, performance_items,
                                          dict(candidate_row) if candidate_row else None,
                                          event_date=row["date"] if "date" in row.keys() else None),

@@ -24,6 +24,7 @@ from .commission_role_policy import (CROSS_ROLE_METRIC_FIELDS, goalkeeper_match_
                                      prompt_evidence, role_relevance_conflict)
 from .positions import trusted_actual_position
 from .metric_evidence import fixture_evidence
+from .match_diary import diary_at_fixture
 from .llm_credentials import load_config
 from .secret_protection import unprotect_secret
 
@@ -1016,6 +1017,18 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
             match["managed_score"] = row["home_score"] if managed_is_home else row["away_score"]
             match["opponent_score"] = row["away_score"] if managed_is_home else row["home_score"]
         fact("match", "Fixture", match, "Atlas fixture calendar")
+        coach_diary = diary_at_fixture(conn, career_id, int(fixture_id), snapshot)
+        if coach_diary:
+            fact("coach_diary", "Coach observation, manually recorded and versioned", {
+                "revision": coach_diary["revision"], "author": coach_diary["author"],
+                "recorded_at": coach_diary["updated_at"], "observed_at": coach_diary["observed_at"],
+                "retrospective_to_snapshot": coach_diary.get("retrospective"),
+                "note": coach_diary["content"].get("note"),
+                "own_formation": coach_diary["ownFormationContext"],
+                "opponent_formation": coach_diary["formationContext"],
+                "own_lineup": coach_diary["content"].get("ownLineup"),
+                "opponent_lineup": coach_diary["content"].get("opponentLineup"),
+            }, "coach-authored manual observation; not extracted from FC26 or independently verified")
         if row["date"] and opponent_id > 0:
             from .match_competitive_context import pre_match_competitive_context
             competitive = pre_match_competitive_context(
@@ -3798,6 +3811,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
     elif mode in PLAYER_REPORT_MODES:
         system += (" This is an accumulated individual report. Keep conclusions about the selected player, their recorded position and their own comparable history. Do not convert team totals into individual contribution.")
     system += (" Ask for more context only when a specific qualitative answer from the coach could materially change the interpretation or recommendation and Atlas does not record it. Ask only about coach-only context such as intended instructions, tactical plan, or an observed adjustment. Never ask the coach to supply performance statistics, recent or historical results, player minutes, goals, xG, shots, ratings, or other figures; these are Atlas data questions, not coach-context questions. Continue with a qualified analysis when no coach-only answer is needed. Return at most two concise information_requests, each with question and reason, in the selected language; return an empty list when there is no material coach-context gap. Treat coach_context as unverified user narrative, never as an imported Atlas statistic. If coach_context is supplied, use it only for the stated context and label any use as coach-provided. If six coach answers are already present, return no more requests.")
+    system += (" Treat coach_diary as a dated, attributed manual observation. It is not an FC26 export. An estimated opponent formation is a hypothesis, and an indeterminate formation is unknown. A retrospectively recorded note was not known at the selected snapshot. Never infer a complete formation from a defensive line or an incomplete XI.")
     allowed_shapes = context.get("allowed_formations") or []
     formation_schema = {"type": "null"}
     if mode == "next_match" and allowed_shapes:

@@ -596,6 +596,9 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 .match-p0-provenance .match-coverage-section{margin:10px 12px 14px}
 .match-p0-unavailable{margin:12px 0 16px;font-size:13px}
 #p0-match-comparison,#p0-match-commission,#p0-match-players,#p0-match-positions{scroll-margin-top:80px}
+.match-lineup-hint{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 18px;border-top:1px solid var(--border,#263c58);color:var(--text,#edf4ff)}
+.match-lineup-hint strong{font-size:13px}
+.match-lineup-hint small{font-size:11px;color:var(--muted,#91a6c4)}
 @media(max-width:1150px){.match-p0-main{grid-template-columns:minmax(0,1fr)}.match-p0-metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.match-p0-secondary{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}}
 @media(max-width:720px){.match-p0-metrics{padding:12px}.match-p0-legend{font-size:11px;gap:6px}.match-p0-metric-grid,.match-p0-secondary{grid-template-columns:1fr}.match-p0-metric{padding:12px}.match-p0-nav a{font-size:12px;padding:7px 9px}.match-p0-main{gap:12px}}
 
@@ -724,3 +727,47 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 @media(max-width:1180px){.commission-p2-main{grid-template-columns:minmax(0,1fr)}.commission-p2-form-columns{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:830px){.commission-p2-metrics,.commission-p2-position-columns{grid-template-columns:repeat(2,minmax(0,1fr))}.commission-p2-audit-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.commission-p2-hero{padding:18px}}
 @media(max-width:600px){.commission-p2-hero{grid-template-columns:1fr;gap:10px}.commission-p2-hero-meta{text-align:left;border-left:0;border-top:1px solid var(--line);padding:12px 0 0}.commission-p2-metrics,.commission-p2-position-columns,.commission-p2-form-columns{grid-template-columns:1fr}.commission-p2-fixture{grid-template-columns:1fr auto;grid-template-areas:"date score" "teams teams" "source source"}.commission-p2-audit-metrics{grid-template-columns:1fr}}
+
+/* Match report: compact coach notes and keeper context inside the player detail. */
+.coach-diary{margin:0 0 16px;overflow:hidden}
+.coach-diary-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:18px 20px 12px}
+.coach-diary-heading h2{margin:4px 0 5px;font-size:18px}
+.coach-diary-heading p,.coach-diary-empty{margin:0;color:var(--muted);font-size:13px;line-height:1.55}
+.coach-diary-eyebrow{font-size:10px;letter-spacing:.1em;color:var(--blue);font-weight:800}
+.coach-diary-state{flex:none;border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted);font-size:11px}
+.coach-diary-summary{padding:0 20px 14px}
+.coach-diary-note{margin:0 0 7px;font-size:14px;line-height:1.6;white-space:normal}
+.coach-diary-meta{color:var(--muted);font-size:11px}
+.coach-diary-caution{color:var(--muted);font-size:12px;line-height:1.5;margin:9px 0 0}
+.coach-diary-editor,.coach-diary-history{border-top:1px solid var(--line)}
+.coach-diary-editor>summary,.coach-diary-history>summary{cursor:pointer;padding:13px 20px;color:var(--blue);font-size:13px;font-weight:750}
+.coach-diary-editor>summary:hover,.coach-diary-history>summary:hover{background:rgba(94,166,255,.08)}
+.coach-diary-form{display:grid;gap:17px;padding:4px 20px 20px}
+.coach-diary-form>label{display:grid;gap:6px;min-width:0}
+.coach-diary-form label>span{font-size:12px;color:var(--muted);font-weight:650}
+.coach-diary-form input,.coach-diary-form select,.coach-diary-form textarea{width:100%;min-width:0;min-height:40px;padding:9px 11px;border:1px solid #29425c;border-radius:9px;background:#071522;color:var(--text);font:inherit;font-size:13px}
+.coach-diary-form textarea{min-height:112px;resize:vertical;line-height:1.5}
+.coach-diary-form input:focus-visible,.coach-diary-form select:focus-visible,.coach-diary-form textarea:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.coach-diary-legacy{border:1px solid var(--line);border-radius:9px;padding:12px 14px;color:var(--muted);font-size:12px}
+.coach-diary-legacy>summary{cursor:pointer;color:var(--blue);font-weight:700}
+.coach-diary-legacy p{margin:10px 0 5px}
+.coach-diary-legacy ul{margin:6px 0 12px;padding-left:20px;line-height:1.6}
+.coach-diary-legacy label{display:flex;align-items:center;gap:8px}
+.coach-diary-legacy input[type=checkbox]{width:16px;min-height:16px;height:16px}
+.coach-diary-actions{display:flex;flex-wrap:wrap;gap:9px}
+.coach-diary-status{margin:0;color:var(--muted);font-size:12px}
+.coach-diary-history ol{margin:0;padding:0 20px 18px 42px;font-size:12px;line-height:1.7}
+.goalkeeper-player-context{margin:14px 0;padding:16px;border:1px solid rgba(43,220,137,.35);border-radius:12px;background:linear-gradient(130deg,rgba(12,43,47,.78),rgba(8,24,40,.9))}
+.goalkeeper-player-context-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;flex-wrap:wrap;margin-bottom:13px}
+.goalkeeper-player-context-head h4{margin:0;font-size:15px;color:var(--text)}
+.goalkeeper-player-context-head span{font-size:11px;color:var(--muted)}
+.goalkeeper-player-key{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.goalkeeper-player-key>div{display:grid;gap:5px;padding:13px;border:1px solid var(--line);border-radius:10px;background:rgba(4,18,29,.72)}
+.goalkeeper-player-key span{font-size:12px;color:var(--muted)}
+.goalkeeper-player-key strong{font-size:25px;font-variant-numeric:tabular-nums;color:#81ecc0}
+.goalkeeper-player-key small{font-size:11px;line-height:1.45;color:var(--muted)}
+.goalkeeper-player-support{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 18px;margin-top:12px}
+.goalkeeper-player-support>div{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:8px 0;font-size:12px}
+.goalkeeper-player-support strong{flex:none;font-variant-numeric:tabular-nums}
+.goalkeeper-player-limit,.goalkeeper-player-source{font-size:11px;line-height:1.5;color:var(--muted);margin:11px 0 0}
+@media(max-width:720px){.coach-diary-heading{align-items:flex-start}.goalkeeper-player-key,.goalkeeper-player-support{grid-template-columns:1fr}}

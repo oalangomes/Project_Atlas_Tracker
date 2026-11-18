@@ -46,9 +46,9 @@ function detailedStatText(key:string,value:any):string {
     if(key==="npk_expected_goals"||key==="expected_assists") return num(value,2);
     return num(value,Number(value)%1?2:0);
 }
-function detailedPlayerDrawer(p:any,analysis=""):string {
+function detailedPlayerDrawer(p:any,analysis="",goalkeeperContext=""):string {
     const s=p.detailedStats||{};
-    if(!Object.keys(s).length&&!analysis) return "";
+    if(!Object.keys(s).length&&!analysis&&!goalkeeperContext) return "";
     const context=[
       ["xG+xA /90",s.xg_plus_xa_per90==null?"–":num(s.xg_plus_xa_per90,2)],
       ["xG per shot",s.xg_per_shot==null?"–":num(s.xg_per_shot,3)],
@@ -56,7 +56,7 @@ function detailedPlayerDrawer(p:any,analysis=""):string {
       ["Duels",s.combined_duel_success_pct==null?"–":`${num(s.combined_duel_success_pct,1)} %`],
       ["Possession balance",Number(s.possession_balance)>=0?`+${num(s.possession_balance)}`:num(s.possession_balance)]
     ];
-    return `<details class="match-player-details"><summary>Match profile & all metrics</summary>${analysis}<div class="match-context-strip">${context.map((x:any)=>`<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join("")}</div><div class="detailed-stat-groups">${detailedStatGroups.map((g:any)=>{const items=g.keys.filter((k:string)=>s[k]!=null);return items.length?`<div class="detailed-stat-group"><h4>${esc(g.label)}</h4>${items.map((k:string)=>`<div><span>${esc(detailedStatLabels[k]||k)}</span><strong>${detailedStatText(k,s[k])}</strong></div>`).join("")}</div>`:"";}).join("")}</div></details>`;
+    return `<details class="match-player-details"><summary>${goalkeeperContext?"Análise do goleiro e métricas":"Match profile & all metrics"}</summary>${analysis}${goalkeeperContext}${goalkeeperContext?"":`<div class="match-context-strip">${context.map((x:any)=>`<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join("")}</div>`}<div class="detailed-stat-groups">${detailedStatGroups.map((g:any)=>{const items=g.keys.filter((k:string)=>s[k]!=null);return items.length?`<div class="detailed-stat-group"><h4>${esc(g.label)}</h4>${items.map((k:string)=>`<div><span>${esc(detailedStatLabels[k]||k)}</span><strong>${detailedStatText(k,s[k])}</strong></div>`).join("")}</div>`:"";}).join("")}</div></details>`;
 }
 function matchComparisonRow(label:string,left:any,right:any,format:(v:any)=>string=(v:any)=>num(v)):string {
     const hasLeft=left!=null&&Number.isFinite(Number(left)),hasRight=right!=null&&Number.isFinite(Number(right));
@@ -65,20 +65,79 @@ function matchComparisonRow(label:string,left:any,right:any,format:(v:any)=>stri
     return `<div class="match-stat-row"><strong class="left">${left==null?"–":format(left)}</strong><div class="match-stat-label"><span>${esc(label)}</span>${bars}</div><strong>${right==null?"–":format(right)}</strong></div>`;
 }
 
-function goalkeeperMatchView(evidence:any, match:any, players:any[]):string {
-    if (!evidence?.sides?.length) return "";
-    const reasons:Record<string,string>={multiple_goalkeepers:"Two goalkeepers played; team context cannot be assigned to one player.",uncertain_minutes:"Goalkeeper minutes are incomplete.",no_goalkeeper:"No goalkeeper could be identified in this export.",missing_save_rate_input:"Saves, goals conceded or opponent shots on target are missing.",team_saves_mismatch:"Player saves differ from team saves.",goal_concession_mismatch:"Player and team goals conceded differ.",shots_on_target_mismatch:"Saves plus goals conceded do not equal opponent shots on target.",no_shots_on_target:"No opponent shots on target.",missing_goal_concession_pair:"Player or team goals conceded are missing.",missing_total_opponent_xg:"Total opponent xG cannot be derived from this export."};
-    const cards=evidence.sides.map((side:any)=>{
-        const teamName=Number(side.teamEaId)===Number(match.home_team_ea_id)?match.home_team_name:match.away_team_name;
-        const keepers=(side.keepers||[]).map((keeper:any)=>{
-            const player=players.find((item:any)=>Number(item.playerEaId)===Number(keeper.playerEaId));
-            return `<p>${playerLink(keeper.playerEaId,player?.displayName||`Player ${keeper.playerEaId}`)} · ${keeper.minutes==null?"–":num(keeper.minutes)} min · ${keeper.saves==null?"–":num(keeper.saves)} saves · ${keeper.goalsConceded==null?"–":num(keeper.goalsConceded)} conceded <small>(${esc(keeper.positionBasis)} position)</small></p>`;
-        }).join("")||'<p class="muted">No goalkeeper row</p>';
-        const values=side.metrics||{};
-        const show=(value:any,precision=1)=>value==null?"–":num(value,precision);
-        return `<article class="card pad"><h3 class="card-title">${esc(teamName||"Team")}</h3>${keepers}<div class="grid metrics compact">${metric("Opponent shots on target",show(values.opponentShotsOnTarget,0),"team export")}${metric("Save rate",values.saveRatePct==null?"–":`${show(values.saveRatePct)} %`,"saves / opponent shots on target")}${metric("Saves / 90",show(values.savesPer90,2),"goalkeeper export")}${metric("Conceded / 90",show(values.goalsConcededPer90,2),"requires team reconciliation")}${metric("Opponent xG",show(values.opponentXg,2),"conventional total xG")}${metric("xGA − GA",show(values.goalsPrevented,2),"chance-quality context")}${metric("xGA − GA / 90",show(values.goalsPreventedPer90,2),"chance-quality context")}</div>${side.saveRateReason?`<p class="data-note">Save rate unavailable: ${esc(reasons[side.saveRateReason]||side.saveRateReason)}</p>`:""}${side.goalsPreventedReason?`<p class="data-note">xGA − GA unavailable: ${esc(reasons[side.goalsPreventedReason]||side.goalsPreventedReason)}</p>`:""}</article>`;
-    }).join("");
-    return `<section class="grid two-col" aria-label="Goalkeeper context">${cards}</section><p class="data-note">${esc(evidence.interpretationLimit||"")} Opponent xG is based on NPK-xG plus modelled penalty attempts only when penalty context is available.</p>`;
+function goalkeeperPlayerContext(side:any,keeper:any,interpretationLimit:string):string {
+    const reasons:Record<string,string>={multiple_goalkeepers:"Mais de um goleiro atuou; os dados coletivos não podem ser atribuídos individualmente.",uncertain_minutes:"Minutos dos goleiros incompletos.",no_goalkeeper:"Goleiro não identificado.",missing_save_rate_input:"Faltam defesas, gols sofridos ou chutes no alvo.",team_saves_mismatch:"Defesas individuais diferem do total da equipe.",goal_concession_mismatch:"Gols sofridos pelo jogador e pela equipe diferem.",shots_on_target_mismatch:"Defesas mais gols sofridos não correspondem aos chutes no alvo.",no_shots_on_target:"O adversário não finalizou no alvo.",missing_goal_concession_pair:"Falta o número de gols sofridos pelo jogador ou pela equipe.",missing_total_opponent_xg:"xG total do adversário indisponível."};
+    const values=side.metrics||{};
+    const show=(value:any,precision=1)=>value==null?"–":num(value,precision);
+    const row=(label:string,value:string)=>`<div><span>${label}</span><strong>${value}</strong></div>`;
+    const limits=[side.saveRateReason,side.goalsPreventedReason].filter(Boolean).filter((reason:string,index:number,items:string[])=>items.indexOf(reason)===index).map((reason:string)=>reasons[reason]||reason);
+    return `<section class="goalkeeper-player-context" aria-label="Análise do goleiro">
+      <div class="goalkeeper-player-context-head"><h4>Análise do goleiro</h4><span>${keeper.minutes==null?"Minutos N/D":`${show(keeper.minutes,0)} min`} · ${keeper.saves==null?"Defesas N/D":`${show(keeper.saves,0)} defesas`} · ${keeper.goalsConceded==null?"Gols sofridos N/D":`${show(keeper.goalsConceded,0)} gols sofridos`}</span></div>
+      <div class="goalkeeper-player-key">
+        <div><span>Taxa de defesa</span><strong>${values.saveRatePct==null?"–":`${show(values.saveRatePct)} %`}</strong><small>Defesas ÷ finalizações no alvo do adversário</small></div>
+        <div><span>xGA − gols sofridos</span><strong>${show(values.goalsPrevented,2)}</strong><small>Contexto das chances; não mede mérito individual</small></div>
+      </div>
+      <div class="goalkeeper-player-support">${row("Finalizações no alvo do adversário",show(values.opponentShotsOnTarget,0))}${row("Defesas / 90",show(values.savesPer90,2))}${row("Gols sofridos / 90",show(values.goalsConcededPer90,2))}${row("xG do adversário",show(values.opponentXg,2))}${row("xGA − gols sofridos / 90",show(values.goalsPreventedPer90,2))}</div>
+      ${limits.length?`<p class="goalkeeper-player-limit">${esc(limits.join(" "))}</p>`:""}
+      <p class="goalkeeper-player-source">Fonte: atuação do goleiro e estatísticas coletivas FC26. ${esc(interpretationLimit||"")}</p>
+    </section>`;
+}
+
+function matchDiaryPanel(d:any):string {
+    const current=d.coachDiary?.current, entry=current?.content||{}, knownAtSnapshot=d.coachDiary?.knownAtSnapshot;
+    const legacy=!!(entry.ownFormation||entry.opponentFormation||entry.opponentHypothesis||entry.opponentAlternative||entry.opponentEvidence||entry.opponentDefensiveLine||entry.ownLineup?.length||entry.opponentLineup?.length);
+    const legacyFacts=[entry.ownFormation?`Seu clube: ${esc(entry.ownFormation)}`:"",entry.opponentFormation?`Rival confirmado manualmente: ${esc(entry.opponentFormation)}`:"",entry.opponentHypothesis?`Hipótese rival: ${esc(entry.opponentHypothesis)}`:"",entry.opponentAlternative?`Alternativa rival: ${esc(entry.opponentAlternative)}`:"",entry.opponentDefensiveLine?`Linha rival: ${num(entry.opponentDefensiveLine)}`:"",entry.opponentEvidence?`Evidência anotada: ${esc(entry.opponentEvidence)}`:"",entry.ownLineup?.length?`${num(entry.ownLineup.length)} atletas do seu clube anotados manualmente`:"",entry.opponentLineup?.length?`${num(entry.opponentLineup.length)} atletas rivais anotados manualmente`:""].filter(Boolean);
+    const history=(d.coachDiary?.revisions||[]).map((item:any)=>`<li>Rev. ${num(item.revision)} · ${esc(item.recorded_at)} · ${item.active?"ativa":"invalidada"}<small class="table-subline">${esc(item.content?.note||"Sem nota textual")}</small></li>`).join("");
+    return `<section class="card coach-diary" data-coach-diary-panel>
+      <header class="coach-diary-heading"><div><span class="coach-diary-eyebrow">CONTEXTO DA PARTIDA</span><h2>Diário do treinador</h2><p>Registre apenas o que você percebeu e os dados da partida não mostram.</p></div><span class="coach-diary-state">${current?"Registrado":"Sem registro"}</span></header>
+      <div class="coach-diary-summary">
+        ${current?`<p class="coach-diary-note">${esc(entry.note||"Sem nota textual.").replace(/\n/g,"<br>")}</p>${current.retrospective?'<p class="coach-diary-meta">Registro retrospectivo</p>':""}`:`<p class="coach-diary-empty">Nenhuma observação registrada.</p>`}
+        ${!current&&knownAtSnapshot?`<p class="coach-diary-caution">Registro atual invalidado. A revisão ${num(knownAtSnapshot.revision)} estava ativa no snapshot.</p>`:""}
+      </div>
+      <details class="coach-diary-editor"><summary>${current?"Editar observação":"Adicionar observação"}</summary>
+        <form data-coach-diary-form class="coach-diary-form">
+          <label><span>O que os dados não mostram?</span><textarea name="note" rows="4" maxlength="5000" ${legacy?"":"required"} placeholder="Ex.: ajustes feitos durante o jogo, pressão, comportamento sem bola...">${esc(entry.note||"")}</textarea></label>
+          ${legacy?`<details class="coach-diary-legacy"><summary>Contexto tático manual de revisões anteriores</summary><p>Dados manuais preservados ao editar a nota:</p><ul>${legacyFacts.map((fact:string)=>`<li>${fact}</li>`).join("")}</ul><label><input type="checkbox" name="discardLegacy"> Remover esses dados manuais ao salvar</label></details>`:""}
+          <div class="coach-diary-actions"><button class="button primary" type="submit">${current?"Salvar revisão":"Salvar observação"}</button>${current?'<button class="button" type="button" data-coach-diary-invalidate>Invalidar registro</button>':""}</div>
+          <p class="coach-diary-status" data-coach-diary-status aria-live="polite"></p>
+        </form>
+      </details>
+      ${history?`<details class="coach-diary-history"><summary>Histórico de revisões</summary><ol>${history}</ol></details>`:""}
+    </section>`;
+}
+
+function bindMatchDiary(d:any):void {
+    const panel=content.querySelector<HTMLElement>("[data-coach-diary-panel]");
+    const form=panel?.querySelector<HTMLFormElement>("[data-coach-diary-form]");
+    if(!panel||!form)return;
+    const status=panel.querySelector<HTMLElement>("[data-coach-diary-status]");
+    const refresh=(response:any)=>{d.coachDiary=response;panel.outerHTML=matchDiaryPanel(d);bindMatchDiary(d);};
+    form.onsubmit=async(event)=>{
+        event.preventDefault();
+        try {
+            const fields=new FormData(form), get=(key:string)=>String(fields.get(key)||"").trim();
+            if(fields.has("discardLegacy")&&!get("note"))throw new Error("Escreva uma nota para manter o Diário ou invalide o registro.");
+            const prior=fields.has("discardLegacy")?{}:d.coachDiary?.current?.content||{};
+            const payload={snapshotId:Number(state.snapshotId),expectedRevision:d.coachDiary?.current?.revision||d.coachDiary?.revisions?.[0]?.revision||0,
+                author:"Usuário local",observedAt:d.coachDiary?.current?.observed_at||null,note:get("note"),
+                ownFormation:prior.ownFormation,opponentDefensiveLine:prior.opponentDefensiveLine,
+                opponentFormation:prior.opponentFormation,opponentHypothesis:prior.opponentHypothesis,
+                opponentAlternative:prior.opponentAlternative,opponentEvidence:prior.opponentEvidence,
+                ownLineup:prior.ownLineup,opponentLineup:prior.opponentLineup};
+            const response=await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/save`,
+                {method:"POST",body:JSON.stringify(payload)});
+            refresh(response);
+        } catch(error:any) {if(status)status.textContent=error?.message||"Não foi possível salvar.";}
+    };
+    const invalidate=panel.querySelector<HTMLButtonElement>("[data-coach-diary-invalidate]");
+    if(invalidate)invalidate.onclick=async()=>{
+        try {
+            await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary/invalidate`,
+                {method:"POST",body:JSON.stringify({author:"Usuário local",expectedRevision:d.coachDiary?.current?.revision})});
+            const response=await api(`/api/careers/${state.careerId}/matches/${d.match.fixture_id}/diary?snapshotId=${state.snapshotId}`);
+            refresh(response);
+        } catch(error:any) {if(status)status.textContent=error?.message||"Não foi possível invalidar.";}
+    };
 }
 
 async function renderMatch() {
@@ -113,8 +172,16 @@ async function renderMatch() {
     const eventTeamName=(idx:any)=>{const team=teamByIndex.get(Number(idx)),id=Number(team?.teamEaId);return id===Number(m.home_team_ea_id)?m.home_team_name:id===Number(m.away_team_ea_id)?m.away_team_name:`Team ${num(Number(idx)+1)}`;};
     const events=hasDetailed?`<section class="card"><header class="card-header"><div><h2>Event overview</h2><p>Exported events — no inferred chronology or match minute</p></div></header><div class="match-event-grid">${(detailed.events||[]).length?(detailed.events||[]).map((e:any)=>`<div class="match-event ${esc(e.type)}"><span class="event-icon">${e.type==="yellow_card"?"▰":e.type==="red_card"?"■":e.type==="motm"?"★":e.type==="goal"||e.type==="penalty_goal"?"●":"•"}</span><div><strong>${esc(eventNames.get(Number(e.playerEaId))||e.displayName||`Player ${e.playerEaId}`)}</strong><small>${esc(e.label)}${Number(e.count)>1?` ×${num(e.count)}`:""}</small></div><span>${esc(eventTeamName(e.teamIndex))}</span></div>`).join(""):`<div class="card-body muted">No exported events for this match.</div>`}</div><div class="data-note">${esc(detailed.eventTimingNote||"")}</div></section>`:"";
     const matchPlayerAnalysisHtml=new Map<number,string>();
+    const ownGoalkeeperSide=(detailed.goalkeeperEvidence?.sides||[]).find((side:any)=>Number(side.teamEaId)===Number(d.snapshot?.managed_team_ea_id));
+    const goalkeeperContextFor=(p:any)=>{
+        if(Number(p.match_team_ea_id??p.team_ea_id)!==Number(d.snapshot?.managed_team_ea_id))return "";
+        const keeper=ownGoalkeeperSide?.keepers?.find((item:any)=>Number(item.playerEaId)===Number(p.player_ea_id));
+        if(!keeper||keeper.minutes===0)return "";
+        if(ownGoalkeeperSide.state==="single_goalkeeper"&&Number(ownGoalkeeperSide.eligibleKeeperId)!==Number(p.player_ea_id))return "";
+        return goalkeeperPlayerContext(ownGoalkeeperSide,keeper,detailed.goalkeeperEvidence?.interpretationLimit||"");
+    };
     const performanceRow=(p:any)=>{const s=p.detailedStats||p.reconstructedStats||{};const detailedRow=!!p.detailedStats;const observedPosition=observedPositionOf(p);return `<tr>
-        <td><div class="player-line">${playerPortrait(p.media,p.display_name,"table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id,p.display_name)}${detailedPlayerDrawer(p,matchPlayerAnalysisHtml.get(Number(p.player_ea_id))||"")}</div></div></td>
+        <td><div class="player-line">${playerPortrait(p.media,p.display_name,"table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id,p.display_name)}${detailedPlayerDrawer(p,matchPlayerAnalysisHtml.get(Number(p.player_ea_id))||"",goalkeeperContextFor(p))}</div></div></td>
         <td class="center" data-sort="${positionOrder(observedPosition??p.primary_position,p.primary_position_id)}">${observedPosition?`${positionBadge(observedPosition)}<small class="match-position-source">Observed</small>`:`${positionBadge(p.primary_position)}<small class="match-position-source">Registered · observed N/D</small>`}</td><td class="num">${num(s.minutes_played??p.minutes_played)}</td><td class="num"><b>${s.game_rating!=null?num(s.game_rating,1):p.rating?num(p.rating,1):"–"}</b></td>
         <td class="num">${detailedRow?`${num(s.goals_derived)}/${num(s.assists)}`:s.source?`${num(s.goals)}/${num(s.assists)}`:"–"}</td><td class="num">${detailedRow?num(s.npk_expected_goals,2):"–"}</td><td class="num">${detailedRow?num(s.expected_assists,2):"–"}</td><td class="num">${detailedRow?`${num(s.shots_on_target)}/${num(s.shots)}`:"–"}</td><td class="num">${detailedRow&&s.pass_accuracy_pct_derived!=null?`${num(s.pass_accuracy_pct_derived,1)} %`:"–"}</td><td class="num">${detailedRow?num(s.key_passes):"–"}</td><td class="num">${detailedRow?num(s.possession_won):"–"}</td><td class="num">${detailedRow?num(s.possession_lost):"–"}</td><td>${detailedRow?statusBadge("FC26 Detail","good"):s.source?statusBadge("Snapshot-Delta","blue"):statusBadge(p.join_status||"Direct")}</td></tr>`;};
     const performanceHeaders=[{label:"Player"},{label:"Pos.",cls:"center"},{label:"Min.",cls:"num"},{label:"Rating",cls:"num"},{label:"G/A",cls:"num"},{label:"NPK-xG",cls:"num"},{label:"xA",cls:"num"},{label:"SoT/Sh",cls:"num"},{label:"Pass %",cls:"num"},{label:"Key P.",cls:"num"},{label:"Ball +",cls:"num"},{label:"Ball -",cls:"num"},{label:"Source"}];
@@ -139,7 +206,9 @@ async function renderMatch() {
     ownPlayers.forEach((p:any,index:number)=>{const queued=(automaticReportQueue.scheduled||[]).find((job:any)=>job.mode==="match_player"&&Number(job.player_ea_id)===Number(p.player_ea_id));const cached=queued&&["queued","running"].includes(queued.status)&&individualCaches[index].state==="stale"?{state:queued.status}:individualCaches[index];matchPlayerAnalysisHtml.set(Number(p.player_ea_id),`<div data-match-player-analysis="${Number(p.player_ea_id)}">${matchPlayerAnalysis(cached,p)}</div>`);});
     const performanceTable=(items:any[])=>items.length?table(performanceHeaders,items.map(performanceRow)):`<div class="card-body muted">No player performances were exported for this team.</div>`;
     const duplicateNote=Number(d.performanceDiagnostics?.suppressedSnapshotDuplicates||0)>0?`<div class="data-note">Tracker combined ${num(d.performanceDiagnostics.suppressedSnapshotDuplicates)} duplicate snapshot rating row${Number(d.performanceDiagnostics.suppressedSnapshotDuplicates)===1?"":"s"} for this match.</div>`:"";
-    const performanceBody=hasTeamSplit?`<div class="card-body" style="padding-bottom:0"><div class="tabbar match-performance-tabs"><button class="active" data-match-performance-team="primary">${esc(teamName(primaryTeamId))} <b>${num(primaryPerformances.length)}</b></button><button data-match-performance-team="secondary">${esc(teamName(secondaryTeamId))} <b>${num(secondaryPerformances.length)}</b></button></div></div><div data-match-performance-panel="primary">${performanceTable(primaryPerformances)}</div><div data-match-performance-panel="secondary" hidden>${performanceTable(secondaryPerformances)}</div>${duplicateNote}`:`${performanceTable(d.performances)}${duplicateNote}`;
+    const phaseCopy=atlasLanguage()==="en-GB"?{start:"Estimated starting formation",end:"Estimated final formation",startLines:"Initial XI lines",endLines:"Final XI lines",note:"Based on recorded positions; role changes during play are not captured."}:atlasLanguage()==="es-ES"?{start:"Formación inicial estimada",end:"Formación final estimada",startLines:"Líneas del XI inicial",endLines:"Líneas del XI final",note:"Basada en posiciones registradas; no capta cambios de función durante el partido."}:{start:"Formação inicial estimada",end:"Formação final estimada",startLines:"Linhas do XI inicial",endLines:"Linhas do XI final",note:"Baseada nas posições registradas; mudanças de função durante a partida não são captadas."};
+    const lineupHint=(teamId:number)=>{const phase=(d.lineupPhases?.teams||[]).find((item:any)=>Number(item.teamEaId)===teamId);return phase?.initialFormation?`<div class="match-lineup-hint"><strong>${esc(phase.initialPrecision==="role_bands"?phaseCopy.start:phaseCopy.startLines)} ${esc(phase.initialFormation)}</strong>${phase.finalFormation?`<strong>${esc(phase.finalPrecision==="role_bands"?phaseCopy.end:phaseCopy.endLines)} ${esc(phase.finalFormation)}</strong>`:""}<small>${esc(phaseCopy.note)}</small></div>`:"";};
+    const performanceBody=hasTeamSplit?`<div class="card-body" style="padding-bottom:0"><div class="tabbar match-performance-tabs"><button class="active" data-match-performance-team="primary">${esc(teamName(primaryTeamId))} <b>${num(primaryPerformances.length)}</b></button><button data-match-performance-team="secondary">${esc(teamName(secondaryTeamId))} <b>${num(secondaryPerformances.length)}</b></button></div></div><div data-match-performance-panel="primary">${lineupHint(primaryTeamId)}${performanceTable(primaryPerformances)}</div><div data-match-performance-panel="secondary" hidden>${lineupHint(secondaryTeamId)}${performanceTable(secondaryPerformances)}</div>${duplicateNote}`:`${lineupHint(primaryTeamId)}${performanceTable(d.performances)}${duplicateNote}`;
     const reportCache:any=m.is_completed?await api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${Number(state.snapshotId)}&mode=match&fixture_id=${Number(m.fixture_id)}`).catch(()=>({state:"missing"})):({state:"missing"});
     const savedReport=reportCache.result||{},savedBody=savedReport.report||{},savedCatalog=new Map((savedReport.fact_catalog||[]).map((f:any)=>[f.id,f.label]));
     const savedRefs=(ids:any[])=>esc((ids||[]).map((id:any)=>savedCatalog.get(id)||id).join(" · "));
@@ -197,10 +266,11 @@ async function renderMatch() {
 
     content.innerHTML = `<div class="content-inner wide">${pageHead("Match report", `${dateText(m.date)} · ${esc(timeText(m.time))}`, `<button class="button" data-route="match-center">Match Center</button>`)}
       <section class="card fixture-hero"><div class="fixture-meta"><span class="inline-identity">${identityLogo(d.competitionIdentity,m.competition_name,"inline-logo")}${competitionLink(m.competition_object_id,m.competition_name)}</span> · ${m.is_completed?"COMPLETED":"SCHEDULED"}</div><div class="fixture-scoreboard"><div class="fixture-club">${identityLogo(d.homeIdentity,m.home_team_name,"fixture-club-logo")}<h2>${clubLink(m.home_team_ea_id,m.home_team_name)}</h2></div><div class="fixture-score">${m.is_completed?`${num(m.home_score)} : ${num(m.away_score)}`:"VS"}<small>${m.home_penalties!=null||m.away_penalties!=null?`Penalty shoot-out ${num(m.home_penalties)}:${num(m.away_penalties)}`:esc(m.managed_team_result||"")}</small></div><div class="fixture-club">${identityLogo(d.awayIdentity,m.away_team_name,"fixture-club-logo")}<h2>${clubLink(m.away_team_ea_id,m.away_team_name)}</h2></div></div></section>
-      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison||`<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${events}
+      ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison||`<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${matchDiaryPanel(d)}${events}
       <section id="p0-match-players" class="card match-performance-section"><header class="card-header"><div><h2>Player performances</h2><p>${hasDetailed?"Direct FC26 match data for exported participants":"Detailed MatchStats unavailable; ratings and conservative snapshot reconstruction are shown when recorded"}</p></div></header>${d.performances.length?performanceBody:`<div class="card-body muted">No player performances were exported for this match.</div>`}</section>
-      ${hasDetailed?goalkeeperMatchView(detailed.goalkeeperEvidence,m,detailed.players||[]):""}${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings",d.capabilities?.matchRatings?"Available":"Partial","ratings and minutes")}${metric("Detailed FC26 data",hasDetailed?"Available":"Not available",hasDetailed?`${num(detailed.players?.length||0)} participants`:"snapshot data fallback",hasDetailed?"green":"amber")}${metric("Events",hasDetailed?num(detailed.events?.length||0):"–",hasDetailed?"not chronological · no confirmed minutes":"no detailed source")}${metric("Link confidence",hasDetailed?`${num(detailed.linkageConfidence*100,0)} %`:"–","import linkage metadata")}${metric("xG model",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG + NPK-xG":"NPK-xG"):"–",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG = NPK-xG + 0.7 × penalty attempts":"direct FC26 NPK value"):"")}</div><p class="data-note">${esc(detailed.xgNote||"")} ${esc(detailed.eventTimingNote||"")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
+      ${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings",d.capabilities?.matchRatings?"Available":"Partial","ratings and minutes")}${metric("Detailed FC26 data",hasDetailed?"Available":"Not available",hasDetailed?`${num(detailed.players?.length||0)} participants`:"snapshot data fallback",hasDetailed?"green":"amber")}${metric("Events",hasDetailed?num(detailed.events?.length||0):"–",hasDetailed?"not chronological · no confirmed minutes":"no detailed source")}${metric("Link confidence",hasDetailed?`${num(detailed.linkageConfidence*100,0)} %`:"–","import linkage metadata")}${metric("xG model",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG + NPK-xG":"NPK-xG"):"–",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG = NPK-xG + 0.7 × penalty attempts":"direct FC26 NPK value"):"")}</div><p class="data-note">${esc(detailed.xgNote||"")} ${esc(detailed.eventTimingNote||"")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
     </div>`;
+    bindMatchDiary(d);
     const queuedReportJobs=(automaticReportQueue.scheduled||[]).filter((job:any)=>job?.job_id);
     if(queuedReportJobs.length){
         void (async()=>{
