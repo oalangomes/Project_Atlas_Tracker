@@ -9,6 +9,7 @@ from .media_utils import season_start_from_date
 from .positions import broad_position_group
 from .server_utils import age_on_date, as_int, parse_raw, rows_to_dicts
 from .match_stats import detailed_analysis
+from .defense_context import defense_context
 
 
 class AnalysisQueryMixin:
@@ -1263,6 +1264,8 @@ class AnalysisQueryMixin:
             managed_team_id = as_int(latest["managed_team_ea_id"])
             match_intelligence = detailed_analysis(conn, career_id, selected_indices, managed_team_id,
                                                    as_of_import_sequence=int(latest["import_sequence"]))
+            defense = defense_context(conn, career_id, selected_indices, managed_team_id,
+                                      as_of_import_sequence=int(latest["import_sequence"]))
             league_history = self._league_history(conn, career_id, managed_team_id, int(latest["id"])) if managed_team_id is not None else []
             selected_history = [row for row in league_history if int(row["season_index"]) in selected_indices]
             levels = [as_int(row.get("league_level")) for row in selected_history]
@@ -1509,6 +1512,7 @@ class AnalysisQueryMixin:
             "records": records,
             "seasonComparison": season_comparison,
             "matchIntelligence": match_intelligence,
+            "defenseContext": defense,
             "seasonReport": season_report,
             "seasonOverview": {
                 "competitions": competitions,
