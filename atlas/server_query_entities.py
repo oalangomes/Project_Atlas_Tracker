@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
-from .positions import broad_position_group
+from .positions import broad_position_group, trusted_actual_position
 from .team_strength import live_squad_strength
 from .server_utils import (
     age_on_date, aggregate_standings, annotate_knockout_progress, as_int, clean_raw,
@@ -265,15 +265,16 @@ class EntityQueryMixin:
         }
 
     def _player_career_path(
-        self, conn: Any, career_id: int, player_id: int, development_history: list[dict[str, Any]]
+        self, conn: Any, career_id: int, player_id: int, development_history: list[dict[str, Any]],
+        as_of_date: str | None = None,
     ) -> dict[str, Any]:
         """Build a conservative club/season chronology from immutable snapshots and movement overlays."""
-        stations: dict[tuple[int | None, int | None, str], dict[str, Any]] = {}
+        stations: dict[tuple[int | None, str], dict[str, Any]] = {}
         for point in development_history:
             team_id = as_int(point.get("team_ea_id"))
             team_name = str(point.get("team_name") or (f"Team {team_id}" if team_id is not None else "Unknown club"))
             start_year = as_int(point.get("season_start_year"))
-            key = (start_year, team_id, team_name.casefold())
+            key = (start_year, f"ea:{team_id}" if team_id is not None else f"name:{team_name.casefold()}")
             current = stations.get(key)
             stamp = str(point.get("effective_date") or point.get("career_date") or "")
             candidate = {
@@ -289,10 +290,12 @@ class EntityQueryMixin:
                 "market_value": point.get("market_value"),
                 "market_value_hint": (point.get("financial") or {}).get("market_value", {}).get("label"),
                 "source": point.get("source"),
+                "observations": 1,
             }
             if current is None:
                 stations[key] = candidate
             else:
+                current["observations"] += 1
                 if stamp and (not current.get("first_date") or stamp < str(current.get("first_date"))):
                     current["first_date"] = stamp
                 if stamp and (not current.get("last_date") or stamp >= str(current.get("last_date"))):
@@ -338,6 +341,9 @@ class EntityQueryMixin:
                 for event in events:
                     if as_int(event.get("player_ea_id")) != player_id:
                         continue
+                    event_date = event.get("date") or event.get("first_observed_date") or event.get("last_observed_date")
+                    if as_of_date and (not event_date or str(event_date) > as_of_date):
+                        continue
                     if event_type == "loan":
                         from_id, from_name = as_int(event.get("parent_team_ea_id")), event.get("parent_team_name")
                         to_id, to_name = as_int(event.get("loan_team_ea_id")), event.get("loan_team_name")
@@ -348,7 +354,6 @@ class EntityQueryMixin:
                     if key in seen:
                         continue
                     seen.add(key)
-                    event_date = event.get("date") or event.get("first_observed_date") or event.get("last_observed_date")
                     value, value_date = market_at(event_date)
                     movements.append({
                         "event_key": key,
@@ -438,8 +443,8 @@ class EntityQueryMixin:
                    LEFT JOIN roster_states r ON r.snapshot_id=p.snapshot_id AND r.player_ea_id=p.ea_player_id
                    LEFT JOIN contract_states c ON c.snapshot_id=p.snapshot_id AND c.player_ea_id=p.ea_player_id
                    LEFT JOIN loan_states l ON l.snapshot_id=p.snapshot_id AND l.player_ea_id=p.ea_player_id
-                   WHERE s.career_id=? AND p.ea_player_id=? ORDER BY s.import_sequence""",
-                (snap["career_id"], player_id),
+                   WHERE s.career_id=? AND p.ea_player_id=? AND s.import_sequence<=? ORDER BY s.import_sequence""",
+                (snap["career_id"], player_id, snap["import_sequence"]),
             ).fetchall()
             stat_history = conn.execute(
                 """SELECT s.id snapshot_id,s.career_date,s.season_index,s.import_sequence,ss.competition_object_id,
@@ -448,8 +453,9 @@ class EntityQueryMixin:
                           ss.yellow_cards,ss.second_yellow_cards,ss.red_cards,ss.saves,ss.goals_conceded,
                           ss.clean_sheets
                    FROM season_stat_states ss JOIN snapshots s ON s.id=ss.snapshot_id
-                   WHERE s.career_id=? AND ss.player_ea_id=? ORDER BY s.import_sequence,ss.competition_name""",
-                (snap["career_id"], player_id),
+                   WHERE s.career_id=? AND ss.player_ea_id=? AND s.import_sequence<=?
+                   ORDER BY s.import_sequence,ss.competition_name""",
+                (snap["career_id"], player_id, snap["import_sequence"]),
             ).fetchall()
             roster = conn.execute(
                 "SELECT * FROM roster_states WHERE snapshot_id=? AND player_ea_id=?", (snapshot_id, player_id)
@@ -595,6 +601,8 @@ class EntityQueryMixin:
             for point in manual_editor.get("development", []):
                 item = dict(point)
                 effective_date = str(item.get("effective_date") or f"{int(item['start_year']):04d}-07-01")
+                if snap["career_date"] and effective_date > str(snap["career_date"]):
+                    continue
                 market = self.state.financial.historical_market_value(
                     conn, career_id, player_id, effective_date,
                     int(item["overall"]), int(item["potential"]),
@@ -676,7 +684,8 @@ class EntityQueryMixin:
         season_stats.sort(key=lambda item: (as_int(item.get("season_index")) or 0, str(item.get("competition_name") or ""), 0 if item.get("source") == "snapshot" else 1))
         with self.state.database.connect() as conn:
             player_analysis = self._player_analysis(conn, snap, player_item or {}, growth, totals)
-            player_career = self._player_career_path(conn, career_id, player_id, development_history)
+            player_career = self._player_career_path(conn, career_id, player_id, development_history,
+                                                     as_of_date=str(snap["career_date"] or "") or None)
         player_finance = self.state.player_finance.analyze(snapshot_id, player_id)
         financial["market_value"] = {
             "value": player_finance["market"].get("value"),
@@ -703,6 +712,20 @@ class EntityQueryMixin:
             reconstructed = reconstructed_by_fixture.get(str(item.get("fixture_key") or ""))
             if reconstructed:
                 item["reconstructedStats"] = reconstructed
+        observed_positions: dict[str, dict[str, int]] = {}
+        seen_position_fixtures: set[str] = set()
+        for item in performance_items:
+            position = trusted_actual_position(item.get("actual_position"), item.get("actual_position_source"))
+            fixture_key = str(item.get("fixture_key") or "")
+            if not position or (fixture_key and fixture_key in seen_position_fixtures):
+                continue
+            if fixture_key:
+                seen_position_fixtures.add(fixture_key)
+            evidence = observed_positions.setdefault(position, {"matches": 0, "minutes": 0})
+            evidence["matches"] += 1
+            evidence["minutes"] += max(0, int(item.get("minutes_played") or 0))
+        observed_role_rows = [{"position": position, **sample} for position, sample in observed_positions.items()]
+        observed_role_rows.sort(key=lambda item: (-item["minutes"], -item["matches"], item["position"]))
         return {
             "snapshot": dict(snap),
             "player": player_item,
@@ -715,6 +738,8 @@ class EntityQueryMixin:
             "manualEditor": manual_editor,
             "seasonStats": season_stats,
             "performances": performance_items,
+            "positionEvidence": {"registered": state["primary_position"], "observed": observed_role_rows,
+                                 "source": "trusted player match position", "scope": "selected snapshot"},
             "reconstructedMatches": reconstructed_matches,
             "detailedMatches": detailed_matches,
             "detailedSeasonStats": detailed_season_stats,

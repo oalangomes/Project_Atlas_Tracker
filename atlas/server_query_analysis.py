@@ -5,7 +5,7 @@ import re
 import unicodedata
 from typing import Any, Iterable
 
-from .media_utils import season_start_from_date
+from .media_utils import competition_crosswalk_name_key, season_start_from_date
 from .positions import broad_position_group
 from .server_utils import age_on_date, as_int, parse_raw, rows_to_dicts
 from .match_stats import detailed_analysis
@@ -699,6 +699,7 @@ class AnalysisQueryMixin:
             latest_by_season[int(snap["season_index"])] = snap
         performance: dict[str, dict[str, Any]] = {}
         imported_keys: set[tuple[int, int, int]] = set()
+        imported_names: set[tuple[int, int, str]] = set()
 
         def add_performance(
             key: str, player_id: int | None, display_name: str, position: Any, overall: Any,
@@ -708,8 +709,10 @@ class AnalysisQueryMixin:
                 "player_ea_id": player_id, "player_key": key, "display_name": display_name,
                 "primary_position": position, "overall": as_int(overall), "appearances": 0,
                 "goals": 0, "assists": 0, "clean_sheets": 0,
-                "rating_weight": 0.0, "rating_appearances": 0, "sources": set(),
+                "rating_weight": 0.0, "rating_appearances": 0, "sources": set(), "aliases": set(),
             })
+            if display_name:
+                entry["aliases"].add(display_name)
             if not entry.get("primary_position") and position:
                 entry["primary_position"] = position
             if entry.get("overall") is None and as_int(overall) is not None:
@@ -737,6 +740,9 @@ class AnalysisQueryMixin:
                 player_id = int(row["player_ea_id"])
                 competition_id = int(row["competition_object_id"])
                 imported_keys.add((season_index, player_id, competition_id))
+                name_key = competition_crosswalk_name_key(row["competition_name"])
+                if name_key:
+                    imported_names.add((season_index, player_id, name_key))
                 add_performance(
                     f"ea:{player_id}", player_id, row["display_name"] or f"Player {player_id}",
                     row["primary_position"], row["overall"], row["appearances"], row["goals"],
@@ -746,7 +752,7 @@ class AnalysisQueryMixin:
         if manual_season_map:
             manual_clause, manual_values = self._indices_clause(manual_season_map.keys())
             manual_rows = conn.execute(
-                f"""SELECT ps.*,c.competition_object_id,ms.id manual_season_id,ms.season_index manual_season_index
+                f"""SELECT ps.*,c.competition_object_id,c.competition_name,ms.id manual_season_id,ms.season_index manual_season_index
                     FROM manual_player_stats ps
                     JOIN manual_competitions c ON c.id=ps.manual_competition_id
                     JOIN manual_seasons ms ON ms.id=c.manual_season_id
@@ -757,14 +763,20 @@ class AnalysisQueryMixin:
                 player_id = as_int(row["player_ea_id"])
                 competition_id = as_int(row["competition_object_id"])
                 season_index = manual_season_map[int(row["manual_season_id"])]
-                if player_id is not None and competition_id is not None and (season_index, player_id, competition_id) in imported_keys:
+                name_key = competition_crosswalk_name_key(row["competition_name"])
+                if player_id is not None and ((competition_id is not None and (season_index, player_id, competition_id) in imported_keys)
+                                           or (name_key and (season_index, player_id, name_key) in imported_names)):
+                    key = f"ea:{player_id}"
+                    if key in performance and row["display_name"]:
+                        performance[key]["aliases"].add(row["display_name"])
                     continue
                 position = overall = None
                 if player_id is not None:
                     context = conn.execute(
                         """SELECT primary_position,overall FROM player_states p JOIN snapshots s ON s.id=p.snapshot_id
-                           WHERE s.career_id=? AND p.ea_player_id=? ORDER BY s.import_sequence DESC LIMIT 1""",
-                        (career_id, player_id),
+                           WHERE s.career_id=? AND p.ea_player_id=? AND s.import_sequence<=?
+                           ORDER BY s.import_sequence DESC LIMIT 1""",
+                        (career_id, player_id, int(latest["import_sequence"]) if latest is not None else -1),
                     ).fetchone()
                     if context:
                         position, overall = context["primary_position"], context["overall"]
@@ -782,15 +794,41 @@ class AnalysisQueryMixin:
                     "display_name": item["display_name"], "primary_position": item.get("primary_position"),
                     "overall": as_int(item.get("overall")), "appearances": 0, "goals": 0,
                     "assists": 0, "clean_sheets": 0, "rating_weight": 0.0,
-                    "rating_appearances": 0, "sources": set(),
+                    "rating_appearances": 0, "sources": set(), "aliases": {item["display_name"]},
                 })
 
         player_context = {int(item["ea_player_id"]): item for item in current_players if item.get("ea_player_id") is not None}
+        first_state: dict[int, dict[str, Any]] = {}
+        if snapshots and player_context:
+            snapshot_clause, snapshot_values = self._indices_clause([int(snap["id"]) for snap in snapshots])
+            player_clause, player_values = self._indices_clause(player_context)
+            for state in conn.execute(
+                f"""SELECT p.snapshot_id,p.ea_player_id,p.overall,p.potential FROM player_states p
+                    JOIN snapshots s ON s.id=p.snapshot_id
+                    WHERE p.snapshot_id IN ({snapshot_clause}) AND p.ea_player_id IN ({player_clause})
+                    ORDER BY s.import_sequence""",
+                (*snapshot_values, *player_values)):
+                first_state.setdefault(int(state["ea_player_id"]), dict(state))
         performance_rows = []
         for entry in performance.values():
             context = player_context.get(as_int(entry.get("player_ea_id")) or -1, {})
+            if context.get("display_name"):
+                entry["aliases"].add(context["display_name"])
+                entry["display_name"] = context["display_name"]
+            entry["aliases"] = sorted(entry["aliases"], key=str.casefold)
             entry["age"] = context.get("age")
             entry["potential"] = as_int(context.get("potential"))
+            baseline = first_state.get(as_int(entry.get("player_ea_id")) or -1, {})
+            current_ovr, current_pot = as_int(context.get("overall")), as_int(context.get("potential"))
+            prior_ovr, prior_pot = as_int(baseline.get("overall")), as_int(baseline.get("potential"))
+            has_comparison = bool(baseline) and latest is not None and int(baseline["snapshot_id"]) != int(latest["id"])
+            entry["development"] = {
+                "overall_start": prior_ovr, "overall_current": current_ovr,
+                "overall_change": current_ovr - prior_ovr if has_comparison and current_ovr is not None and prior_ovr is not None else None,
+                "potential_start": prior_pot, "potential_current": current_pot,
+                "potential_change": current_pot - prior_pot if has_comparison and current_pot is not None and prior_pot is not None else None,
+                "source": "player_states snapshots" if has_comparison and context else None,
+            }
             apps = int(entry["appearances"])
             rating_apps = int(entry.pop("rating_appearances"))
             rating_weight = float(entry.pop("rating_weight"))
@@ -836,6 +874,7 @@ class AnalysisQueryMixin:
             "ageStructure": age_structure,
             "appearanceDistribution": appearance_distribution,
             "performanceLeaders": performance_rows[:15],
+            "performancePlayers": performance_rows,
             "_allPerformance": performance_rows,
             "usageDefinition": "Usage categories relative to the player with the most appearances in the selected period: core starter from 75%, rotation from 40%.",
             "snapshotId": latest["id"] if latest is not None else None,
@@ -1428,11 +1467,13 @@ class AnalysisQueryMixin:
                        WHERE ms.career_id=? AND ms.id=? ORDER BY c.sort_order,c.id""",
                     (career_id, selected_manual_id),
                 ).fetchall() if selected_manual_id is not None else []
-                known_names = {str(item.get("competition_name") or "").lower() for item in competitions}
+                known_names = {competition_crosswalk_name_key(item.get("competition_name")) for item in competitions}
                 for row in manual_competitions:
                     item = dict(row)
-                    if str(item.get("competition_name") or "").lower() not in known_names:
+                    name_key = competition_crosswalk_name_key(item.get("competition_name"))
+                    if name_key not in known_names:
                         competitions.append(item)
+                        known_names.add(name_key)
 
             deep_squad = self._deep_squad_analysis(conn, career_id, list(snapshots), selected_options)
             all_performance = deep_squad.pop("_allPerformance", [])
