@@ -22,23 +22,25 @@ class AnalysisQueryMixin:
             snapshot = self._snapshot(conn, snapshot_id)
             if int(snapshot["career_id"]) != career_id:
                 raise ValueError("Snapshot does not belong to the selected career.")
+            available_seasons = [int(row[0]) for row in conn.execute(
+                "SELECT DISTINCT season_index FROM snapshots WHERE career_id=? AND import_sequence<=? ORDER BY season_index",
+                (career_id, snapshot["import_sequence"]),
+            )]
             if requested_season == -1:
-                season_indices = [int(row[0]) for row in conn.execute(
-                    "SELECT DISTINCT season_index FROM snapshots WHERE career_id=? AND import_sequence<=? ORDER BY season_index",
-                    (career_id, snapshot["import_sequence"]),
-                )]
+                season_indices = available_seasons
             else:
                 season = int(snapshot["season_index"]) if requested_season is None else requested_season
-                eligible = conn.execute(
-                    "SELECT 1 FROM snapshots WHERE career_id=? AND season_index=? AND import_sequence<=? LIMIT 1",
-                    (career_id, season, snapshot["import_sequence"]),
-                ).fetchone()
-                if not eligible:
+                if season not in available_seasons:
                     raise ValueError("Selected season is not available at this snapshot.")
                 season_indices = [season]
             result = rotation_continuity(conn, career_id, snapshot, season_indices, filters)
+            options = {int(item["season_index"]): item for item in self._season_options(conn, career_id)
+                       if item.get("has_snapshots")}
+            result["seasonOptions"] = [options[index] for index in available_seasons if index in options]
             result["selectedSeasonIndex"] = -1 if requested_season == -1 else season_indices[0]
-            result["selectedSeasonLabel"] = "All seasons" if requested_season == -1 else self._season_label(season_indices[0])
+            result["selectedSeasonLabel"] = ("All seasons" if requested_season == -1 else
+                                             str(options.get(season_indices[0], {}).get("label") or
+                                                 self._season_label(season_indices[0])))
             return result
 
     @staticmethod

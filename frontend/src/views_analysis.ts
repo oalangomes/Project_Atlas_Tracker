@@ -379,19 +379,37 @@ async function renderAnalysis(): Promise<void> {
       content.innerHTML = `<div class="content-inner wide">${pageHead(state.route==="commission"?"Technical commission":"Analysis", `${esc(commission.managed_team_name||"Active career")} · ${esc(commission.selectedSeasonLabel)}`, `<button class="button" data-route="results">Results</button><button class="button" data-route="squad">Squad</button>`)}${state.route==="commission"?"":analysisTabs(active)}${filter}${body}</div>`;
       return;
     }
+    if (active === "rotation") {
+      const filterScope = `${state.careerId}:${selected}`;
+      if (rotationFilterScope !== filterScope) {
+        rotationFilters = {competition:"",venue:"",opponentTier:"",opponentFormation:""};
+        rotationFilterScope = filterScope;
+      }
+      const query = new URLSearchParams({snapshot_id:String(state.snapshotId),season_index:String(selected),
+        competition:rotationFilters.competition,venue:rotationFilters.venue,
+        opponent_tier:rotationFilters.opponentTier,opponent_formation:rotationFilters.opponentFormation});
+      const rotation = await api(`/api/careers/${state.careerId}/analysis/rotation?${query.toString()}`);
+      state.analysisSeasonIndex = Number(rotation.selectedSeasonIndex);
+      const filter = `<div class="page-filter-bar">${periodPicker(rotation.seasonOptions || [], Number(rotation.selectedSeasonIndex), "analysis")}<span class="filter-hint">Starting XI continuity and opponent context use evidence available at the selected snapshot.</span></div>`;
+      content.innerHTML = `<div class="content-inner wide">${pageHead("Analysis", `career metrics · ${esc(rotation.selectedSeasonLabel)}`, `<button class="button" data-route="records">Records</button><button class="button" data-route="chronology">Career timeline</button>`)}${analysisTabs(active)}${filter}${rotationAnalysisView(rotation)}</div>`;
+      content.querySelectorAll<HTMLSelectElement>("[data-rotation-filter]").forEach(node=>node.onchange=async()=>{
+        const key=node.dataset.rotationFilter as keyof typeof rotationFilters;
+        rotationFilters[key]=node.value;
+        setLoading();
+        try { await renderAnalysis(); applyIcons(content); bindContent(); }
+        catch (error:any) { content.innerHTML=errorState("Rotation could not be loaded",String(error?.message||error)); }
+      });
+      return;
+    }
     const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}`);
     state.analysisSeasonIndex = Number(d.selectedSeasonIndex);
-    const filterScope=`${state.careerId}:${d.selectedSeasonIndex}`;if(rotationFilterScope!==filterScope){rotationFilters={competition:"",venue:"",opponentTier:"",opponentFormation:""};rotationFilterScope=filterScope;}
-    const rotationQuery=new URLSearchParams({snapshot_id:String(state.snapshotId),season_index:String(d.selectedSeasonIndex),competition:rotationFilters.competition,venue:rotationFilters.venue,opponent_tier:rotationFilters.opponentTier,opponent_formation:rotationFilters.opponentFormation});
-    const rotation=active==="rotation"?await api(`/api/careers/${state.careerId}/analysis/rotation?${rotationQuery.toString()}`):null;
     const leagueContext = d.metrics?.league_context || {};
     const placementMetric = leagueContext.mode === "current"
       ? {title: "League position", value: leagueContext.position ? `#${num(leagueContext.position)}` : "–", sub: leagueContext.league_name || "current league"}
       : {title: "Highest league", value: leagueContext.league_name || "–", sub: leagueContext.position ? `Best position there: #${num(leagueContext.position)} · ${esc(leagueContext.season_label || "")}` : "no reliable position"};
-    const body = active === "performance" ? analysisMatchIntelligence(d) : active === "rotation" ? rotationAnalysisView(rotation) : active === "squad" ? analysisSquad(d) : active === "seasons" ? analysisSeasons(d) : analysisOverview(d, placementMetric);
-    const filter = active === "seasons" ? '<div class="page-filter-bar"><span class="filter-hint">The season comparison shows all available seasons side by side.</span></div>' : `<div class="page-filter-bar">${periodPicker(d.seasonOptions || [], Number(d.selectedSeasonIndex), "analysis")}<span class="filter-hint">${active==="rotation"?"Starting XI continuity and opponent context are calculated from linked matches before the selected snapshot.":active==="performance"?"Only clearly linked detailed FC26 matches are included in this analysis.":"Tables and charts use the same selection."}</span></div>`;
+    const body = active === "performance" ? analysisMatchIntelligence(d) : active === "squad" ? analysisSquad(d) : active === "seasons" ? analysisSeasons(d) : analysisOverview(d, placementMetric);
+    const filter = active === "seasons" ? '<div class="page-filter-bar"><span class="filter-hint">The season comparison shows all available seasons side by side.</span></div>' : `<div class="page-filter-bar">${periodPicker(d.seasonOptions || [], Number(d.selectedSeasonIndex), "analysis")}<span class="filter-hint">${active==="performance"?"Only clearly linked detailed FC26 matches are included in this analysis.":"Tables and charts use the same selection."}</span></div>`;
     content.innerHTML = `<div class="content-inner wide">${pageHead("Analysis", `career metrics · ${esc(d.selectedSeasonLabel)}`, `<button class="button" data-route="records">Records</button><button class="button" data-route="chronology">Career timeline</button>`)}${analysisTabs(active)}${filter}${body}</div>`;
-    if(active==="rotation")content.querySelectorAll<HTMLSelectElement>("[data-rotation-filter]").forEach(node=>node.onchange=async()=>{const key=node.dataset.rotationFilter as keyof typeof rotationFilters;rotationFilters[key]=node.value;await renderAnalysis();applyIcons(content);bindContent();});
 }
 
 async function renderRecords(): Promise<void> {
