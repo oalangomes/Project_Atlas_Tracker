@@ -65,6 +65,10 @@ This community edition is independent from the private Project Atlas version lin
 
 ## Optional Technical Commission reports
 
+The read-only [monthly and season report generator](docs/monthly-reports.md) produces
+structured sporting data and Markdown for an explicitly selected career, season and
+snapshot. It is independent of optional AI reports.
+
 The Tracker can use a local Ollama installation for evidence-based match, player, and team-style reports. Reports are tied to the selected career and source facts, saved locally, and reused while those facts remain unchanged. New completed matches are analyzed in the background when their data is available; historical match and player reports can also be generated from the Technical Commission page. Historical generation creates a database backup first. If Ollama is offline, Tracker continues to show its recorded statistics and the reports can be retried later.
 
 The interface and generated reports support Brazilian Portuguese, British English, and Spanish. Ollama is optional; all career tracking and statistics pages work without it. FC26 career data remains local, and the included LUA exporters read game data without changing the save.
