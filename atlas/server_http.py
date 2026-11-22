@@ -305,6 +305,23 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                 self._json(payload)
             return
 
+        match = re.fullmatch(r"/api/careers/(\d+)/analysis/rotation", path)
+        if match:
+            career_id = int(match.group(1))
+            snapshot_id = as_int((query.get("snapshot_id") or [None])[0])
+            season_index = as_int((query.get("season_index") or [None])[0])
+            if snapshot_id is None:
+                with self.state.database.connect() as conn:
+                    latest = latest_snapshot(conn, career_id)
+                if not latest:
+                    raise ValueError("Rotation analysis requires at least one snapshot.")
+                snapshot_id = int(latest["id"])
+            filters = {key: str((query.get(param) or [""])[0]) for key, param in
+                       (("competition", "competition"), ("venue", "venue"),
+                        ("opponentTier", "opponent_tier"), ("opponentFormation", "opponent_formation"))}
+            self._json(self._rotation_analysis(career_id, snapshot_id, season_index, filters))
+            return
+
         match = re.fullmatch(r"/api/careers/(\d+)/analysis", path)
         if match:
             career_id = int(match.group(1))

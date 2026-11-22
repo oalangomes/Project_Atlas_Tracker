@@ -26,7 +26,7 @@ AT-020 conserva seu número histórico, mas fica **adiado e fora deste ciclo**. 
 | P05 | Defesa contextual | AT-025; H14–H17 | P03 | Min/posição/xGA faltantes, corte setorial, dupla substituída; desativar painel derivado |
 | P06 | Forma, função e elenco | AT-014/016/017; H06, H08–H10, H19, H22, H26, H28–H31 | P03 | Posição nominal vs observada, últimas cinco, aliases; conservar agregadores Atlas |
 | P07 | Contexto tático manual | AT-008–011; H18, H35 | P02/P03 | XI parcial e rival desconhecido; dados manuais versionados e atribuídos |
-| P08 | Rotação e modelo de jogo | AT-012/013/015; H20–H21 | P03; P07 só para funções táticas | Posse ausente, rival pré-jogo, grupo e amostra; regra de posse em espera |
+| P08 | [Rotação e modelo de jogo](p08-rotacao-modelo-jogo.md) | AT-012/013/015; H20–H21 | P03; P07 só para funções táticas | Posse ausente, rival pré-jogo, grupo e amostra; regra de posse em espera |
 | P09 | Base e transição | AT-018; H23–H25 | P03/P06, BL-11 para score 5x5 | 5x5 isolado não promove; plano individual revisável; score condicionado |
 | P10 | Mercado e sucessão | AT-019; H27 | P03/P06 | Sem proposta explícita, saída simulada, cobertura interna; sem transferência automática |
 | P11 | Comissão e semestre | AT-021–023; H33–H34 | P03–P10 aplicáveis | Semestre com fonte e exclusão, avaliação independente, custo/privacidade |
