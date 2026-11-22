@@ -3,16 +3,31 @@
 O serviço `atlas.monthly_reports.build_season_report(conn, career_id, season_index, snapshot_id)`
 produz um dicionário estruturado, sem escrever no banco. `build_month_report(..., month)`
 seleciona um mês `AAAA-MM` com partida concluída. A renderização Markdown fica em
-`atlas.monthly_report_markdown`; uma futura tela pode consumir o dicionário do serviço
-e exibir os campos `months`, `matches`, `players`, `competitions` e `rosterChanges`.
+`atlas.monthly_report_markdown`. No Atlas, **Season report → Evolução mensal**
+mostra o consolidado e os meses da carreira, temporada e snapshot escolhidos,
+incluindo partidas, jogadores, cobertura e evolução por setor.
 
 Arquivos da implementação: `atlas/monthly_reports.py` (consulta e agregação),
 `atlas/monthly_report_markdown.py` (apresentação),
+`atlas/monthly_report_api.py` (projeção para a tela e download),
+`atlas/server_http.py` (endpoint de leitura), `atlas/static/app.js` (interface),
 `scripts/generate_monthly_reports.py` (CLI), `tests/test_monthly_reports.py`
 (contratos de cálculo), este documento, a ligação no `README.md` e os Markdown
 gerados em `docs/reports/plymouth-season-1-snapshot-94/`.
 
 ## Execução
+
+Na interface, selecione a carreira e abra **Season report → Evolução mensal**.
+Escolha a temporada, o snapshot de corte e o mês; **Toda a temporada** mostra
+o consolidado. **Baixar Markdown** exporta exatamente o recorte visível.
+**Atualizar dados** refaz a consulta, sem persistir o relatório. O endpoint
+`GET /api/careers/{id}/sporting-reports?season_index={n}&snapshot_id={n}`
+devolve JSON compacto; `month=AAAA-MM` limita o JSON a um mês e
+`format=markdown` devolve `fileName` e `content` para download. O endpoint
+abre o banco ativo em `mode=ro` e valida o vínculo carreira/temporada/snapshot
+no serviço. O snapshot global do Atlas não muda ao examinar outro corte nessa aba.
+
+### Geração por linha de comando
 
 No diretório do repositório, escolha explicitamente o banco do workspace ativo,
 carreira, temporada e snapshot. Exemplo validado para o Plymouth:
@@ -74,7 +89,7 @@ período. [Índice dos relatórios gerados](reports/plymouth-season-1-snapshot-9
 Os 81 pontos de liga no consolidado são recalculados dos fixtures, pois o campo
 de classificação armazenado não foi tomado como autoridade para esse total.
 
-## Limitações e próximos pontos de integração
+## Limitações
 
 Quatro partidas não têm export detalhado elegível; suas métricas avançadas são
 `n/d`. O recorte de notas/minutos pode ter cobertura diferente do export.
@@ -88,9 +103,6 @@ O snapshot 94 tem `import_status=degraded` por aviso de lucratividade de equipes
 fora da faixa esperada. Fixtures, notas e estatísticas da temporada foram
 validados separadamente para este relatório.
 
-Para uma tela, reutilize `build_season_report` em um endpoint de consulta com
-seleção explícita de carreira, temporada e snapshot, sem persistir o relatório no
-banco. A interface pode renderizar tabelas e dossiês a partir do mesmo contrato.
 Cobertura de escalações, eventos de mercado e MatchStats deve crescer nas fontes
 do Atlas; o serviço mensal não mantém um motor paralelo para essas métricas.
 

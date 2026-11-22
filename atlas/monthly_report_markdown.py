@@ -278,19 +278,23 @@ def render_month(report: dict[str, Any], month: dict[str, Any],
     return "\n".join(lines)
 
 
-def render_season(report: dict[str, Any]) -> str:
+def render_season(report: dict[str, Any], *, navigation: bool = True) -> str:
     months = report["months"]
     def total(key: str) -> str:
         return _fmt(sum(m[key] for m in months)) if all(m[key] is not None for m in months) else "n/d"
     lines = [f"# Temporada — {report['teamName']}", "",
              f"**Carreira:** `{report['careerFingerprint']}` (ID {report['careerId']}) · "
              f"**temporada:** {report['seasonIndex']} · **snapshot:** {report['snapshotId']} "
-             f"({report['snapshotCareerDate']}).", "", "[Índice](README.md)", "",
+             f"({report['snapshotCareerDate']}).", ""]
+    if navigation:
+        lines += ["[Índice](README.md)", ""]
+    lines += [
              "## Trajetória mensal", "",
              "| Mês | J | V-E-D | Liga pts | GF-GA | Aproveitamento | Exports |", "|---|---:|---|---:|---|---:|---:|"]
     for m in months:
         rec = [sum(c[key] for c in m["competitions"].values()) for key in ("wins", "draws", "losses")]
-        lines.append(f"| [{m['month']}]({m['month']}.md){' parcial' if m['partial'] else ''} | {len(m['matches'])} | "
+        month_label = f"[{m['month']}]({m['month']}.md)" if navigation else m["month"]
+        lines.append(f"| {month_label}{' parcial' if m['partial'] else ''} | {len(m['matches'])} | "
                      f"{'-'.join(map(str, rec))} | {_fmt(m['pointsLeague'])} | {_fmt(m['goalsFor'])}-{_fmt(m['goalsAgainst'])} | "
                      f"{_fmt(m['pointsPct'])}% | {m['exports']}/{len(m['matches'])} |")
     lines += ["", f"**Total:** {report['fixtureCount']} partidas únicas; "

@@ -82,6 +82,8 @@ class MonthlyReportTests(unittest.TestCase):
         self.assertEqual(july["players"][0]["overall"], 70)
         self.assertEqual(report["months"][1]["players"][0]["comparison"]["overallDelta"], 1)
         self.assertIn("2 partidas únicas", render_season(report))
+        self.assertNotIn("[Índice](README.md)", render_season(report, navigation=False))
+        self.assertNotIn("[2025-07](2025-07.md)", render_season(report, navigation=False))
         self.assertIn("0/1 partidas com MatchStats", render_month(report, july))
         self.assertNotIn("[Índice](README.md)", render_month(report, july, navigation=False))
         with self.assertRaises(ValueError):
