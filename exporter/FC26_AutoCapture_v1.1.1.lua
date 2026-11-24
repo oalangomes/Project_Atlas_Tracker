@@ -1,8 +1,8 @@
--- FC26 AutoCapture v1.1.5 hotfix
+-- FC26 AutoCapture v1.1.6
 -- Single-file career monitor with full snapshot + detailed MatchStats exporters embedded.
--- Run once after loading a career. This hotfix creates a startup snapshot and arms
--- MatchStats. After a completed match it publishes MatchStats, then pauses automatic
--- post-match snapshots/rearming until this script is explicitly run again from the hub.
+-- Run once after loading a career. It creates a startup snapshot and arms
+-- MatchStats. After a completed match it publishes MatchStats and rearms when
+-- the Career Hub event arrives. Full post-match snapshots remain manual.
 -- Read-only: game database and memory are only read; no game data is modified.
 
 local MEMORY = require 'imports/core/memory'
@@ -20,7 +20,7 @@ require 'imports/career_mode/helpers'
 
 assert(IsInCM(), "FC26 AutoCapture must be executed while a career is loaded")
 
-local VERSION = "1.1.5"
+local VERSION = "1.1.6"
 local EMBEDDED_EXPORTER_VERSION = "1.1.0"
 local EMBEDDED_MATCH_STATS_VERSION = "1.1.1"
 local STATE_KEY = "FC26_EXPORT_AUTO_CAPTURE_STATE"
@@ -5869,7 +5869,9 @@ end
 local function stop_probe(reason)
     if not state.active then return end
     state.active = false
-    if type(reason) == 'string' and reason:find('^final_candidate_event_') then
+    if type(reason) == 'string' and
+       (reason:find('^final_candidate_event_') or
+        reason == 'entered_career_hub_after_match') then
         local auto_capture_state = rawget(_G, 'FC26_EXPORT_AUTO_CAPTURE_STATE')
         if type(auto_capture_state) == 'table' then
             auto_capture_state.post_match_candidate_finalized = true
@@ -5949,6 +5951,16 @@ local function stop_probe(reason)
         participant_rows = final_participant_rows_exported,
         error = publish_error
     })
+    -- On match types without event 137, finalization happens on the hub event.
+    -- Notify AutoCapture after the package is closed so rearming does not depend
+    -- on which post-event handler Live Editor invokes first.
+    if reason == 'entered_career_hub_after_match' then
+        local auto_capture_state = rawget(_G, 'FC26_EXPORT_AUTO_CAPTURE_STATE')
+        if type(auto_capture_state) == 'table' and
+           type(auto_capture_state.on_match_stats_hub_finish) == 'function' then
+            auto_capture_state.on_match_stats_hub_finish()
+        end
+    end
 end
 
 state.stop = stop_probe
@@ -6346,14 +6358,26 @@ end
 local existing = _G[STATE_KEY]
 if existing and existing.active then
     if tostring(existing.version or '') == VERSION and
-       not existing.post_match_export_suppressed then
+       not existing.post_match_candidate_finalized and
+       get_managed_team_id() == existing.managed_team_id then
+        existing._rerun_count = completed_state(existing.managed_team_id)
+        existing._snapshot_message = "No additional snapshot was needed."
+        if existing._rerun_count and
+           existing._rerun_count > (tonumber(existing.last_snapshot_count) or -1) and
+           existing.export_now then
+            existing._snapshot_message = existing.export_now("hub_rerun_after_completed_match") and
+                "Updated snapshot created." or "Updated snapshot failed; check the monitor log."
+        end
         if existing.ensure_match_stats then existing.ensure_match_stats("rerun_while_monitor_active") end
         pcall(function()
             MessageBox(
-                "FC26 AutoCapture is already active. No additional snapshot was created. MatchStats is armed for the next match.",
+                "FC26 AutoCapture is already active. " .. existing._snapshot_message ..
+                " MatchStats is armed for the next match.",
                 "FC26 AutoCapture"
             )
         end)
+        existing._rerun_count = nil
+        existing._snapshot_message = nil
         return
     end
     if existing.handler_id and type(RemoveEventHandler) == 'function' then
@@ -6363,7 +6387,7 @@ if existing and existing.active then
     end
     existing.active = false
     append_log({os.date("%Y-%m-%d %H:%M:%S"),
-        existing.post_match_export_suppressed and "monitor_safety_hold_reset" or "monitor_version_replaced",
+        existing.post_match_candidate_finalized and "monitor_restarted_after_match" or "monitor_version_replaced",
         tostring(existing.managed_team_id or ""), tostring(existing.managed_team_name or ""),
         tostring(existing.last_count or ""), "",
         "old_version=" .. tostring(existing.version or "legacy") .. ";new_version=" .. VERSION})
@@ -6392,7 +6416,10 @@ state = {
     active_capture_id = nil,
     capture_counter = 0,
     awaiting_match_stats_rearm = false,
-    inactive_capture_first_seen = 0
+    inactive_capture_first_seen = 0,
+    post_match_candidate_finalized = false,
+    last_snapshot_count = nil,
+    last_completed_capture_id = nil
 }
 _G[STATE_KEY] = state
 
@@ -6508,6 +6535,10 @@ local function run_export(reason)
     if reason == "auto_after_completed_match" then
         paired_capture_id = state.active_capture_id
         _G.FC26_EXPORT_POST_MATCH_CAPTURE_ID = paired_capture_id
+    elseif reason == "hub_rerun_after_completed_match" and
+           state.last_count - (tonumber(state.last_snapshot_count) or 0) == 1 then
+        paired_capture_id = state.last_completed_capture_id
+        _G.FC26_EXPORT_POST_MATCH_CAPTURE_ID = paired_capture_id
     end
 
     local chunk, load_error = load(EMBEDDED_EXPORTER_SOURCE, "@FC26_EmbeddedSnapshotExporter_v1.1.0.lua")
@@ -6539,6 +6570,12 @@ local function run_export(reason)
     state.exporting = false
 
     local success = call_ok and type(result) == "table" and result.success == true
+    if success then
+        state.last_snapshot_count = state.pending_count or state.last_count
+        if reason == "hub_rerun_after_completed_match" then
+            state.last_completed_capture_id = nil
+        end
+    end
     append_log({os.date("%Y-%m-%d %H:%M:%S"), success and "snapshot_created" or "snapshot_failed",
         state.managed_team_id, state.managed_team_name, state.pending_count or state.last_count,
         hash32(state.pending_signature or state.last_signature or ""),
@@ -6565,32 +6602,65 @@ local function reset_for_team(team_id, reason)
     return true
 end
 
-local function suppress_post_match_auto_export(count, signature, reason)
-    append_log({os.date("%Y-%m-%d %H:%M:%S"), "post_match_export_suppressed_hotfix",
+local function defer_post_match_snapshot(count, signature, reason)
+    append_log({os.date("%Y-%m-%d %H:%M:%S"), "post_match_snapshot_deferred",
         state.managed_team_id, state.managed_team_name, count, hash32(signature or ""),
         "reason=" .. tostring(reason or "completed_fixture")
-            .. ";manual_snapshot_required=true;matchstats_rearm=deferred"})
+            .. ";manual_snapshot_required=true;matchstats_rearm=on_hub"})
     state.last_count = count
     state.last_signature = signature
     state.pending_signature = nil
     state.pending_count = nil
     state.pending_first_seen = 0
     state.pending_stable_checks = 0
+    local match_result = _G.FC26_EXPORT_MATCH_STATS_LAST_EXPORT_RESULT
+    if type(match_result) == 'table' and match_result.success == true and
+       tostring(match_result.capture_id or '') == tostring(state.active_capture_id or '') then
+        state.last_completed_capture_id = state.active_capture_id
+    end
     state.active_capture_id = nil
-    state.awaiting_match_stats_rearm = false
+    state.awaiting_match_stats_rearm = true
     state.inactive_capture_first_seen = 0
-    state.post_match_export_suppressed = true
+    state.post_match_candidate_finalized = true
 end
 
-local function check_for_new_completed_match()
+state.rearm_after_hub = function(count, signature, reason)
+    defer_post_match_snapshot(count, signature, reason)
+    if ensure_match_stats_armed("post_match_hub_rearm") then
+        state.post_match_candidate_finalized = false
+        return true
+    end
+    return false
+end
+
+state.on_match_stats_hub_finish = function()
+    if not state.active or not state.post_match_candidate_finalized then return end
+    local ok, err = pcall(function()
+        local count, signature, read_error = completed_state(state.managed_team_id)
+        if count == nil then error(tostring(read_error or 'fixture_state_unavailable')) end
+        state.rearm_after_hub(count, signature, "matchstats_hub_finalization")
+    end)
+    if not ok then
+        append_log({os.date("%Y-%m-%d %H:%M:%S"), "post_match_hub_rearm_failed",
+            state.managed_team_id, state.managed_team_name, state.last_count,
+            hash32(state.last_signature or ""), tostring(err)})
+    end
+end
+
+local function check_for_new_completed_match(event_id)
     if not state.active or state.exporting then return end
-    if state.post_match_candidate_finalized and
-       not state.post_match_export_suppressed then
-        suppress_post_match_auto_export(state.last_count,
-            state.last_signature, "matchstats_final_candidate")
+    if state.post_match_candidate_finalized then
+        if event_id ~= 26 then return end
+        local count, signature, err = completed_state(state.managed_team_id)
+        if count == nil then
+            append_log({os.date("%Y-%m-%d %H:%M:%S"), "post_match_hub_check_failed",
+                state.managed_team_id, state.managed_team_name, state.last_count,
+                hash32(state.last_signature or ""), tostring(err or "")})
+            return
+        end
+        state.rearm_after_hub(count, signature, "matchstats_final_candidate")
         return
     end
-    if state.post_match_export_suppressed then return end
     local now = os.time()
     if now - state.last_check_time < CHECK_INTERVAL_SECONDS then return end
     state.last_check_time = now
@@ -6661,8 +6731,11 @@ local function check_for_new_completed_match()
         -- Keep the game-transition callback short; the user can run a manual
         -- snapshot after the career save has completed.
         if count_increased and now >= state.next_retry_time then
-            suppress_post_match_auto_export(count, signature,
-                "completed_count_increased")
+            if event_id == 26 then
+                state.rearm_after_hub(count, signature, "completed_count_increased")
+            else
+                defer_post_match_snapshot(count, signature, "completed_count_increased")
+            end
         end
         return
     end
@@ -6672,12 +6745,23 @@ local function check_for_new_completed_match()
     if stable_for < STABILITY_SECONDS or state.pending_stable_checks < MIN_STABLE_CHECKS then return end
     if now < state.next_retry_time then return end
 
-    suppress_post_match_auto_export(count, signature, "stable_fixture_change")
+    if event_id == 26 then
+        state.rearm_after_hub(count, signature, "stable_fixture_change")
+    else
+        defer_post_match_snapshot(count, signature, "stable_fixture_change")
+    end
 end
 
 function FC26ExportAutoCapture_PostCareerModeEvent(events_manager, event_id, event_pointer)
-    check_for_new_completed_match()
+    check_for_new_completed_match(tonumber(event_id))
 end
+
+-- Register MatchStats first so its finalization flag is visible to this handler
+-- on the same hub event when a match does not emit the usual final candidate.
+if CREATE_STARTUP_SNAPSHOT then
+    run_export("auto_monitor_startup")
+end
+arm_match_stats("auto_monitor_startup")
 
 local before = handler_ids("post__CareerModeEvent")
 AddEventHandler("post__CareerModeEvent", FC26ExportAutoCapture_PostCareerModeEvent)
@@ -6689,16 +6773,11 @@ append_log({os.date("%Y-%m-%d %H:%M:%S"), "monitor_started", state.managed_team_
     .. "; embedded_exporter=" .. EMBEDDED_EXPORTER_VERSION
     .. "; embedded_matchstats=" .. EMBEDDED_MATCH_STATS_VERSION})
 
-if CREATE_STARTUP_SNAPSHOT then
-    run_export("auto_monitor_startup")
-end
-arm_match_stats("auto_monitor_startup")
-
 pcall(function()
     MessageBox(
         "FC26 AutoCapture is active for " .. state.managed_team_name .. ".\n\n"
-        .. "A startup snapshot has been created and detailed MatchStats capture is armed. At the final-match event, MatchStats is finalized; automatic post-match snapshots and rearming pause for safety. After the career has been saved in the hub, run this script again to start a new capture session.\n"
-        .. "No date-based or transfer pulse exports are created. Running this script again while it is active will not create an extra snapshot.\n\n"
+        .. "A startup snapshot has been created and detailed MatchStats capture is armed. After a match, MatchStats is finalized and automatically rearmed on return to the Career Hub. After saving, run this script again from the stable Hub to create the updated full snapshot.\n"
+        .. "No date-based or transfer pulse exports are created. Repeated runs without a newly completed match do not create duplicate snapshots.\n\n"
         .. "Exports:\n" .. COMMUNITY_ROOT .. "\n\n"
         .. "Monitor log:\n" .. LOG_PATH,
         "FC26 AutoCapture"

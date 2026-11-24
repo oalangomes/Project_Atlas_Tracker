@@ -169,9 +169,9 @@ You normally do not need to configure an export path. Tracker performs a complet
 
 ### `FC26_AutoCapture_v1.1.1.lua` — recommended
 
-Run it in the loaded Manager Career Hub **before entering the next match**. It creates a startup snapshot and arms detailed MatchStats capture. Leave the Live Editor LUA session running while playing the match. After the match, save the career and run AutoCapture again from the stable Career Hub to create the updated snapshot and arm the next capture. The current safety hotfix does not create a full snapshot or rearm MatchStats in the post-match transition.
+Run it in the loaded Manager Career Hub **before entering the next match**. It creates a startup snapshot and arms detailed MatchStats capture. Leave the Live Editor LUA session running while playing the match. After MatchStats finalizes, AutoCapture rearms it when the game returns to the Career Hub; check `auto_capture_monitor.csv` for `matchstats_armed` with `reason=post_match_hub_rearm` before starting another match. After saving the career, run AutoCapture again from the stable Hub to create the updated full snapshot. The full exporter remains outside the game-transition callback because running it there previously coincided with a native Live Editor crash.
 
-Running AutoCapture again while its monitor is still active only confirms that MatchStats is armed; it does **not** create another snapshot. For a manual snapshot in a stable Career Hub, run `FC26_Snapshot_v1.1.0.lua` instead.
+Running AutoCapture again while its monitor is active creates an updated snapshot only when another managed-team match has been completed since the last snapshot; repeated runs do not create duplicates. `FC26_Snapshot_v1.1.0.lua` remains available for a manual snapshot at any stable Hub. If the monitor log does not show a successful post-match rearm, run AutoCapture again from the stable Hub before entering the next match.
 
 Starting AutoCapture near the end of a match can miss the match-start and final-candidate events. A later career snapshot can still contain the score, player ratings, and minutes, but it cannot reconstruct the detailed MatchStats package for that match.
 

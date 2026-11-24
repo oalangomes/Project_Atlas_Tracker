@@ -2,13 +2,13 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 3](entrega-3-rotacao-profundidade.md) · Próxima: [Entrega 5](entrega-5-comissao-relatorios.md).
 
-**Prioridade:** P2 para AT-016–AT-019. AT-014 permanece P1 e é compartilhado com a Entrega 3. **Estado:** planejada. **Dependências:** contratos da Entrega 1. PRs originais 8/9 são históricos; valem [P06/P09/P10](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+**Prioridade:** P2 para AT-016–AT-019. AT-014 permanece P1 e é compartilhado com a Entrega 3. **Estado:** planejada; escopo do P09 corrigido em 22/11/2026. **Dependências:** contratos da Entrega 1. PRs originais 8/9 são históricos; valem [P06/P09/P10](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
 
 ## Revisão Hub → Atlas
 
 AT-016/017 reutilizam `atlas/positions.py`, Comissão e consultas históricas para H08/H10/H19/H22/H26/H29–H31. Comparar função **observada** com fonte e amostra; nota não deve ser repartida entre posições sem minutos por papel. A forma usa últimas cinco atuações na ordem esportiva. Índice posicional Sheffield requer calibração e não substitui adequação Atlas.
 
-AT-018 aproveita de H23–H25 a separação entre 5x5, 11x11 e minutos profissionais. Score 5x5 só avança após inventário campo a campo (BL-11); plano individual e transição podem avançar com fatos disponíveis. H28 exige plano completo sem limite legado de 40. AT-019 separa proteção interna de H27 da pressão externa: potencial não prova interesse do mercado. Plano e sucessão continuam recomendações revisáveis, sem contratar automaticamente.
+AT-018 usa os registros cadastrais da base por snapshot (GER, POT, posição e vínculo) e as observações do treinador. Não há fonte disponível para atuações ou minutos de partidas 5x5/11x11 da base; H23 fica fora do P09 e H24/H25 são adaptados sem índice de prontidão ou cálculo de carga de jogos. A passagem ao elenco profissional só é descrita quando registrada em snapshot, sem inferir que GER/POT determina promoção. H28 exige plano completo sem limite legado de 40. AT-019 separa proteção interna de H27 da pressão externa: potencial não prova interesse do mercado. Plano e sucessão continuam recomendações revisáveis, sem contratar automaticamente.
 
 ## Objetivo e condição de conclusão
 
@@ -18,7 +18,7 @@ Apoiar escolha de jogadores e planejamento do elenco sem converter números brut
 | --- | --- | --- |
 | AT-016 | Comparador contextual de jogadores | Mesmo papel, período e exposição comparáveis, com ressalvas |
 | AT-017 | Evolução detalhada de atributos | Deltas auditáveis entre snapshots, sem atribuir causa inexistente |
-| AT-018 | Planos de desenvolvimento da base | Metas, minutos, evolução e histórico de empréstimos |
+| AT-018 | Planos de desenvolvimento da base | Metas revisáveis, GER/POT histórico e mudança de vínculo observada; minutos apenas após entrada no profissional e com fonte |
 | AT-019 | Planejamento de sucessão | Simular saídas e mostrar cobertura interna antes de sugerir mercado |
 
 AT-014 conserva o critério da Entrega 3: cobertura suficiente, adaptação e lacuna funcional. Arquivos/serviços candidatos: `positions.py`, consultas existentes de jogadores/histórico, Player Profile, Squad, Base e gestão manual. Confirmar caminhos e contratos antes de implementar.
@@ -65,13 +65,13 @@ AT-014 conserva o critério da Entrega 3: cobertura suficiente, adaptação e la
 
 ## Corte 4E — Planos individuais da base (AT-018, PR 9)
 
-1. Persistir metas atribuídas ao treinador, horizonte, papel pretendido e revisões, sem mudar desenvolvimento no jogo.
-2. Acompanhar minutos e evolução somente quando observados, indicando cobertura do histórico.
-3. Associar empréstimos registrados e seus períodos sem atribuir automaticamente evolução ao empréstimo.
-4. Mostrar requisitos para integração ao profissional e alternativas de função como recomendações revisáveis.
-5. Integrar FC26 Youth e contexto do elenco, sem novo menu principal.
+1. Persistir metas atribuídas ao treinador, horizonte, papel pretendido, prioridade de oportunidades e revisões, sem mudar desenvolvimento no jogo. A prioridade é uma intenção manual, não uma conclusão calculada de minutos da base.
+2. Mostrar GER/POT, posição e presença na base por snapshot, com data, fonte e lacunas. Não atribuir variação a treino ou atuação sem evidência.
+3. Mostrar a entrada no elenco profissional e os minutos profissionais somente quando observados nas fontes existentes, com corte por carreira/snapshot. Associar empréstimos registrados sem atribuir evolução ao empréstimo.
+4. Apresentar a decisão de integração como avaliação do treinador, com contexto do elenco quando disponível. Não produzir score de prontidão, etiqueta automática de pré-profissional ou requisito de 5x5/11x11.
+5. Integrar FC26 Youth e Player Profile existentes, sem novo menu principal nem truncar o universo de jovens.
 
-**Aceite verificável:** plano, meta e revisão persistem; dados ausentes não aparecem como meta descumprida automaticamente; histórico de empréstimos mantém origem.
+**Aceite verificável:** plano, meta e revisão persistem; GER/POT e vínculo podem ser reconstituídos pelos snapshots; ausência de partidas/minutos da base aparece como indisponível; entrada no profissional não é presumida; dados ausentes não aparecem como meta descumprida automaticamente; histórico de empréstimos mantém origem.
 
 ## Perguntas esportivas de validação
 
