@@ -1,6 +1,6 @@
 # Plano de execução da integração analítica Hub → Atlas
 
-Revisão de **17/11/2026**. Este documento especifica trabalhos futuros; nenhum PR funcional ou benchmark de modelo foi executado aqui. [Matriz de origem e decisão](matriz-reaproveitamento-hub-atlas.md) · [Backlog](backlog-metricas-hub.md) · [Governança](governanca-e-validacao.md).
+Revisão de **17/11/2026**, com correção de escopo do P09 em **22/11/2026**. Este documento especifica trabalhos futuros; seus critérios não constituem homologação. [Matriz de origem e decisão](matriz-reaproveitamento-hub-atlas.md) · [Backlog](backlog-metricas-hub.md) · [Governança](governanca-e-validacao.md).
 
 ## Fases e dependências
 
@@ -11,7 +11,7 @@ Revisão de **17/11/2026**. Este documento especifica trabalhos futuros; nenhum 
 | 2. Goleiros e defesa | AT-024/025; H11–H17 | Cobertura por fixture e posição/minutos confiáveis | Troca de GL indeterminada; setor estimado; pares apenas co-presença até cronologia real |
 | 3. Contexto e carreira | AT-008–019; tática observada, rotação, base, mercado, histórico | Dados determinísticos não dependem do diário; formação rival e estrutura dependem de observação confiável | Confirmado, estimado e desconhecido separados; comparação com amostra; plano revisável |
 | 4. Relatórios e auditoria | AT-021–023; H33–H34; relatório semestral e avaliação independente | Mesmos serviços canônicos, controles cloud da fase 0 | Evidências ligadas ao indicador; avaliação humana separada da geração; revisão de custo e privacidade |
-| 5. Homologação externa | AT-003 e oportunidades BL-03/08/09/10/11 | FC26/Live Editor, save e campos reais | Uma cópia segura do save para ciclos controlados; log e export por partida; pendência declarada se não executado |
+| 5. Homologação externa | AT-003 e oportunidades BL-03/08/09/10 | FC26/Live Editor, save e campos reais | Uma cópia segura do save para ciclos controlados; log e export por partida; pendência declarada se não executado |
 
 AT-020 conserva seu número histórico, mas fica **adiado e fora deste ciclo**. Testes funcionais cloud controlados de AT-004/023 continuam possíveis; não são comparação de modelos nem benchmark. A fase 5 pode ocorrer em paralelo às fases analíticas; sua pendência limita alegações sobre captura, sem impedir trabalho com dados já disponíveis. Não executar replay histórico em lote nem usar banco ativo como bancada.
 
@@ -30,9 +30,9 @@ AT-020 conserva seu número histórico, mas fica **adiado e fora deste ciclo**. 
 | P09 | Base e transição | AT-018; H23–H25 | P03/P06, BL-11 para score 5x5 | 5x5 isolado não promove; plano individual revisável; score condicionado |
 | P10 | Mercado e sucessão | AT-019; H27 | P03/P06 | Sem proposta explícita, saída simulada, cobertura interna; sem transferência automática |
 | P11 | Comissão e semestre | AT-021–023; H33–H34 | P03–P10 aplicáveis | Semestre com fonte e exclusão, avaliação independente, custo/privacidade |
-| P12 | Homologação AutoCapture | AT-003; H05/H17/H18/H20/H23 se captura alterar contrato | Ambiente real | Uma cópia do save reutilizada; ciclos e falhas documentados; não mudar dados ativos |
+| P12 | Homologação AutoCapture | AT-003; H05/H17/H18/H20 se captura alterar contrato | Ambiente real | Uma cópia do save reutilizada; ciclos e falhas documentados; não mudar dados ativos |
 
-P04–P06 podem ser desenvolvidos em paralelo depois de P03, respeitando os contratos comuns. P07 não é pré-requisito para partes determinísticas de P08. P09 pode entregar plano/GER/POT sem score 5x5. P12 não presume conserto nem nova captura antes de registrar os fatos observados. Cada PR muda o mínimo necessário, declara cobertura e pode ser revertido sem apagar observações manuais.
+P04–P06 podem ser desenvolvidos em paralelo depois de P03, respeitando os contratos comuns. P07 não é pré-requisito para partes determinísticas de P08. P09 usa os snapshots da base e observações manuais; não depende de captura de partidas 5x5 ou 11x11 da base, que não está disponível. Se P06 ainda não estiver integrado, reaproveitar apenas os contratos necessários sem incorporar sua branch divergente diretamente. P12 não presume conserto nem nova captura antes de registrar os fatos observados. Cada PR muda o mínimo necessário, declara cobertura e pode ser revertido sem apagar observações manuais.
 
 ## Rastreabilidade por capacidade
 
@@ -62,9 +62,9 @@ A origem, fórmula e classificação A–G estão na [matriz](matriz-reaproveita
 | H20 | 013/015 | `commission.py`, `match_stats.py` | P08/P12 | Posse ausente não gera rótulo “sem posse” |
 | H21 | 013 | `match_competitive_context.py` | P08 | Contexto pré-jogo usa apenas snapshot anterior |
 | H22 | 014/016 | `positions.py`, `server_query_entities.py` | P06 | Posição cadastrada e observada distinguíveis |
-| H23 | 018 | `server_query_management.py` | P09/P12 | Score 5x5 só após mapeamento de eventos |
-| H24 | 018 | `server_query_management.py` | P09 | 5x5 isolado não qualifica pré-profissional |
-| H25 | 018 | `server_query_management.py` | P09 | Prioridade de minutos revisável, com amostra |
+| H23 | 018 | Sem fonte Atlas de partidas da base | Fora do P09/P12 | Score 5x5 do Hub não é portado; falta fonte para verificar seus insumos |
+| H24 | 018 | `server_query_management.py`, snapshots e elenco | P09 | GER/POT datados; passagem ao elenco profissional só se observada; sem índice de prontidão |
+| H25 | 018 | Planos manuais da base | P09 | Prioridade de minutos é intenção do treinador, sem cálculo de minutos da base |
 | H26 | 017/018 | `server_query_analysis.py` | P06/P09 | Evolução e produção em dimensões separadas |
 | H27 | 019 | `player_finance.py`, `positions.py` | P10 | Pressão externa só com registro explícito |
 | H28 | 018/019 | `manual_data.py`, `server_query_analysis.py` | P09/P10 | Plano revisável e universo >40 sem truncamento |

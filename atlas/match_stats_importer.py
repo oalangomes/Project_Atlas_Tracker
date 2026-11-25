@@ -360,6 +360,15 @@ class MatchStatsImporter:
             return {}
 
     @staticmethod
+    def _final_goals(team_stats: dict[int, dict[str, Any]]) -> dict[int, int]:
+        # An own goal recorded for one team increases the opponent's score.
+        return {
+            idx: int((team_stats.get(idx) or {}).get("goals_derived") or 0)
+            + int((team_stats.get(1 - idx) or {}).get("own_goals") or 0)
+            for idx in (0, 1)
+        }
+
+    @staticmethod
     def _activate_fixture_export(
         conn: sqlite3.Connection, export_id: int, *, career_id: int, fixture_id: int, snapshot_id: int,
         confidence: float, mapping: dict[int, int], method: str,
@@ -458,7 +467,7 @@ class MatchStatsImporter:
                     if count >= max(2, math.ceil(len(ids) * 0.60)):
                         mapping[idx] = int(team_id)
             export_team_stats = {int(row["team_index"]): self._stats(row) for row in team_rows}
-            goals = {idx: int((export_team_stats.get(idx) or {}).get("goals_derived") or 0) for idx in (0, 1)}
+            goals = self._final_goals(export_team_stats)
             hs = int(fixture["home_score"] or 0); aws = int(fixture["away_score"] or 0)
             if len(mapping) < 2 and goals[0] != goals[1] and hs != aws and home is not None and away is not None:
                 if goals[0] == hs and goals[1] == aws:
@@ -573,7 +582,7 @@ class MatchStatsImporter:
                     score += 0.20 + 0.45 * roster_quality
                 # Scoreline is an independent validator and can orient team_index when roster mapping is unavailable.
                 hs = int(candidate["home_score"] or 0); aws = int(candidate["away_score"] or 0)
-                goals = {idx: int((export_team_stats.get(idx) or {}).get("goals_derived") or 0) for idx in (0, 1)}
+                goals = self._final_goals(export_team_stats)
                 if len(mapping) < 2 and goals[0] != goals[1] and hs != aws:
                     if goals[0] == hs and goals[1] == aws and home is not None and away is not None:
                         mapping = {0: home, 1: away}
@@ -636,7 +645,8 @@ class MatchStatsImporter:
             mapping = {0: team0, 1: team1}
             home_idx = 0 if team0 == int(fixture["home_team_ea_id"]) else 1
             away_idx = 1 - home_idx
-            if int((team_stats.get(home_idx) or {}).get("goals_derived") or 0) != int(fixture["home_score"] or 0) or int((team_stats.get(away_idx) or {}).get("goals_derived") or 0) != int(fixture["away_score"] or 0):
+            goals = self._final_goals(team_stats)
+            if goals[home_idx] != int(fixture["home_score"] or 0) or goals[away_idx] != int(fixture["away_score"] or 0):
                 raise ValueError("The exported score does not match the selected fixture.")
             self._activate_fixture_export(
                 conn, export_id, career_id=career_id, fixture_id=fixture_id, snapshot_id=int(fixture["snapshot_id"]),

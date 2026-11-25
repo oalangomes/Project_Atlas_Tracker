@@ -15,14 +15,24 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
         cls.matchstats = MATCHSTATS.read_text(encoding="utf-8")
         cls.snapshot = SNAPSHOT.read_text(encoding="utf-8")
 
-    def test_hotfix_suppresses_sync_postmatch_snapshot_and_rearm(self):
+    def test_postmatch_rearms_at_hub_without_sync_snapshot(self):
         source = self.autocapture
-        self.assertIn("local VERSION = \"1.1.5\"", source)
-        self.assertIn("state.post_match_export_suppressed = true", source)
-        self.assertIn("if state.post_match_export_suppressed then return end", source)
+        self.assertIn("local VERSION = \"1.1.6\"", source)
+        self.assertNotIn("post_match_export_suppressed", source)
         self.assertIn("auto_capture_state.post_match_candidate_finalized = true", source)
-        self.assertIn('suppress_post_match_auto_export(state.last_count,', source)
-        self.assertIn("not existing.post_match_export_suppressed then", source)
+        self.assertIn("reason == 'entered_career_hub_after_match'", source)
+        self.assertIn("auto_capture_state.on_match_stats_hub_finish()", source)
+        self.assertIn("state.on_match_stats_hub_finish = function()", source)
+        self.assertIn("if event_id ~= 26 then return end", source)
+        self.assertIn('ensure_match_stats_armed("post_match_hub_rearm")', source)
+        self.assertIn("existing._rerun_count > (tonumber(existing.last_snapshot_count) or -1)", source)
+        self.assertIn('existing.export_now("hub_rerun_after_completed_match")', source)
+        self.assertIn("state.last_count - (tonumber(state.last_snapshot_count) or 0) == 1", source)
+        self.assertIn("paired_capture_id = state.last_completed_capture_id", source)
+        self.assertLess(
+            source.rindex('arm_match_stats("auto_monitor_startup")'),
+            source.rindex('AddEventHandler("post__CareerModeEvent", FC26ExportAutoCapture_PostCareerModeEvent)'),
+        )
 
     def test_read_short_binding_survives_global_reassignment(self):
         source = self.autocapture
@@ -33,12 +43,12 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
         self.assertLess(wrapper, embedded_snapshot)
         self.assertIn("return native_read_short(addr)", source[binding:embedded_snapshot])
 
-        start = source.index("local function check_for_new_completed_match()")
+        start = source.index("local function check_for_new_completed_match(event_id)")
         end = source.index("function FC26ExportAutoCapture_PostCareerModeEvent", start)
         callback = source[start:end]
         self.assertNotIn('run_export("auto_after_completed_match")', callback)
-        self.assertNotIn('ensure_match_stats_armed("post_match_rearm")', callback)
-        self.assertIn("suppress_post_match_auto_export(count, signature", callback)
+        self.assertIn('state.rearm_after_hub(count, signature, "completed_count_increased")', callback)
+        self.assertIn('defer_post_match_snapshot(count, signature, "completed_count_increased")', callback)
 
     def test_both_matchstats_copies_detach_at_final_candidate(self):
         stop_block = (
