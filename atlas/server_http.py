@@ -4,6 +4,7 @@ import json
 import mimetypes
 import os
 import re
+import sqlite3
 import subprocess
 import threading
 import time
@@ -11,6 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from datetime import datetime, timezone
+from contextlib import closing
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -270,6 +272,37 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         if match:
             snapshot_id = as_int((query.get("snapshot_id") or [None])[0])
             self._json(self._chronology(int(match.group(1)), snapshot_id))
+            return
+
+        match = re.fullmatch(r"/api/careers/(\d+)/sporting-reports", path)
+        if match:
+            raw_season = (query.get("season_index") or [None])[0]
+            raw_snapshot = (query.get("snapshot_id") or [None])[0]
+            if not all(raw is not None and re.fullmatch(r"\d+", str(raw))
+                       for raw in (raw_season, raw_snapshot)) or int(raw_snapshot) == 0:
+                raise ValueError("A non-negative season index and positive snapshot ID are required.")
+            season_index, snapshot_id = int(raw_season), int(raw_snapshot)
+            month = (query.get("month") or [None])[0]
+            if month is not None and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
+                raise ValueError("Month must be YYYY-MM.")
+            output_format = (query.get("format") or ["json"])[0]
+            if output_format not in {"json", "markdown"}:
+                raise ValueError("Unsupported sporting report format.")
+            from .monthly_reports import build_season_report
+            from .monthly_report_api import compact_report, markdown_download
+
+            database_uri = Path(self.state.database.path).resolve(strict=True).as_uri() + "?mode=ro"
+            with closing(sqlite3.connect(database_uri, uri=True)) as conn:
+                report = build_season_report(conn, int(match.group(1)), season_index, snapshot_id)
+            if output_format == "markdown":
+                self._json(markdown_download(report, month))
+            else:
+                payload = compact_report(report)
+                if month is not None:
+                    payload["months"] = [item for item in payload["months"] if item["month"] == month]
+                    if not payload["months"]:
+                        raise ValueError(f"No completed managed matches in {month}")
+                self._json(payload)
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/analysis/rotation", path)

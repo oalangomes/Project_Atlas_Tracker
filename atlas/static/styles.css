@@ -771,3 +771,24 @@ body.workspace-sandbox .topbar{box-shadow:inset 0 2px 0 rgba(245,158,11,.72)}
 .goalkeeper-player-support strong{flex:none;font-variant-numeric:tabular-nums}
 .goalkeeper-player-limit,.goalkeeper-player-source{font-size:11px;line-height:1.5;color:var(--muted);margin:11px 0 0}
 @media(max-width:720px){.coach-diary-heading{align-items:flex-start}.goalkeeper-player-key,.goalkeeper-player-support{grid-template-columns:1fr}}
+
+/* Monthly and consolidated sporting reports in the season view. */
+.story-report-controls{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:16px 0;color:var(--muted);font-size:12px}
+.story-report-controls p{margin:0}
+.story-player-list{display:grid;gap:8px}
+.story-player{border:1px solid var(--line);border-radius:10px;background:rgba(7,24,37,.5);min-width:0}
+.story-player>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;padding:12px 14px;font-size:12px}
+.story-player>summary span:first-child{display:grid;gap:4px;min-width:0}
+.story-player>summary strong{font-size:13px}
+.story-player>summary small{color:var(--muted)}
+.story-player>summary span:last-child{text-align:right;flex:none;font-variant-numeric:tabular-nums}
+.story-player[open]>summary{border-bottom:1px solid var(--line)}
+.story-player-body{padding:12px 14px;display:grid;gap:10px;font-size:12px;line-height:1.5}
+.story-player-body p{margin:0}
+.story-metric-list{display:flex;flex-wrap:wrap;gap:6px 14px}
+.story-metric-list b{width:100%;color:var(--muted)}
+.story-metric-list span{white-space:nowrap}
+.story-season-table{overflow-x:auto}
+.story-season-cell{display:grid;gap:3px;font-variant-numeric:tabular-nums}
+.story-season-cell small{color:var(--muted)}
+@media(max-width:720px){.story-player>summary{align-items:flex-start}.story-player>summary span:last-child{white-space:nowrap}.story-report-controls{align-items:flex-start}}
