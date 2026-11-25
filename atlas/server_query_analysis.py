@@ -9,10 +9,39 @@ from .media_utils import season_start_from_date
 from .positions import broad_position_group
 from .server_utils import age_on_date, as_int, parse_raw, rows_to_dicts
 from .match_stats import detailed_analysis
+from .rotation_analysis import rotation_continuity
 
 
 class AnalysisQueryMixin:
     """Cross-snapshot season read models used by analysis and movement pages."""
+
+    def _rotation_analysis(self, career_id: int, snapshot_id: int,
+                           requested_season: int | None = None,
+                           filters: dict[str, str] | None = None) -> dict[str, Any]:
+        with self.state.database.connect() as conn:
+            snapshot = self._snapshot(conn, snapshot_id)
+            if int(snapshot["career_id"]) != career_id:
+                raise ValueError("Snapshot does not belong to the selected career.")
+            available_seasons = [int(row[0]) for row in conn.execute(
+                "SELECT DISTINCT season_index FROM snapshots WHERE career_id=? AND import_sequence<=? ORDER BY season_index",
+                (career_id, snapshot["import_sequence"]),
+            )]
+            if requested_season == -1:
+                season_indices = available_seasons
+            else:
+                season = int(snapshot["season_index"]) if requested_season is None else requested_season
+                if season not in available_seasons:
+                    raise ValueError("Selected season is not available at this snapshot.")
+                season_indices = [season]
+            result = rotation_continuity(conn, career_id, snapshot, season_indices, filters)
+            options = {int(item["season_index"]): item for item in self._season_options(conn, career_id)
+                       if item.get("has_snapshots")}
+            result["seasonOptions"] = [options[index] for index in available_seasons if index in options]
+            result["selectedSeasonIndex"] = -1 if requested_season == -1 else season_indices[0]
+            result["selectedSeasonLabel"] = ("All seasons" if requested_season == -1 else
+                                             str(options.get(season_indices[0], {}).get("label") or
+                                                 self._season_label(season_indices[0])))
+            return result
 
     @staticmethod
     def _season_label(season_index: int, start_year: int | None = None) -> str:
