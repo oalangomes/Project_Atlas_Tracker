@@ -396,15 +396,37 @@ async function handleAction(action: any) {
     }
 }
 
+const matchStatsRoutes = new Set([
+    "overview", "match-center", "schedule", "results", "match", "analysis", "commission",
+    "player", "snapshots", "imports",
+]);
+let statusPollInProgress = false;
+
+function matchStatsChanged(
+    previous: StatusResponse["matchStats"], next: StatusResponse["matchStats"],
+): boolean {
+    if (previous?.revision && next?.revision)
+        return previous.revision !== next.revision;
+    return previous?.lastImportAt !== next?.lastImportAt ||
+        previous?.exports !== next?.exports || previous?.linked !== next?.linked ||
+        previous?.pending !== next?.pending;
+}
+
 async function pollStatus() {
+    if (statusPollInProgress) return;
+    statusPollInProgress = true;
     try {
-        const oldSnapshotCount = Number(state.status?.snapshotCount || 0);
+        const previousStatus = state.status;
         const oldCareerDate = String(state.careerClock?.careerDate || "");
-        state.status = await api<StatusResponse>("/api/status");
+        const nextStatus = await api<StatusResponse>("/api/status");
         if (state.careerId)
             state.careerClock = await api<CareerClock>(`/api/careers/${state.careerId}/clock`);
-        const snapshotChanged = Number(state.status?.snapshotCount || 0) !== oldSnapshotCount;
+        const snapshotChanged = Number(nextStatus.snapshotCount || 0) !== Number(previousStatus?.snapshotCount || 0);
         const clockChanged = String(state.careerClock?.careerDate || "") !== oldCareerDate;
+        const statsChanged = matchStatsChanged(previousStatus?.matchStats, nextStatus.matchStats);
+        state.status = nextStatus;
+        if (snapshotChanged || statsChanged)
+            clearApiCache();
         if (snapshotChanged)
             await refreshCareerBootstrap(false);
         else {
@@ -412,8 +434,8 @@ async function pollStatus() {
                 fillSelectors();
             updateSystemUi();
         }
-        const liveRefreshNeeded = snapshotChanged || clockChanged || state.pendingLiveRender;
-        if (liveRefreshNeeded) {
+        const refreshMatchStats = statsChanged && matchStatsRoutes.has(state.route);
+        if (snapshotChanged || clockChanged || refreshMatchStats || state.pendingLiveRender) {
             state.pendingLiveRender = false;
             await render();
             if (snapshotChanged || clockChanged)
@@ -421,6 +443,9 @@ async function pollStatus() {
         }
     }
     catch { }
+    finally {
+        statusPollInProgress = false;
+    }
 }
 function toggleStatus() { statusPopover.classList.toggle("hidden"); statusPopover.innerHTML = `<div class="status-line"><span>Version</span><b>v${esc(state.status?.version || "–")}</b></div><div class="status-line"><span>Careers</span><b>${num(state.status?.careerCount)}</b></div><div class="status-line"><span>Snapshots</span><b>${num(state.status?.snapshotCount)}</b></div><div class="status-line"><span>Ready</span><b>${num(state.status?.readyCount)}</b></div><div class="status-line"><span>Watcher</span><b class="positive">Active</b></div>`; }
 function openSearch() { searchPalette.classList.remove("hidden"); searchInput.value = ""; searchResults.innerHTML = '<div class="muted" style="padding:18px">Enter a name or EA ID.</div>'; state.searchResults = []; state.searchIndex = -1; setTimeout(() => searchInput.focus(), 30); }

@@ -169,9 +169,11 @@ You normally do not need to configure an export path. Tracker performs a complet
 
 ### `FC26_AutoCapture_v1.1.1.lua` — recommended
 
-Run it in the loaded Manager Career Hub **before entering the next match**. It creates a startup snapshot and arms detailed MatchStats capture. Leave the Live Editor LUA session running while playing the match. After MatchStats finalizes, AutoCapture rearms it when the game returns to the Career Hub; check `auto_capture_monitor.csv` for `matchstats_armed` with `reason=post_match_hub_rearm` before starting another match. After saving the career, run AutoCapture again from the stable Hub to create the updated full snapshot. The full exporter remains outside the game-transition callback because running it there previously coincided with a native Live Editor crash.
+Run it in the loaded Manager Career Hub **before entering the next match**. It creates a startup snapshot and arms detailed MatchStats capture. Leave the Live Editor LUA session running while playing the match. AutoCapture finalizes MatchStats and rearms it on return to the Hub. It queues the career snapshot during that transition and exports it on a separate screen-loaded event, after confirming a new completed match for the same team. The heavy export was moved off the transition because it previously coincided with a native Live Editor crash.
 
-Running AutoCapture again while its monitor is active creates an updated snapshot only when another managed-team match has been completed since the last snapshot; repeated runs do not create duplicates. `FC26_Snapshot_v1.1.0.lua` remains available for a manual snapshot at any stable Hub. If the monitor log does not show a successful post-match rearm, run AutoCapture again from the stable Hub before entering the next match.
+Check `auto_capture_monitor.csv` for `matchstats_armed` with `reason=post_match_hub_rearm`, then `snapshot_created` with `trigger=auto_after_hub_screen_loaded`. If that screen-loaded event has yet to arrive or the export fails, rerunning AutoCapture from the stable Hub still produces a snapshot when a new match has been completed. The script option `AUTO_POST_MATCH_SNAPSHOT` controls the screen-loaded trigger.
+
+Atlas imports MatchStats as soon as it finds the ready package. If the export carries a pipeline capture ID, its fixture link waits for the snapshot with the same ID and a verified newly completed fixture. Standalone exports without an ID still use roster and score evidence. Run the Hub fallback before playing another match if a snapshot remains pending: a snapshot covering several new results may leave individual captures waiting for review.
 
 Starting AutoCapture near the end of a match can miss the match-start and final-candidate events. A later career snapshot can still contain the score, player ratings, and minutes, but it cannot reconstruct the detailed MatchStats package for that match.
 
@@ -198,6 +200,8 @@ MATCH_READY
 ```
 
 The progress/error files are retained for troubleshooting but are not imported as match data.
+
+An open Match Center, match detail, or other MatchStats view refreshes when the Tracker detects an import or a fixture link change, even with the same career snapshot selected.
 
 ## Multiple career saves
 

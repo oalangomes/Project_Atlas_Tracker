@@ -17,13 +17,13 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
 
     def test_postmatch_rearms_at_hub_without_sync_snapshot(self):
         source = self.autocapture
-        self.assertIn("local VERSION = \"1.1.7\"", source)
+        self.assertIn("local VERSION = \"1.1.8\"", source)
         self.assertNotIn("post_match_export_suppressed", source)
         self.assertIn("auto_capture_state.post_match_candidate_finalized = true", source)
         self.assertIn("reason == 'entered_career_hub_after_match'", source)
         self.assertIn("auto_capture_state.on_match_stats_hub_finish()", source)
         self.assertIn("state.on_match_stats_hub_finish = function()", source)
-        self.assertIn("if event_id ~= 26 then return end", source)
+        self.assertIn("if event_id ~= HUB_ENTERED then return end", source)
         self.assertIn('ensure_match_stats_armed("post_match_hub_rearm")', source)
         self.assertIn("existing._rerun_count > (tonumber(existing.last_snapshot_count) or -1)", source)
         self.assertIn('existing.export_now("hub_rerun_after_completed_match")', source)
@@ -46,7 +46,12 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
         start = source.index("local function check_for_new_completed_match(event_id)")
         end = source.index("function FC26ExportAutoCapture_PostCareerModeEvent", start)
         callback = source[start:end]
-        self.assertNotIn('run_export("auto_after_completed_match")', callback)
+        self.assertNotIn('run_export(', callback)
+        self.assertIn('local SCREEN_LOADED = ENUM_CM_EVENT_MSG_SCREEN_HAS_DONE_LOADING', source)
+        self.assertIn('event_id == SCREEN_LOADED and export_after_hub_screen_loaded()', source)
+        self.assertIn('return run_export("auto_after_hub_screen_loaded")', source)
+        self.assertIn('count <= state.last_snapshot_count', source)
+        self.assertIn('state.post_match_hub_seen = false', source)
         self.assertIn('state.rearm_after_hub(count, signature, "completed_count_increased")', callback)
         self.assertIn('defer_post_match_snapshot(count, signature, "completed_count_increased")', callback)
 

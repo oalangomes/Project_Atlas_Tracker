@@ -289,9 +289,13 @@ class MatchStatsImporter:
             validation["careerIdentity"] = "legacy_missing_fingerprint"
         semantic_hash = _semantic_hash(participants, teams)
         status = str(summary.get("status") or summary.get("export_status"))
+        pipeline_capture_id = str(summary.get("pipeline_capture_id") or summary.get("post_match_capture_id") or "").strip() or None
         with self.database.connect() as conn:
             semantic = conn.execute(
-                "SELECT id,fixture_id FROM match_stat_exports WHERE semantic_hash=? ORDER BY id DESC LIMIT 1", (semantic_hash,),
+                """SELECT id,fixture_id FROM match_stat_exports
+                   WHERE semantic_hash=? AND (? IS NULL OR pipeline_capture_id=?)
+                   ORDER BY id DESC LIMIT 1""",
+                (semantic_hash, pipeline_capture_id, pipeline_capture_id),
             ).fetchone()
         if semantic:
             return MatchStatsImportResult(
@@ -302,7 +306,6 @@ class MatchStatsImporter:
 
         external_id = path.stem
         trigger = next((str(row.get("trigger")) for row in participants if row.get("trigger")), None)
-        pipeline_capture_id = str(summary.get("pipeline_capture_id") or summary.get("post_match_capture_id") or "").strip() or None
         with self.database.transaction() as conn:
             cur = conn.execute(
                 """INSERT INTO match_stat_exports(
@@ -334,8 +337,7 @@ class MatchStatsImporter:
                     "INSERT INTO match_team_detailed_stats(export_id,team_index,stats_json) VALUES(?,?,?)",
                     (export_id, team_index, json.dumps(row, ensure_ascii=False)),
                 )
-        if not self._link_by_pipeline_capture(export_id):
-            self.reconcile_export(export_id)
+        self.reconcile_export(export_id)
         with self.database.connect() as conn:
             linked = conn.execute("SELECT fixture_id,linkage_status FROM match_stat_exports WHERE id=?", (export_id,)).fetchone()
         return MatchStatsImportResult("imported", str(path), export_id, int(linked["fixture_id"]) if linked and linked["fixture_id"] is not None else None, str(linked["linkage_status"]) if linked else None)
@@ -497,16 +499,21 @@ class MatchStatsImporter:
             ids = [int(row[0]) for row in conn.execute("SELECT id FROM match_stat_exports WHERE fixture_id IS NULL ORDER BY id").fetchall()]
         for export_id in ids:
             try:
-                if not self._link_by_pipeline_capture(export_id):
-                    self.reconcile_export(export_id)
+                self.reconcile_export(export_id)
             except Exception:
                 continue
 
     def reconcile_export(self, export_id: int) -> bool:
+        if self._link_by_pipeline_capture(export_id):
+            return True
         with self.database.connect() as conn:
             export = conn.execute("SELECT * FROM match_stat_exports WHERE id=?", (export_id,)).fetchone()
             if not export or export["fixture_id"] is not None:
                 return bool(export and export["fixture_id"] is not None)
+            # A pipeline capture can arrive before its snapshot. A roster/score
+            # match from another game must never consume that capture.
+            if str(export["pipeline_capture_id"] or "").strip():
+                return False
             try:
                 summary = json.loads(str(export["raw_summary_json"] or "{}"))
             except (TypeError, json.JSONDecodeError):
@@ -656,21 +663,24 @@ class MatchStatsImporter:
 
     def status(self) -> dict[str, Any]:
         with self.database.connect() as conn:
-            row = conn.execute(
-                """SELECT COUNT(*) total,
-                          SUM(CASE WHEN fixture_id IS NOT NULL THEN 1 ELSE 0 END) linked,
-                          SUM(CASE WHEN fixture_id IS NULL THEN 1 ELSE 0 END) pending,
-                          SUM(CASE WHEN pipeline_capture_id IS NOT NULL AND pipeline_capture_id<>'' THEN 1 ELSE 0 END) paired,
-                          MAX(imported_at) last_import
-                   FROM match_stat_exports WHERE superseded_by_export_id IS NULL"""
-            ).fetchone()
+            rows = conn.execute(
+                """SELECT id, career_id, fixture_id, snapshot_id, export_status, linkage_status,
+                          linkage_method, linkage_confidence, team0_ea_id, team1_ea_id,
+                          pipeline_capture_id, imported_at
+                   FROM match_stat_exports WHERE superseded_by_export_id IS NULL
+                   ORDER BY id"""
+            ).fetchall()
+        # A relink can change the displayed evidence without changing the counts or import time.
+        revision = hashlib.sha256(json.dumps([tuple(row) for row in rows]).encode("utf-8")).hexdigest()
+        linked = sum(row["fixture_id"] is not None for row in rows)
         return {
             "model": "atlas-fc26-match-stats-v2",
-            "exports": int(row["total"] or 0),
-            "linked": int(row["linked"] or 0),
-            "pending": int(row["pending"] or 0),
-            "pairedCaptures": int(row["paired"] or 0),
-            "lastImportAt": row["last_import"],
+            "revision": revision,
+            "exports": len(rows),
+            "linked": linked,
+            "pending": len(rows) - linked,
+            "pairedCaptures": sum(bool(row["pipeline_capture_id"]) for row in rows),
+            "lastImportAt": max((row["imported_at"] for row in rows), default=None),
             "lastScanAt": self.last_scan_at,
             "roots": [str(p) for p in self.roots()],
         }

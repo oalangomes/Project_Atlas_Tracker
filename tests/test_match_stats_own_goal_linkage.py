@@ -38,7 +38,7 @@ class MatchStatsOwnGoalLinkageTests(unittest.TestCase):
             CREATE TABLE match_stat_exports (id INTEGER PRIMARY KEY, fixture_id INTEGER,
                 career_id INTEGER, snapshot_id INTEGER, raw_summary_json TEXT,
                 linkage_status TEXT, linkage_confidence REAL, team0_ea_id INTEGER,
-                team1_ea_id INTEGER, linkage_method TEXT, superseded_by_export_id INTEGER);
+                team1_ea_id INTEGER, linkage_method TEXT, superseded_by_export_id INTEGER, pipeline_capture_id TEXT);
             CREATE TABLE match_player_detailed_stats (export_id INTEGER, player_ea_id INTEGER,
                 team_index INTEGER);
             CREATE TABLE match_team_detailed_stats (export_id INTEGER, team_index INTEGER,
@@ -48,7 +48,7 @@ class MatchStatsOwnGoalLinkageTests(unittest.TestCase):
             INSERT INTO fixtures VALUES (309261, 1, 'burnley', 1929, 1796);
             INSERT INTO fixture_observations VALUES (99, 309261, 1, 1, 4, 3, '2026-02-14');
             INSERT INTO match_stat_exports VALUES (46, NULL, NULL, NULL, '{}', 'ambiguous',
-                NULL, NULL, NULL, NULL, NULL);
+                NULL, NULL, NULL, NULL, NULL, NULL);
         """)
         db.conn.executemany(
             "INSERT INTO match_team_detailed_stats VALUES (46, ?, NULL, ?)",

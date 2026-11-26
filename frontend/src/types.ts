@@ -23,6 +23,7 @@ interface StatusResponse extends JsonRecord {
   lastImportAt: string | null;
   matchStats?: {
     model?: string;
+    revision?: string;
     exports?: number;
     linked?: number;
     pending?: number;
