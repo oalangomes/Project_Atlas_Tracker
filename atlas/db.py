@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterator
 from contextlib import contextmanager
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -681,6 +681,39 @@ CREATE TABLE IF NOT EXISTS manual_player_development (
 CREATE INDEX IF NOT EXISTS idx_manual_player_development_player
 ON manual_player_development(player_ea_id, manual_season_id, effective_date);
 
+CREATE TABLE IF NOT EXISTS manual_youth_development_plans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    career_id INTEGER NOT NULL REFERENCES careers(id) ON DELETE CASCADE,
+    player_ea_id INTEGER NOT NULL,
+    display_name TEXT NOT NULL,
+    basis_snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+    intended_role TEXT,
+    objectives TEXT NOT NULL,
+    opportunity_priority TEXT NOT NULL CHECK(opportunity_priority IN ('low','standard','high')),
+    integration_decision TEXT NOT NULL CHECK(integration_decision IN ('monitor','review','integrate')),
+    horizon_date TEXT,
+    notes TEXT,
+    revision INTEGER NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(career_id, player_ea_id)
+);
+CREATE INDEX IF NOT EXISTS idx_manual_youth_plans_career_active
+ON manual_youth_development_plans(career_id, active, player_ea_id);
+
+CREATE TABLE IF NOT EXISTS manual_youth_development_plan_revisions (
+    plan_id INTEGER NOT NULL REFERENCES manual_youth_development_plans(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL,
+    recorded_at TEXT NOT NULL,
+    content_json TEXT NOT NULL,
+    PRIMARY KEY(plan_id, revision)
+);
+CREATE TRIGGER IF NOT EXISTS immutable_manual_youth_plan_revisions_update
+BEFORE UPDATE ON manual_youth_development_plan_revisions BEGIN SELECT RAISE(ABORT, 'immutable youth plan revision'); END;
+CREATE TRIGGER IF NOT EXISTS immutable_manual_youth_plan_revisions_delete
+BEFORE DELETE ON manual_youth_development_plan_revisions BEGIN SELECT RAISE(ABORT, 'immutable youth plan revision'); END;
+
 CREATE TABLE IF NOT EXISTS manual_season_awards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     manual_season_id INTEGER NOT NULL REFERENCES manual_seasons(id) ON DELETE CASCADE,
@@ -1278,7 +1311,7 @@ class Database:
         if 0 < existing_schema_version < SCHEMA_VERSION:
             # P07 adds manual observations and derived estimates. Back up
             # editable context without copying multi-GB immutable exports.
-            if SCHEMA_VERSION in (2, 3, 4):
+            if SCHEMA_VERSION in (2, 3, 4, 5):
                 self.create_manual_context_backup(label=f"pre_schema_{SCHEMA_VERSION}")
             else:
                 self.create_backup(label=f"pre_schema_{SCHEMA_VERSION}")

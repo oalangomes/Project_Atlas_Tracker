@@ -274,6 +274,25 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             self._json(self._chronology(int(match.group(1)), snapshot_id))
             return
 
+        match = re.fullmatch(r"/api/careers/(\d+)/sporting-reports/semester", path)
+        if match:
+            raw_season = (query.get("season_index") or [None])[0]
+            raw_snapshot = (query.get("snapshot_id") or [None])[0]
+            raw_semester = (query.get("semester") or [None])[0]
+            if not all(raw is not None and re.fullmatch(r"\d+", str(raw))
+                       for raw in (raw_season, raw_snapshot, raw_semester)) or int(raw_snapshot) == 0:
+                raise ValueError("A non-negative season index, positive snapshot ID and semester are required.")
+            semester = int(raw_semester)
+            if semester not in {1, 2}:
+                raise ValueError("Semester must be 1 or 2.")
+            from .monthly_reports import build_season_report
+            from .semester_report import build_semester_report
+            database_uri = Path(self.state.database.path).resolve(strict=True).as_uri() + "?mode=ro"
+            with closing(sqlite3.connect(database_uri, uri=True)) as conn:
+                season_report = build_season_report(conn, int(match.group(1)), int(raw_season), int(raw_snapshot))
+            self._json(build_semester_report(season_report, semester))
+            return
+
         match = re.fullmatch(r"/api/careers/(\d+)/sporting-reports", path)
         if match:
             raw_season = (query.get("season_index") or [None])[0]
@@ -590,7 +609,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                 self._json(self.state.club_names.delete(career_id, team_id))
             return
 
-        match = re.fullmatch(r"/api/careers/(\d+)/manual-data/(seasons|competitions|stats|transactions|league-finishes|development|awards)/(save|delete)", path)
+        match = re.fullmatch(r"/api/careers/(\d+)/manual-data/(seasons|competitions|stats|transactions|league-finishes|development|youth-plans|awards)/(save|delete)", path)
         if match:
             career_id = int(match.group(1))
             entity = match.group(2)
@@ -604,6 +623,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                     "transactions": service.save_transaction,
                     "league-finishes": service.save_league_finish,
                     "development": service.save_development,
+                    "youth-plans": service.save_youth_plan,
                     "awards": service.save_season_award,
                 }
                 self._json(handlers[entity](career_id, payload))
@@ -618,6 +638,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                     "transactions": service.delete_transaction,
                     "league-finishes": service.delete_league_finish,
                     "development": service.delete_development,
+                    "youth-plans": service.archive_youth_plan,
                     "awards": service.delete_season_award,
                 }
                 self._json(handlers[entity](career_id, entity_id))

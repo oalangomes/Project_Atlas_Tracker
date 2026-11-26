@@ -17,7 +17,7 @@ class AutoCapturePostMatchSafetyTests(unittest.TestCase):
 
     def test_postmatch_rearms_at_hub_without_sync_snapshot(self):
         source = self.autocapture
-        self.assertIn("local VERSION = \"1.1.6\"", source)
+        self.assertIn("local VERSION = \"1.1.7\"", source)
         self.assertNotIn("post_match_export_suppressed", source)
         self.assertIn("auto_capture_state.post_match_candidate_finalized = true", source)
         self.assertIn("reason == 'entered_career_hub_after_match'", source)

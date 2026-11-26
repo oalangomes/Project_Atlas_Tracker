@@ -239,7 +239,7 @@ class ManagementQueryMixin:
             rows = conn.execute(
                 """SELECT y.*,p.team_ea_id,p.team_name,p.height,p.weight,p.nationality_id,
                           p.contract_valid_until,p.raw_json player_raw_json,
-                          r.form,r.raw_json roster_raw_json,
+                          r.player_ea_id roster_player_ea_id,r.form,r.raw_json roster_raw_json,
                           c.wage,c.duration_months,c.raw_json contract_raw_json,
                           pg.raw_json growth_raw
                    FROM youth_player_states y
@@ -250,6 +250,8 @@ class ManagementQueryMixin:
                    WHERE y.snapshot_id=? ORDER BY y.potential DESC,y.overall DESC,y.display_name""",
                 (snapshot_id,),
             ).fetchall()
+            plans = self.state.manual.youth_plans(int(snap["career_id"]))
+            plans_by_player = {int(plan["player_ea_id"]): plan for plan in plans}
             items = []
             for row in rows:
                 source = dict(row)
@@ -284,10 +286,13 @@ class ManagementQueryMixin:
                 item["market_value"] = financial["market_value"].get("value")
                 item["weekly_wage"] = financial["weekly_wage"].get("value")
                 item["wage_label"] = financial["weekly_wage"].get("label")
+                item["professional_roster_observed"] = source.get("roster_player_ea_id") is not None
+                item["youthPlan"] = plans_by_player.get(int(item["player_ea_id"]))
                 items.append(item)
         return {
             "snapshot": dict(snap),
             "players": self._enrich_players(items),
+            "plans": plans,
             "summary": {
                 "count": len(items),
                 "average_overall": round(sum((item.get("overall") or 0) for item in items) / len(items), 1) if items else None,

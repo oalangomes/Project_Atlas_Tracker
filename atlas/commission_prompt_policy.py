@@ -90,7 +90,7 @@ def report_subject(context: dict[str, Any]) -> dict[str, Any]:
         result.update({"fixture_id": match.get("fixture_id"),
                        "managed_team_side": side, "opponent_team_name": opponent,
                        "opponent_team_ea_id": match.get("opponent_ea_id")})
-    selected = facts.get("selected_match_player") or facts.get("player_summary") or {}
+    selected = facts.get("selected_match_player") or facts.get("player_summary") or facts.get("youth_profile") or {}
     if selected:
         result["selected_player_ea_id"] = selected.get("player_ea_id")
         result["selected_player_name"] = selected.get("name") or selected.get("display_name")
@@ -151,6 +151,16 @@ def report_focus(context: dict[str, Any]) -> list[dict[str, Any]]:
                 "opponent_overall_gap": competitive.get("opponent_overall_gap"),
                 "fact_refs": ["pre_match_competitive_context"],
             })
+    elif mode == "youth_development":
+        youth = facts.get("youth_profile") or {}
+        professional = facts.get("professional_evidence") or {}
+        priorities.append({
+            "question": "Assess whether the registered youth position remains the best fit, using only the registered profile, OVR/POT path and any explicit professional evidence. A different position is only a conditional suggestion, never a confirmed change.",
+            "registered_position": youth.get("registered_position"),
+            "overall": youth.get("overall"), "potential": youth.get("potential"),
+            "trusted_observed_positions": professional.get("trusted_observed_positions") or [],
+            "fact_refs": ["youth_profile", "youth_trajectory", "professional_evidence", "academy_data_limitations"],
+        })
     elif mode in {"player", "match_player"}:
         summary = facts.get("player_summary") or facts.get("selected_match_player") or {}
         role = context.get("role_analysis") or {}

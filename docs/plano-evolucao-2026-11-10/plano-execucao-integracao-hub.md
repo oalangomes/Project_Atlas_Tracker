@@ -27,12 +27,12 @@ AT-020 conserva seu número histórico, mas fica **adiado e fora deste ciclo**. 
 | P06 | Forma, função e elenco | AT-014/016/017; H06, H08–H10, H19, H22, H26, H28–H31 | P03 | Posição nominal vs observada, últimas cinco, aliases; conservar agregadores Atlas |
 | P07 | Contexto tático manual | AT-008–011; H18, H35 | P02/P03 | XI parcial e rival desconhecido; dados manuais versionados e atribuídos |
 | P08 | [Rotação e modelo de jogo](p08-rotacao-modelo-jogo.md) | AT-012/013/015; H20–H21 | P03; P07 só para funções táticas | Posse ausente, rival pré-jogo, grupo e amostra; regra de posse em espera |
-| P09 | Base e transição | AT-018; H23–H25 | P03/P06, BL-11 para score 5x5 | 5x5 isolado não promove; plano individual revisável; score condicionado |
-| P10 | Mercado e sucessão | AT-019; H27 | P03/P06 | Sem proposta explícita, saída simulada, cobertura interna; sem transferência automática |
-| P11 | Comissão e semestre | AT-021–023; H33–H34 | P03–P10 aplicáveis | Semestre com fonte e exclusão, avaliação independente, custo/privacidade |
+| P09 | [Relatório da base e trajetória cadastral](p09-base-transicao.md) | AT-018; H24–H25 adaptados, H28 | P03; contratos P06 quando disponíveis | Relatório expansível por jovem; GER/POT por snapshot e posição profissional apenas quando observada; sem score ou minutos da base |
+| P10 | Mercado e sucessão — cancelado | AT-019; H27 | — | Simulador removido do Atlas por decisão do usuário |
+| P11 | [Comissão e semestre](p11-comissao-semestre.md) | AT-021–023; H33–H34 | P03–P09 aplicáveis | Semestre com fonte, exclusão e cobertura; validação posterior, cache e consentimento cloud; sem geração automática |
 | P12 | Homologação AutoCapture | AT-003; H05/H17/H18/H20 se captura alterar contrato | Ambiente real | Uma cópia do save reutilizada; ciclos e falhas documentados; não mudar dados ativos |
 
-P04–P06 podem ser desenvolvidos em paralelo depois de P03, respeitando os contratos comuns. P07 não é pré-requisito para partes determinísticas de P08. P09 usa os snapshots da base e observações manuais; não depende de captura de partidas 5x5 ou 11x11 da base, que não está disponível. Se P06 ainda não estiver integrado, reaproveitar apenas os contratos necessários sem incorporar sua branch divergente diretamente. P12 não presume conserto nem nova captura antes de registrar os fatos observados. Cada PR muda o mínimo necessário, declara cobertura e pode ser revertido sem apagar observações manuais.
+P04–P06 podem ser desenvolvidos em paralelo depois de P03, respeitando os contratos comuns. P07 não é pré-requisito para partes determinísticas de P08. P09 usa os snapshots da base e o relatório de posição; não depende de captura de partidas 5x5 ou 11x11 da base, que não está disponível. Se P06 ainda não estiver integrado, reaproveitar apenas os contratos necessários sem incorporar sua branch divergente diretamente. P12 não presume conserto nem nova captura antes de registrar os fatos observados. Cada PR muda o mínimo necessário, declara cobertura e pode ser revertido sem apagar observações manuais.
 
 ## Rastreabilidade por capacidade
 
@@ -66,8 +66,8 @@ A origem, fórmula e classificação A–G estão na [matriz](matriz-reaproveita
 | H24 | 018 | `server_query_management.py`, snapshots e elenco | P09 | GER/POT datados; passagem ao elenco profissional só se observada; sem índice de prontidão |
 | H25 | 018 | Planos manuais da base | P09 | Prioridade de minutos é intenção do treinador, sem cálculo de minutos da base |
 | H26 | 017/018 | `server_query_analysis.py` | P06/P09 | Evolução e produção em dimensões separadas |
-| H27 | 019 | `player_finance.py`, `positions.py` | P10 | Pressão externa só com registro explícito |
-| H28 | 018/019 | `manual_data.py`, `server_query_analysis.py` | P09/P10 | Plano revisável e universo >40 sem truncamento |
+| H27 | 019 | — | P10 cancelado | Fora do escopo ativo |
+| H28 | 018 | `manual_data.py`, `server_query_analysis.py` | P09 | Universo de jovens sem truncamento |
 | H29 | 006/017 | `server_query_history.py` | P06 | Alias/ID por carreira sem informação futura |
 | H30 | 017/022 | `server_query_entities.py` | P06/P11 | Histórico completo com amostra e fonte |
 | H31 | 006/022 | `server_query_analysis.py` | P06/P11 | Competição canônica e estação sem duplicata |

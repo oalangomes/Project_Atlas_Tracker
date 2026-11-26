@@ -89,4 +89,4 @@ Entregar dicionário de indicadores/fontes, contrato de evidência, diagnóstico
 - [x] Regressão automatizada e build comprovados; inspeção visual e validação com dados reais seguem pendentes.
 - [ ] Checklist transversal e rollback documentados.
 
-Esta entrega libera contratos para rotação, comparação individual e sucessão. Não comprova precisão esportiva apenas por melhorar cobertura.
+Esta entrega libera contratos para rotação e comparação individual. A precisão esportiva requer validação própria.

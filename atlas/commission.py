@@ -33,7 +33,7 @@ MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
 METRIC_VERSION = 4
-REPORT_VERSION = 36
+REPORT_VERSION = 37
 MATCH_PLAYER_REPORT_CONTRACT = 8
 MATCH_CONTEXT_REPORT_CONTRACT = 1
 MATCH_REPORT_CONTRACT = 2
@@ -1243,6 +1243,70 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                 fact("following_fixture", "Next fixture after this match", following_fact, "Atlas fixture calendar")
         if mode == "match":
             scope = f"fixture:{fixture_id}"
+    elif mode == "youth_development":
+        if player_ea_id is None:
+            raise ValueError("Select a player from the youth list.")
+        youth = conn.execute(
+            """SELECT y.player_ea_id,y.display_name,y.overall,y.potential,y.primary_position,
+                      s.career_date,s.season_index,s.import_sequence
+                 FROM youth_player_states y JOIN snapshots s ON s.id=y.snapshot_id
+                WHERE s.career_id=? AND y.player_ea_id=? AND s.import_sequence<=?
+                ORDER BY s.import_sequence,s.id""",
+            (career_id, int(player_ea_id), int(snapshot["import_sequence"])),
+        ).fetchall()
+        if not youth:
+            raise ValueError("Selected player is not in the youth export for this career.")
+        current = dict(youth[-1])
+        if int(current["import_sequence"]) != int(snapshot["import_sequence"]):
+            raise ValueError("Selected player is not in the chosen youth snapshot.")
+        trajectory = [{"career_date": row["career_date"], "season_index": row["season_index"],
+                       "overall": row["overall"], "potential": row["potential"],
+                       "registered_position": row["primary_position"]} for row in youth]
+        fact("youth_profile", "Youth profile at the selected snapshot", {
+            "player_ea_id": int(current["player_ea_id"]), "display_name": current["display_name"],
+            "registered_position": current["primary_position"], "overall": current["overall"],
+            "potential": current["potential"], "snapshot_date": snapshot["career_date"],
+        }, "FC26 youth export at the selected snapshot")
+        fact("youth_trajectory", "Observed youth OVR/POT and registered-position path", trajectory,
+             "career-scoped FC26 youth snapshots; this is not youth match performance")
+        roster = conn.execute(
+            """SELECT p.primary_position,p.overall,p.potential,r.jersey_number
+                 FROM roster_states r LEFT JOIN player_states p
+                   ON p.snapshot_id=r.snapshot_id AND p.ea_player_id=r.player_ea_id
+                WHERE r.snapshot_id=? AND r.team_ea_id=? AND r.player_ea_id=?""",
+            (snapshot_id, team_id, int(player_ea_id)),
+        ).fetchone()
+        stats = conn.execute(
+            """SELECT SUM(COALESCE(appearances,0)) appearances,SUM(COALESCE(goals,0)) goals,
+                      SUM(COALESCE(assists,0)) assists,
+                      CASE WHEN SUM(CASE WHEN average_rating IS NOT NULL AND appearances>0 THEN appearances ELSE 0 END)>0
+                           THEN SUM(CASE WHEN average_rating IS NOT NULL AND appearances>0 THEN average_rating*appearances ELSE 0 END)
+                                / SUM(CASE WHEN average_rating IS NOT NULL AND appearances>0 THEN appearances ELSE 0 END) END average_rating
+                 FROM season_stat_states WHERE snapshot_id=? AND player_ea_id=? AND represented_team_ea_id=?""",
+            (snapshot_id, int(player_ea_id), team_id),
+        ).fetchone()
+        observed_rows = conn.execute(
+            """SELECT actual_position,actual_position_source,date FROM player_match_performances
+                 WHERE snapshot_id=? AND player_ea_id=? ORDER BY date DESC,artificial_key DESC LIMIT 10""",
+            (snapshot_id, int(player_ea_id)),
+        ).fetchall()
+        observed = [{"position": trusted_actual_position(row["actual_position"], row["actual_position_source"]),
+                     "source": row["actual_position_source"], "date": row["date"]}
+                    for row in observed_rows
+                    if trusted_actual_position(row["actual_position"], row["actual_position_source"])]
+        fact("professional_evidence", "Professional squad, statistics and observed-position evidence", {
+            "on_managed_club_roster": bool(roster),
+            "registered_professional_position": roster["primary_position"] if roster else None,
+            "professional_overall": roster["overall"] if roster else None,
+            "professional_potential": roster["potential"] if roster else None,
+            "season_statistics": dict(stats) if stats else None,
+            "trusted_observed_positions": observed,
+        }, "selected snapshot professional roster, cumulative statistics and trusted FC position exports when available")
+        fact("academy_data_limitations", "Academy coverage boundary", {
+            "youth_5v5_match_statistics": "unavailable", "youth_11v11_match_statistics": "unavailable",
+            "youth_minutes": "unavailable", "automatic_position_change": "not supported",
+        }, "Project Atlas does not receive academy 5v5/11v11 match exports or youth minutes")
+        scope = f"youth_development:{player_ea_id}"
     elif mode in PLAYER_REPORT_MODES:
         if player_ea_id is None:
             raise ValueError("Select a player from the current professional squad.")
@@ -2279,6 +2343,17 @@ def _deterministic_report_summary(context: dict[str, Any]) -> dict[str, Any] | N
                     "en-GB": f"Team review based on {detailed} of {total} completed fixtures with detailed data ({coverage}% coverage).",
                     "es-ES": f"Análisis del equipo basado en {detailed} de {total} partidos completos con datos detallados ({coverage}% de cobertura)."}.get(language)
             return {"text": text, "fact_refs": ["team_statistical_profile"]}
+    if context.get("mode") == "youth_development":
+        youth = facts.get("youth_profile") or {}
+        professional = facts.get("professional_evidence") or {}
+        name = youth.get("display_name") or "Jogador"
+        position = youth.get("registered_position") or "N/D"
+        observed = professional.get("trusted_observed_positions") or []
+        observed_text = observed[0].get("position") if observed else "N/D"
+        text = {"pt-BR": f"{name}: posição cadastrada {position}, OVR {youth.get('overall') if youth.get('overall') is not None else 'N/D'} e POT {youth.get('potential') if youth.get('potential') is not None else 'N/D'}. Posição profissional observada: {observed_text}; não há estatísticas ou minutos de partidas da base.",
+                "en-GB": f"{name}: registered position {position}, OVR {youth.get('overall') if youth.get('overall') is not None else 'N/D'} and POT {youth.get('potential') if youth.get('potential') is not None else 'N/D'}. Observed professional position: {observed_text}; academy match statistics and minutes are unavailable.",
+                "es-ES": f"{name}: posición registrada {position}, OVR {youth.get('overall') if youth.get('overall') is not None else 'N/D'} y POT {youth.get('potential') if youth.get('potential') is not None else 'N/D'}. Posición profesional observada: {observed_text}; no hay estadísticas ni minutos de partidos de la cantera."}.get(language)
+        return {"text": text, "fact_refs": ["youth_profile", "professional_evidence", "academy_data_limitations"]}
     if context.get("mode") in PLAYER_REPORT_MODES:
         player = facts.get("player_summary") or {}
         name, position = player.get("display_name") or "Player", player.get("position") or "N/D"
@@ -3293,7 +3368,7 @@ def _report_coverage(context: dict[str, Any]) -> dict[str, Any]:
 
 
 OLLAMA_DEFAULT_MODEL = "qwen3.5:9b"
-PLAYER_REPORT_MODES = {"player", "player_form", "player_season"}
+PLAYER_REPORT_MODES = {"player", "player_form", "player_season", "youth_development"}
 CLOUD_DEFAULT_MODELS = {"gemini": "gemini-flash-latest", "groq": "llama-3.1-8b-instant"}
 GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models"
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
@@ -3782,6 +3857,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
             "player": "Cruze radar e perfis de função já calculados com produção, eficiência por 90, recorte recente e pares da mesma posição no elenco. Compare amostras equivalentes; não infira hierarquia nem titularidade.",
             "player_form": "Avalie o momento de forma recente do jogador: últimas atuações, tendência de rating, eficiência por 90 e desvio em relação à própria média da temporada. Destaque picos, quedas e estabilidade, sem atribuir causas não observadas.",
             "player_season": "Faça uma leitura da temporada acumulada do jogador: volume, eficiência, contribuições por 90, participação nos resultados e evolução ao longo das rodadas. Compare com pares da mesma posição e mantenha conclusões individuais.",
+            "youth_development": "Analise se a posição cadastrada do jovem parece adequada usando somente posição registrada, trajetória de OVR/POT e qualquer evidência profissional explícita. A base não possui dados de partidas 5x5/11x11, minutos ou estatísticas: declare isso e não invente desempenho. Só sugira uma posição alternativa de forma condicional, explique a evidência e nunca trate a mudança como confirmada ou automática.",
             "match_player": "Faça uma avaliação técnica concisa desta atuação, com opinião calibrada e sustentada pelos dados. Dê um veredito curto no resumo e até quatro observações que cruzem produção, eficiência, função/posição e comparação pré-calculada do jogador com o time e os colegas que atuaram. Destaque tanto méritos quanto limitações quando existirem; não enumere estatísticas sem explicar o que elas significam em conjunto. Interprete volume como volume, eficiência como eficiência; não trate todo número alto como qualidade. Evite elogios genéricos ou absolutos como 'perfeito', 'incrível' e 'consistente' sem evidência comparativa. Quando os dados sustentarem, diga claramente que um indicador ficou abaixo ou acima do padrão coletivo, sem inventar causas. Use posição observada somente com evidência; caso contrário identifique a posição como cadastrada. Não recomende treino nem desenvolvimento. Para goleiro, relacione o xG e os chutes no alvo do adversário com defesas e gols sofridos; avalie o resultado com cautela, sem confundir xG com defesas esperadas nem atribuir sozinho ao goleiro gols que também dependem da defesa. Se faltarem dados, qualifique a avaliação.",
             "team_identity": "Interprete tendências e recortes calculados pelo Atlas. Use rotation_continuity apenas para comparação descritiva do XI inicial e da partida inteira, citando amostra, cobertura e dificuldade rival; com comparison_eligible=false, não conclua efeito da rotação. Posse indisponível não indica estilo sem posse. Só proponha hipótese sobre estilo de jogo se sample_sufficient=true; caso contrário descreva apenas métricas observadas. Associação não prova causa nem instrução tática.",
             "match": "Contextualize resultado versus desempenho; compare criação/concessão, volume/qualidade, circulação, progressão e ações defensivas atuais com médias anteriores e últimas cinco partidas válidas. Compare atletas com a mesma posição observada quando registrada. Identifique desvio, padrão, impacto e acompanhamento útil, sem atribuir causa não observada.",
@@ -3791,6 +3867,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
             "player": "Combine Atlas role and attribute profiles with production, per-90 efficiency, recent form and same-position squad peers. Compare samples fairly; do not infer hierarchy or starting status.",
             "player_form": "Assess the player's current form: recent appearances, rating trend, per-90 efficiency and deviation from their own season average. Highlight peaks, dips and stability without attributing unobserved causes.",
             "player_season": "Review the player's accumulated season: volume, efficiency, contributions per 90, involvement in results and progression across rounds. Compare with same-position peers and keep conclusions individual.",
+            "youth_development": "Assess whether the youth player's registered position looks suitable using only registered position, OVR/POT trajectory and explicit professional evidence. Academy 5v5/11v11 match data, minutes and statistics are unavailable: state that boundary and do not invent performance. Any alternative position must be conditional, evidence-based and never presented as a confirmed or automatic change.",
             "match_player": "Give a concise technical assessment of this appearance, with a calibrated opinion grounded in the data. Give a short verdict in the summary and up to four observations that combine production, efficiency, role/position, and the precomputed comparison with the team and teammates who played. State both strengths and limitations when present; do not list statistics without explaining what they mean together. Treat volume as volume and efficiency as efficiency; a high count is not automatically good. Avoid generic or absolute praise such as 'perfect', 'incredible', or 'consistent' without comparative evidence. When supported, clearly say an indicator was below or above the collective pattern without inventing causes. Use observed position only when evidenced; otherwise identify the registered position. Do not recommend training or development. For a goalkeeper, relate opponent xG and shots on target to saves and goals conceded; assess cautiously, do not equate xG with expected saves, and do not assign goals solely to the keeper when the defence also matters. Qualify the assessment when data is missing.",
             "team_identity": "Interpret Atlas-calculated trends. Use rotation_continuity only for a descriptive comparison of starting XIs and whole-match outcomes, citing sample size, coverage and opponent difficulty; when comparison_eligible=false, do not conclude a rotation effect. Unavailable possession does not imply a without-possession style. Offer a playing-style hypothesis only when sample_sufficient=true; otherwise describe measured statistics only. Association does not prove a cause or tactical instruction.",
             "match": "Contextualise result versus performance; compare chance creation/concession, volume/quality, circulation, progression and defensive actions with prior averages and the last five valid fixtures. Compare players at the same observed position when recorded. Identify deviations, patterns, impact and useful follow-up without assigning unobserved causes.",
@@ -3800,6 +3877,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
             "player": "Cruza perfiles de función y atributos de Atlas con producción, eficiencia por 90, rendimiento reciente y compañeros de la misma posición. Compara muestras equivalentes; no infieras jerarquía ni titularidad.",
             "player_form": "Evalúa el momento de forma actual del jugador: apariciones recientes, tendencia de nota, eficiencia por 90 y desviación respecto a su propia media de la temporada. Destaca picos, caídas y estabilidad sin atribuir causas no observadas.",
             "player_season": "Haz una lectura de la temporada acumulada del jugador: volumen, eficiencia, contribuciones por 90, participación en los resultados y evolución a lo largo de las jornadas. Compara con compañeros de la misma posición y mantén conclusiones individuales.",
+            "youth_development": "Evalúa si la posición registrada del joven parece adecuada usando solo la posición registrada, la trayectoria de OVR/POT y evidencia profesional explícita. No hay datos, minutos ni estadísticas de partidos 5x5/11x11 de la cantera: declara ese límite y no inventes rendimiento. Cualquier posición alternativa debe ser condicional, basada en evidencia y nunca un cambio confirmado o automático.",
             "match_player": "Ofrece una evaluación técnica concisa de esta actuación, con una opinión calibrada y sustentada por los datos. Da un veredicto breve en el resumen y hasta cuatro observaciones que combinen producción, eficiencia, función/posición y la comparación precalculada del jugador con el equipo y sus compañeros que jugaron. Señala méritos y limitaciones cuando existan; no enumeres estadísticas sin explicar su significado conjunto. Trata el volumen como volumen y la eficiencia como eficiencia; un valor alto no es automáticamente bueno. Evita elogios genéricos o absolutos como 'perfecto', 'increíble' o 'consistente' sin evidencia comparativa. Cuando los datos lo sustenten, indica claramente que un indicador quedó por debajo o por encima del patrón colectivo, sin inventar causas. Usa la posición observada solo si hay evidencia; si no, identifica la posición registrada. No recomiendes entrenamiento ni desarrollo. Para un portero, relaciona el xG y los tiros a puerta del rival con las paradas y los goles encajados; evalúa con cautela, no confundas xG con paradas esperadas ni atribuyas los goles solo al portero cuando la defensa también influye. Matiza la evaluación cuando falten datos.",
             "team_identity": "Interpreta tendencias calculadas por Atlas. Usa rotation_continuity solo para comparar descriptivamente los XI iniciales y resultados de partidos completos, citando muestra, cobertura y dificultad rival; con comparison_eligible=false, no concluyas un efecto de la rotación. La posesión no disponible no implica un estilo sin posesión. Propón una hipótesis de estilo solo si sample_sufficient=true; de lo contrario describe únicamente métricas observadas. Una asociación no demuestra una causa ni una instrucción táctica.",
             "match": "Contextualiza resultado frente a rendimiento; compara creación/concesión, volumen/calidad, circulación, progresión y acciones defensivas con promedios previos y los últimos cinco partidos válidos. Compara jugadores en la misma posición observada cuando esté registrada. Identifica desviaciones, patrones, impacto y seguimiento útil sin atribuir causas no observadas.",
@@ -3818,6 +3896,11 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                    "matchstats contains team rows. Keep the report about the selected player, not a general team review. "
                    "For a goalkeeper, cite matchstats for opponent xG/shots and selected_match_player for keeper outcomes; xG describes chance quality, "
                    "not expected saves, and defensive context limits attribution of conceded goals. Avoid generic or absolute verdicts without strong evidence.")
+    elif mode == "youth_development":
+        system += (" This is an academy development-position review. Cite academy_data_limitations whenever the conclusion touches match performance, minutes or readiness. "
+                   "Do not infer youth performance, attribute values, tactical role, promotion readiness or actual position from the registered position alone. "
+                   "If no trusted professional observed position exists, say that the current on-pitch position cannot be confirmed. "
+                   "Recommendations may be conditional review steps, not an instruction to change the player in FC26.")
     elif mode in PLAYER_REPORT_MODES:
         system += (" This is an accumulated individual report. Keep conclusions about the selected player, their recorded position and their own comparable history. Do not convert team totals into individual contribution.")
     system += (" Ask for more context only when a specific qualitative answer from the coach could materially change the interpretation or recommendation and Atlas does not record it. Ask only about coach-only context such as intended instructions, tactical plan, or an observed adjustment. Never ask the coach to supply performance statistics, recent or historical results, player minutes, goals, xG, shots, ratings, or other figures; these are Atlas data questions, not coach-context questions. Continue with a qualified analysis when no coach-only answer is needed. Return at most two concise information_requests, each with question and reason, in the selected language; return an empty list when there is no material coach-context gap. Treat coach_context as unverified user narrative, never as an imported Atlas statistic. If coach_context is supplied, use it only for the stated context and label any use as coach-provided. If six coach answers are already present, return no more requests.")
@@ -3904,6 +3987,7 @@ def get_commission_report(conn: Any, career_id: int, snapshot_id: int, mode: str
                         "player": ["player_checkpoint", "player_summary", "player_position_peers", "player_recent_matches", "player_matchstats"],
                         "player_form": ["player_checkpoint", "player_summary", "player_position_peers", "player_recent_matches", "player_matchstats"],
                         "player_season": ["player_checkpoint", "player_summary", "player_position_peers", "player_recent_matches", "player_matchstats"],
+                        "youth_development": ["youth_profile", "youth_trajectory", "professional_evidence", "academy_data_limitations"],
                         "team_identity": ["team_statistical_profile", "opponent_profiles", "rotation_continuity"],
                         "next_match": ["match", "squad", "formation_options", "previous_fixture", "following_fixture"]}
         safe_default_refs = [item for item in default_refs.get(mode, []) if item in valid_ids]

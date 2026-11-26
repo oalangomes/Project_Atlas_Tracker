@@ -1,4 +1,4 @@
--- FC26 AutoCapture v1.1.6
+-- FC26 AutoCapture v1.1.7
 -- Single-file career monitor with full snapshot + detailed MatchStats exporters embedded.
 -- Run once after loading a career. It creates a startup snapshot and arms
 -- MatchStats. After a completed match it publishes MatchStats and rearms when
@@ -20,9 +20,9 @@ require 'imports/career_mode/helpers'
 
 assert(IsInCM(), "FC26 AutoCapture must be executed while a career is loaded")
 
-local VERSION = "1.1.6"
+local VERSION = "1.1.7"
 local EMBEDDED_EXPORTER_VERSION = "1.1.0"
-local EMBEDDED_MATCH_STATS_VERSION = "1.1.1"
+local EMBEDDED_MATCH_STATS_VERSION = "1.1.2"
 local STATE_KEY = "FC26_EXPORT_AUTO_CAPTURE_STATE"
 local CHECK_INTERVAL_SECONDS = 2
 local STABILITY_SECONDS = 4
@@ -2115,7 +2115,7 @@ end
 ]====]
 
 local MATCH_STATS_EXPORTER_SOURCE = [========[
--- FC26 MatchStatsExport v1.1.0
+-- FC26 MatchStatsExport v1.1.2
 -- Production community exporter for Project Atlas Tracker.
 -- Run once in a loaded Manager Career Hub before a normally played match.
 -- The exporter is read-only and writes only the canonical Tracker match package
@@ -2134,7 +2134,7 @@ assert(type(AddEventHandler) == 'function',
     'Live Editor CareerModeEvent API is unavailable.')
 assert(type(GetPlugin) == 'function', 'GetPlugin is unavailable.')
 
-local VERSION = '1.1.1'
+local VERSION = '1.1.2'
 local CSV_BOM = '\239\187\191'
 local EXPORT_DIAGNOSTICS = false
 local STATE_KEY = 'FC26_EXPORT_MATCH_STATS_AUTOMATIC_PLAYER_EXPORTER_STATE'
@@ -2819,6 +2819,20 @@ end
 ensure_dir(output_dir)
 SPECIAL.dir = output_dir .. '\\diag'
 if EXPORT_DIAGNOSTICS then ensure_dir(SPECIAL.dir) end
+
+-- An auto-managed capture is created before the next match so Live Editor can
+-- observe the full lifecycle.  Only a package moved to `ready` with
+-- MATCH_READY is importable by Atlas; make the armed state explicit.
+local pending_marker_path = nil
+if PIPELINE_AUTOMANAGED and ready_output_dir then
+    pending_marker_path = output_dir .. '\\CAPTURE_PENDING.txt'
+    local pending_marker = open_unbuffered(pending_marker_path, 'wb')
+    pending_marker:write('MatchStats capture is armed and waiting for the next match.\r\n')
+    pending_marker:write('Pipeline capture ID: ', PIPELINE_CAPTURE_ID, '\r\n')
+    pending_marker:write('Atlas imports only completed packages moved to MatchStats\\ready with MATCH_READY.\r\n')
+    pending_marker:write('If Live Editor closes before the match finishes, this partial package is intentionally ignored.\r\n')
+    pending_marker:close()
+end
 
 local participant_export_headers = {
     'snapshot_id', 'tracker_capture_id', 'trigger', 'team_index',
@@ -5882,6 +5896,7 @@ local function stop_probe(reason)
     if state.post_handler then state.remove_event_handler('post__CareerModeEvent', state.post_handler) end
     local latest_tracker = state.latest_tracker_capture_id and
         state.tracker_snapshot_data[state.latest_tracker_capture_id] or nil
+    if pending_marker_path then pcall(os.remove, pending_marker_path) end
     local summary = open_unbuffered(output_dir .. '\\99_summary.txt', 'wb')
     summary:write('FC26 MatchStatsExport v', VERSION, '\r\n')
     summary:write('Output profile: production_clean\r\n')

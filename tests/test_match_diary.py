@@ -173,6 +173,7 @@ class DiaryMigrationTests(unittest.TestCase):
             with closing(sqlite3.connect(backups[0]["path"])) as backup:
                 self.assertEqual(backup.execute("SELECT value FROM manual_test").fetchone()[0], "preserved")
             with db.connect() as upgraded:
-                self.assertEqual(upgraded.execute("SELECT value FROM app_meta WHERE key='schema_version'").fetchone()[0], "4")
+                self.assertEqual(upgraded.execute("SELECT value FROM app_meta WHERE key='schema_version'").fetchone()[0], "5")
                 self.assertTrue(upgraded.execute("SELECT 1 FROM sqlite_master WHERE name='manual_match_diary'").fetchone())
                 self.assertTrue(upgraded.execute("SELECT 1 FROM sqlite_master WHERE name='match_formation_estimates'").fetchone())
+                self.assertTrue(upgraded.execute("SELECT 1 FROM sqlite_master WHERE name='manual_youth_development_plans'").fetchone())

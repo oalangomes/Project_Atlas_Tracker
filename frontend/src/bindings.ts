@@ -136,9 +136,10 @@ function bindContent() {
     $$<HTMLButtonElement>('[data-movement-editor-edit]',content).forEach(button=>button.onclick=async()=>{state.movementEditKind=button.dataset.movementEditorEdit==='loan'?'loan':'transfer';state.movementEditId=Number(button.dataset.id);if(state.route==='loans')await renderLoans();else await renderTransfers();applyIcons(content);bindContent();});
     $$<HTMLButtonElement>('[data-movement-editor-delete]',content).forEach(button=>button.onclick=async()=>{if(!confirm('Delete this manual history entry?'))return;await api(`/api/careers/${state.careerId}/manual-data/transactions/delete`,{method:'POST',body:JSON.stringify({id:Number(button.dataset.id)})});state.movementEditKind=null;state.movementEditId=null;clearApiCache();toast('Manual history entry deleted');if(state.route==='loans')await renderLoans();else await renderTransfers();applyIcons(content);bindContent();});
 
-    $$<HTMLSelectElement>('[data-analysis-season]',content).forEach(select=>select.onchange=async()=>{state.analysisSeasonIndex=Number(select.value);clearApiCache();setLoading();try{await renderAnalysis();applyIcons(content);bindContent();}catch(error:any){content.innerHTML=errorState("Analysis could not be loaded",String(error?.message||error));}});
+    $$<HTMLSelectElement>('[data-analysis-season]',content).forEach(select=>select.onchange=()=>{state.analysisSeasonIndex=Number(select.value);clearApiCache();void render();});
     $$<HTMLSelectElement>('[data-records-season]',content).forEach(select=>select.onchange=async()=>{state.recordsSeasonIndex=Number(select.value);clearApiCache();await renderRecords();applyIcons(content);bindContent();});
     $$<HTMLSelectElement>('[data-season-report-season]',content).forEach(select=>select.onchange=async()=>{state.seasonReportSeasonIndex=Number(select.value);clearApiCache();await renderSeasonReport();applyIcons(content);bindContent();});
+    $$<HTMLSelectElement>('[data-season-report-semester]',content).forEach(select=>select.onchange=async()=>{state.seasonReportSemester=Number(select.value);await renderSeasonReport();applyIcons(content);bindContent();});
     $$('[data-season-report-tab]',content).forEach((n:any)=>n.onclick=async(e:any)=>{e.stopPropagation();state.seasonReportTab=n.dataset.seasonReportTab||'overview';await renderSeasonReport();applyIcons(content);bindContent();});
     const awardPlayerSelect=$<HTMLSelectElement>('[data-season-award-player]',content);
     if(awardPlayerSelect)awardPlayerSelect.onchange=()=>{const option=awardPlayerSelect.selectedOptions[0],name=$<HTMLInputElement>('[data-season-award-name]',content);if(name&&option?.dataset.name)name.value=option.dataset.name;};
@@ -185,7 +186,7 @@ function bindContent() {
         }
     };
 
-    $$('[data-analysis-tab]',content).forEach((n:any)=>n.onclick=async(e:any)=>{e.stopPropagation();state.analysisTab=n.dataset.analysisTab||'overview';setLoading();try{await renderAnalysis();applyIcons(content);bindContent();}catch(error:any){content.innerHTML=errorState("Analysis could not be loaded",String(error?.message||error));}});
+    $$('[data-analysis-tab]',content).forEach((n:any)=>n.onclick=(e:any)=>{e.stopPropagation();state.analysisTab=n.dataset.analysisTab||'overview';void render();});
     $$('[data-commission-ollama]',content).forEach((n:any)=>n.onclick=async()=>{const out=$('[data-commission-ai-output]',content);n.disabled=true;n.textContent='Analyzing locally…';if(out)out.textContent='Waiting for the local model. The Atlas panel remains available.';try{const result:any=await api(`/api/careers/${state.careerId}/commission/ollama`,{method:'POST',body:JSON.stringify({snapshot_id:Number(n.dataset.snapshotId)})});if(out){const notes=result.observations||[];out.innerHTML=notes.length?notes.map((item:any)=>`<p><strong>EA ID ${esc(item.player_ea_id)}</strong> ${esc(item.text)}<small class="table-subline">Evidence: ${esc(item.evidence.join(' · '))}</small></p>`).join(''):esc(result.message||'No additional observations returned.');}n.textContent=result.fallback?'Try local analysis again':'Refresh local analysis';}catch(error:any){if(out)out.textContent=`Local analysis failed. The Atlas statistics remain available. ${String(error?.message||error)}`;n.textContent='Try local analysis again';}finally{n.disabled=false;}});
     const commissionMode=$<HTMLSelectElement>('[data-commission-mode]',content);
     const updateCommissionReportControls=()=>{const mode=commissionMode?.value||'match';const matchWrap=$('[data-commission-fixture-wrap]',content),nextWrap=$('[data-commission-next-wrap]',content),playerWrap=$('[data-commission-player-wrap]',content);if(matchWrap)matchWrap.toggleAttribute('hidden',mode!=='match');if(nextWrap)nextWrap.toggleAttribute('hidden',mode!=='next_match');if(playerWrap)playerWrap.toggleAttribute('hidden',mode!=='player');};
@@ -198,7 +199,7 @@ function bindContent() {
       const output=target?$(`[data-report-slot="${target}"]`,content):$('[data-commission-report-output]',content);
       const payload:any={snapshot_id:Number(button.dataset.snapshotId||state.snapshotId),mode,force_refresh:button.dataset.forceRefresh==='1'};
       const fixtureId=Number(button.dataset.fixtureId||fixture?.value||0),playerId=Number(button.dataset.playerEaId||player?.value||0);
-      if(mode==='player'||mode==='player_form'||mode==='player_season'||mode==='match_player')payload.player_ea_id=playerId;
+      if(mode==='player'||mode==='player_form'||mode==='player_season'||mode==='match_player'||mode==='youth_development')payload.player_ea_id=playerId;
       if(mode==='match'||mode==='match_player'||mode==='next_match')payload.fixture_id=fixtureId;
       button.disabled=true;const oldLabel=button.textContent;button.textContent='Starting staff report…';if(output)output.innerHTML='<p>The report is running in the background. You can keep using Atlas while the AI provider works.</p>';
       try{
@@ -290,7 +291,7 @@ function bindContent() {
 }
 
 function bindShell() {
-    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.clubTab="overview"; state.competitionListTab="deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
+    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.seasonReportSemester = null; state.clubTab="overview"; state.competitionListTab="deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
     snapshotSelect.onchange = () => { clearApiCache(); state.snapshotId = Number(snapshotSelect.value); state.compareTo = state.snapshotId; updateSystemUi(); navigate(state.route, state.routeData, false); };
     $("#backButton").onclick = () => goHistory(-1);
     $("#forwardButton").onclick = () => goHistory(1);

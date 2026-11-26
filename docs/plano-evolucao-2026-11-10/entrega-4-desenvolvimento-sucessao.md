@@ -1,14 +1,14 @@
-# Entrega 4 — Desenvolvimento, funções e sucessão
+# Entrega 4 — Desenvolvimento e funções
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 3](entrega-3-rotacao-profundidade.md) · Próxima: [Entrega 5](entrega-5-comissao-relatorios.md).
 
-**Prioridade:** P2 para AT-016–AT-019. AT-014 permanece P1 e é compartilhado com a Entrega 3. **Estado:** planejada; escopo do P09 corrigido em 22/11/2026. **Dependências:** contratos da Entrega 1. PRs originais 8/9 são históricos; valem [P06/P09/P10](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+**Prioridade:** P2 para AT-016–AT-018. AT-014 permanece P1 e é compartilhado com a Entrega 3. **Estado:** relatório do P09 implementado. P10 (AT-019) cancelado e removido. **Dependências:** contratos da Entrega 1. Os PRs originais 8/9 são históricos. O escopo ativo está em [P06 e P09](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
 
 ## Revisão Hub → Atlas
 
 AT-016/017 reutilizam `atlas/positions.py`, Comissão e consultas históricas para H08/H10/H19/H22/H26/H29–H31. Comparar função **observada** com fonte e amostra; nota não deve ser repartida entre posições sem minutos por papel. A forma usa últimas cinco atuações na ordem esportiva. Índice posicional Sheffield requer calibração e não substitui adequação Atlas.
 
-AT-018 usa os registros cadastrais da base por snapshot (GER, POT, posição e vínculo) e as observações do treinador. Não há fonte disponível para atuações ou minutos de partidas 5x5/11x11 da base; H23 fica fora do P09 e H24/H25 são adaptados sem índice de prontidão ou cálculo de carga de jogos. A passagem ao elenco profissional só é descrita quando registrada em snapshot, sem inferir que GER/POT determina promoção. H28 exige plano completo sem limite legado de 40. AT-019 separa proteção interna de H27 da pressão externa: potencial não prova interesse do mercado. Plano e sucessão continuam recomendações revisáveis, sem contratar automaticamente.
+AT-018 usa os registros cadastrais da base por snapshot (GER, POT, posição e vínculo) no relatório expansível de cada jovem. Não há fonte disponível para atuações ou minutos de partidas 5x5/11x11 da base. H23 fica fora do P09 e H24/H25 são adaptados sem índice de prontidão ou cálculo de carga de jogos. A passagem ao elenco profissional e a posição em campo só são descritas quando registradas em fontes profissionais confiáveis. A troca de posição é uma hipótese condicionada à evidência disponível.
 
 ## Objetivo e condição de conclusão
 
@@ -18,8 +18,7 @@ Apoiar escolha de jogadores e planejamento do elenco sem converter números brut
 | --- | --- | --- |
 | AT-016 | Comparador contextual de jogadores | Mesmo papel, período e exposição comparáveis, com ressalvas |
 | AT-017 | Evolução detalhada de atributos | Deltas auditáveis entre snapshots, sem atribuir causa inexistente |
-| AT-018 | Planos de desenvolvimento da base | Metas revisáveis, GER/POT histórico e mudança de vínculo observada; minutos apenas após entrada no profissional e com fonte |
-| AT-019 | Planejamento de sucessão | Simular saídas e mostrar cobertura interna antes de sugerir mercado |
+| AT-018 | Relatório de desenvolvimento da base | GER/POT histórico, posição cadastrada e mudança de vínculo observada; posição/minutos profissionais apenas com fonte |
 
 AT-014 conserva o critério da Entrega 3: cobertura suficiente, adaptação e lacuna funcional. Arquivos/serviços candidatos: `positions.py`, consultas existentes de jogadores/histórico, Player Profile, Squad, Base e gestão manual. Confirmar caminhos e contratos antes de implementar.
 
@@ -29,19 +28,13 @@ AT-014 conserva o critério da Entrega 3: cobertura suficiente, adaptação e la
 2. Exibir cobertura suficiente, adaptação e lacuna por função. Justificar adequação com atributos/posições disponíveis e separar função observada da cadastrada.
 3. Tratar indisponibilidade, empréstimo e vínculo conforme dados realmente disponíveis, distinguindo projeção do treinador de situação extraída.
 4. Considerar que um atleta pode cobrir múltiplas funções, mas não ocupa várias vagas simultâneas na mesma composição. Exibir esse limite em cenários de cobertura.
-5. Disponibilizar contrato único para Squad, sucessão e rotação; não criar uma avaliação alternativa para cada tela.
+5. Compartilhar o contrato de profundidade funcional entre Squad e rotação.
 
 **Aceite verificável:** função com cobertura, função apenas adaptável e função sem alternativa são identificadas e explicadas; um único jogador multifuncional não mascara duas lacunas simultâneas.
 
-## Corte 4B — Simulação de sucessão (AT-019, PR 8)
+## Corte 4B — Simulação de sucessão (AT-019, cancelado)
 
-1. Permitir selecionar saídas hipotéticas e retornos/fim de empréstimo conforme vínculo conhecido, preservando o estado real.
-2. Recalcular cobertura interna usando AT-014, incluindo alternativas da base quando a evidência permitir.
-3. Apresentar diferenças entre cenário atual e simulado: funções perdidas, adaptações, dependências de um único atleta e opções internas.
-4. Explicar incerteza de retorno, disponibilidade e papel; não assumir renovação ou desenvolvimento futuro.
-5. Só depois das alternativas internas apontar necessidade esportiva eventualmente atendível no mercado, sem scouting automatizado ou contratação automática.
-
-**Aceite verificável:** cenário com saída/retorno de dois zagueiros emprestados mostra impacto e cobertura restante sem alterar contratos, empréstimos ou save.
+O P10 foi removido. A tela, a rota de consulta e os testes do simulador foram retirados.
 
 ## Corte 4C — Comparador contextual (AT-016, PR 9)
 
@@ -63,15 +56,15 @@ AT-014 conserva o critério da Entrega 3: cobertura suficiente, adaptação e la
 
 **Aceite verificável:** cada delta pode ser reconstituído pelos dois snapshots; ausência em um deles não gera evolução artificial.
 
-## Corte 4E — Planos individuais da base (AT-018, PR 9)
+## Corte 4E — Relatório individual da base (AT-018, PR 9)
 
-1. Persistir metas atribuídas ao treinador, horizonte, papel pretendido, prioridade de oportunidades e revisões, sem mudar desenvolvimento no jogo. A prioridade é uma intenção manual, não uma conclusão calculada de minutos da base.
+1. Exibir por jovem um relatório expansível de posição, sem mudar desenvolvimento no jogo. Uma alternativa de posição é hipótese revisável, não uma conclusão automática.
 2. Mostrar GER/POT, posição e presença na base por snapshot, com data, fonte e lacunas. Não atribuir variação a treino ou atuação sem evidência.
 3. Mostrar a entrada no elenco profissional e os minutos profissionais somente quando observados nas fontes existentes, com corte por carreira/snapshot. Associar empréstimos registrados sem atribuir evolução ao empréstimo.
-4. Apresentar a decisão de integração como avaliação do treinador, com contexto do elenco quando disponível. Não produzir score de prontidão, etiqueta automática de pré-profissional ou requisito de 5x5/11x11.
-5. Integrar FC26 Youth e Player Profile existentes, sem novo menu principal nem truncar o universo de jovens.
+4. Exigir que a IA exponha as lacunas de 5x5/11x11 e minutos da base; sem score de prontidão, etiqueta automática de pré-profissional ou mudança automática de posição.
+5. Integrar FC26 Youth existente, sem novo menu principal nem truncar o universo de jovens. Registros manuais históricos, se já existirem, são preservados mas não conduzem esse fluxo.
 
-**Aceite verificável:** plano, meta e revisão persistem; GER/POT e vínculo podem ser reconstituídos pelos snapshots; ausência de partidas/minutos da base aparece como indisponível; entrada no profissional não é presumida; dados ausentes não aparecem como meta descumprida automaticamente; histórico de empréstimos mantém origem.
+**Aceite verificável:** GER/POT e vínculo podem ser reconstituídos pelos snapshots; ausência de partidas/minutos da base aparece como indisponível; entrada e posição profissional não são presumidas; recomendação de posição é condicional e não muda dados; histórico de empréstimos mantém origem.
 
 ## Perguntas esportivas de validação
 
@@ -80,20 +73,18 @@ As perguntas abaixo são cenários de aceitação, não conclusões do plano:
 - Oseni preserva produtividade em confrontos mais difíceis? Examinar papel, amostra e contexto pré-jogo.
 - Providence evolui em produção, atributos e constância? Tratar os três eixos separadamente e qualificar o que os dados sustentam.
 - Watts ou Benarous substituem características importantes de Paterson? Comparar funções e características específicas, sem reduzir a resposta ao GER.
-- Se dois zagueiros emprestados retornarem, a cobertura continua suficiente? Explicitar a perspectiva do vínculo: retorno ao clube de origem ou chegada ao elenco, conforme o cenário real confirmado.
 
 ## Validação integrada
 
-Cobrir adequação única compartilhada, jogador multifuncional em vagas simultâneas, simulação sem mutação do estado real, papéis desconhecidos, exposição incomparável, snapshots futuros, atributo faltante e troca de carreira.
+Cobrir adequação única compartilhada, jogador multifuncional em vagas simultâneas, papéis desconhecidos, exposição incomparável, snapshots futuros, atributo faltante e troca de carreira.
 
-Validar persistência/revisão dos planos, API, telas Squad/Player Profile/Base, build TypeScript e JS gerado. Conferir casos reais contra dados do workspace e registrar quando uma pergunta não pode ser respondida.
+Validar o contrato do relatório, API, lista FC26 Youth, build TypeScript e JS gerado. Conferir casos reais contra dados do workspace e registrar as lacunas de evidência.
 
 ## Reversão e saída
 
-Simulações devem permanecer separadas dos dados reais. Preservar planos e revisões em migrações, produzir backup verificável e documentar restauração. Reverter comparação não deve eliminar histórico do jogador nem sobrescrever atributos.
+Preservar planos e revisões em migrações, produzir backup verificável e documentar restauração. Preservar histórico e atributos do jogador ao reverter a comparação.
 
-- [ ] AT-014 compartilhado com rotação e sucessão, sem dupla contagem.
-- [ ] AT-019 simula cobertura e prioriza opções internas.
+- [ ] AT-014 compartilhado com rotação, sem dupla contagem.
 - [ ] AT-016 compara recortes defensáveis e explicita limitações.
 - [ ] AT-017 mantém deltas auditáveis e sem causalidade inventada.
 - [ ] AT-018 persiste metas, histórico e revisões com proveniência.

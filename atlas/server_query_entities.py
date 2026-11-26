@@ -592,6 +592,7 @@ class EntityQueryMixin:
         career_id = int(snap["career_id"])
         manual_history = self.state.manual.player_history(career_id, player_id)
         manual_editor = self.state.manual.player_editor(career_id, player_id)
+        youth_plans = self.state.manual.youth_plans(career_id, player_id)
         with self.state.database.connect() as conn:
             season_numbers = self._career_season_numbers(conn, career_id)
             for item in history_items:
@@ -727,6 +728,7 @@ class EntityQueryMixin:
             "statHistory": rows_to_dicts(stat_history),
             "manualHistory": manual_history,
             "manualEditor": manual_editor,
+            "youthPlan": youth_plans[0] if youth_plans else None,
             "seasonStats": season_stats,
             "performances": performance_items,
             "reconstructedMatches": reconstructed_matches,

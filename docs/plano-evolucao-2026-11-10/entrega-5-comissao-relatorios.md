@@ -2,7 +2,7 @@
 
 [Índice](README.md) · [Governança](governanca-e-validacao.md) · Anterior: [Entrega 4](entrega-4-desenvolvimento-sucessao.md).
 
-**Prioridade:** P1 para AT-024; P2 para AT-021–023. **Estado:** planejada; AT-020 adiado. **Dependências:** segurança e contratos de evidência. PR original 10 é histórico; valem [P04/P11](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
+**Prioridade:** P1 para AT-024; P2 para AT-021–023. **Estado:** primeiro corte P11 implementado; AT-020 adiado. **Dependências:** segurança e contratos de evidência. PR original 10 é histórico; valem [P04/P11](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
 
 ## Revisão Hub → Atlas
 
@@ -66,7 +66,7 @@ Definir como contar afirmações, contradições e cenários antes do benchmark.
 | Pós-jogo | Partida, adversário pré-jogo, papéis e observações | Sem cronologia ou formação inventadas |
 | Evolução recente | Período explícito, produção, atributos e amostra | Produção e desenvolvimento sem causa presumida |
 | Rotação | Composição, dificuldade e continuidade | Sem impacto causal do banco sem captura temporal |
-| Elenco | Profundidade, alternativas e sucessão | Priorizar cobertura interna e diferenças funcionais |
+| Elenco | Profundidade e alternativas | Priorizar cobertura interna e diferenças funcionais |
 | Temporada | Recortes comparáveis e cobertura histórica | Não misturar fontes/períodos nem esconder lacunas |
 
 3. Vincular cada afirmação factual a referências de evidência; separar dado, inferência, observação do treinador e recomendação.
@@ -107,9 +107,10 @@ Permitir desativar provedor ou relatório novo e conservar visão determinístic
 
 - [ ] AT-020 permanece adiado e não é condição de saída deste ciclo.
 - [ ] AT-024 explicita denominadores e troca de GL no serviço canônico.
-- [ ] AT-021 avaliado de forma independente e com casos negativos.
+- [x] P11 expõe semestre determinístico, com fonte, exclusões e cobertura ([detalhe](p11-comissao-semestre.md)).
+- [ ] AT-021 avaliado de forma independente e com casos negativos fora da validação estrutural já aplicada.
 - [ ] AT-022 validado nos cinco tipos de relatório.
-- [ ] AT-023 comprova limites, cache, custo observável e consentimento.
+- [ ] AT-023 comprova custo observado em chamadas reais; cache e consentimento já são contratos do fluxo atual.
 - [ ] Critérios factuais e esportivos de liberação cumpridos.
 - [ ] Geração histórica permanece condicionada ao gate real.
 - [ ] P04/P11 possuem evidência, reversão e checklist transversal.

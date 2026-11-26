@@ -10,6 +10,14 @@ AT-012–015 preservados. H06/H09/H10/H21 ampliam forma, gestão de minutos, riv
 
 **AT-025 — Defesa contextual e setores (novo, P1):** reaproveitar H14–H16 com ações diretas separadas de exposição coletiva *estimada por minutos*; publicar setores apenas com posição confiável, cobertura por fixture e corte de amostra. H17 entra como co-presença aproximada; “minutos juntos” factuais aguardam substituições cronológicas (BL-07/08). Implementação única em serviço de análise existente, consumida por Analysis, Comissão e relatório semestral. Aceite: fixtures com min/xGA ausentes se abstêm, métricas nunca afirmam causalidade e a tela distingue estimativa de evento individual.
 
+## Performance e usabilidade de Analysis
+
+A comparação de snapshots em [`server_query_analysis.py`](../../atlas/server_query_analysis.py) retorna do SQLite apenas mudanças de clube. Pares registrados como empréstimo em qualquer um dos dois snapshots continuam excluídos. O comparativo por temporada reaproveita as transferências e os empréstimos já calculados na mesma consulta.
+
+Em uma medição local de leitura com 109 snapshots (snapshot 110), a consulta anterior ainda estava em execução quando a medição foi interrompida após 112 segundos. A versão otimizada concluiu em 27 segundos, com cerca de 7 segundos na leitura de empréstimos. Em uma comparação isolada no mesmo recorte, a etapa de transferências caiu de 56,7 para 10,6 segundos e produziu os mesmos 815 eventos, na mesma ordem. As medições chamaram as consultas Python diretamente sobre o banco ativo em modo somente leitura, com mídia simulada na consulta completa. O log HTTP `atlas_performance.log` registra separadamente os tempos observados no aplicativo.
+
+Em [`views_analysis.ts`](../../frontend/src/views_analysis.ts), as abas ficam disponíveis enquanto a consulta carrega e em caso de falha. É possível tentar o mesmo recorte novamente ou mudar de aba. Uma resposta atrasada é ignorada após a navegação. O teste `py -3 -m unittest tests.test_snapshot_transfer_events -v` verifica se a consulta mantém a identificação e a origem das transferências mesmo na fronteira entre temporadas.
+
 ## Objetivo e condição de conclusão
 
 Responder com dados se a utilização do banco preserva o nível da equipe. Mostrar se a produção muda com a rotação, indicando dificuldade do adversário, amostra e diferenças táticas conhecidas.
@@ -21,7 +29,7 @@ Responder com dados se a utilização do banco preserva o nível da equipe. Most
 | AT-014 | Evoluir profundidade por função | Identificar cobertura suficiente, adaptação e lacuna funcional |
 | AT-015 | Criar relatório de continuidade de desempenho | Comparar produção, criação e proteção defensiva entre grupos utilizados |
 
-AT-014 participa deste resultado esportivo, mas sua evolução estrutural é implementada no PR 8, junto à sucessão da Entrega 4. PR 7 deve consumir a profundidade existente em `positions.py` e incorporar o contrato evoluído quando disponível; não criar outra lógica de adequação.
+AT-014 compartilha o contrato de profundidade funcional com a Entrega 4. A rotação usa o modelo existente em `positions.py`.
 
 ## Limites obrigatórios da primeira versão
 

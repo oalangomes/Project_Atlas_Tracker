@@ -22,7 +22,7 @@ Para este ciclo, este conjunto é a referência de planejamento. O [roadmap ante
 | Entrega 1 | P1 | [Qualidade e rastreabilidade dos dados](entrega-1-qualidade-rastreabilidade.md) | AT-005–AT-007 | Contrato comum de evidências e métricas |
 | Entrega 2 | P1 | [Contexto tático e Diário do Treinador](entrega-2-contexto-tatico-diario.md) | AT-008–AT-011 | Contexto qualitativo persistente e atribuído |
 | Entrega 3 | P1 | [Rotação e profundidade funcional](entrega-3-rotacao-profundidade.md) | AT-012–AT-015, AT-025 | Comparar composições e defesa contextual com amostra |
-| Entrega 4 | P2 | [Desenvolvimento, funções e sucessão](entrega-4-desenvolvimento-sucessao.md) | AT-016–AT-019 | Comparação justa e planejamento interno |
+| Entrega 4 | P2 | [Desenvolvimento e funções](entrega-4-desenvolvimento-sucessao.md) | AT-016–AT-018 | Comparação contextual e desenvolvimento da base |
 | Entrega 5 | P1/P2 | [Comissão Técnica e relatórios](entrega-5-comissao-relatorios.md) | AT-020–AT-024 (020 adiado) | Goleiros, interpretação e semestre rastreáveis |
 
 ## 1. Diagnóstico inicial: o que mudou desde a última revisão
@@ -57,7 +57,7 @@ O plano não prevê reescrita, plataforma multiagente ou reformulação completa
 | Player Profile | Radar, perfil de função, desenvolvimento e comparações | Avaliação por papel desempenhado e adversário |
 | Comissão Técnica | Relatórios estruturados, amostras, comparações e IA | Qualidade interpretativa, observações persistentes e calibração |
 | Base | Jovens, potencial e histórico disponível | Plano individual e transição ao profissional |
-| Gestão | Contratos, empréstimos, transferências | Sucessão sem contratação automática |
+| Gestão | Contratos, empréstimos, transferências | Histórico e vínculos do elenco |
 | Sistema | Importação, snapshots, comparação, cobertura | Auditoria de consistência e estabilidade ponta a ponta |
 
 ## 4. Riscos prioritários da análise estática
@@ -92,7 +92,7 @@ Não introduzir LangChain, LangGraph ou outro orquestrador. Os relatórios são 
 - Segurança e corte temporal da Entrega 0 não têm dependência funcional anterior e precedem a liberação das novas evidências. AT-003 é gate específico da captura real com FC26/Live Editor; a sua pendência não bloqueia trabalho determinístico sobre dados já disponíveis.
 - Após contratos básicos da Entrega 0, Entregas 1 e 2 podem ser desenvolvidas em linhas independentes. A liberação completa continua sujeita aos gates comuns.
 - Entrega 3 depende da qualidade da Entrega 1; os segmentos de composição e tática dependem adicionalmente dos registros da Entrega 2. AT-025 pode avançar sobre fixtures elegíveis sem esse contexto manual.
-- Entrega 4 depende da Entrega 1; a comparação individual reutiliza a profundidade e sucessão definidas dentro da própria Entrega 4.
+- Entrega 4 depende da Entrega 1. A comparação individual reutiliza o modelo de profundidade funcional.
 - Entrega 5 depende da segurança e dos contratos analíticos das anteriores. Controles mínimos de chamadas pertencem desde já à Entrega 0; sua ampliação e avaliação ficam na Entrega 5.
 
 As entregas são marcos de produto; cada corte deve permanecer revisável e reversível. A sequência vigente de P01–P12 e a distribuição de testes estão no [plano de execução](plano-execucao-integracao-hub.md#prs-pequenos-propostos).
@@ -103,7 +103,7 @@ As entregas são marcos de produto; cada corte deve permanecer revisável e reve
 | --- | --- |
 | Match Center | Abas de contexto tático, escalações, formações rivais e Diário do Treinador |
 | Analysis | Subaba de rotação, dificuldade e confronto contra sistemas rivais |
-| Squad | Profundidade funcional, cobertura, risco e sucessão |
+| Squad | Profundidade funcional, cobertura e risco |
 | Player Profile | Comparação contextual, evolução de atributos e papel desempenhado |
 | Technical Commission | Relatórios consolidados, evidências e acompanhamento de recomendações |
 | FC26 Youth | Evolução dos jovens, metas e plano de integração |

@@ -65,7 +65,7 @@ const state: AtlasState = {
     compareFrom: null, compareTo: null,
     competitionTab: "results", chronologyType: "all", chronologyQuery: "", loanScope: "club", transferScope: "club",
     movementSeasonIndex: null, movementEditKind: null, movementEditId: null,
-    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "overview", analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
+    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "overview", seasonReportSemester: null, analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
     mediaType: "all", mediaStatus: "all", mediaSources: null,
     manualSeasonId: null, manualTab: "competitions", manualEditKind: null, manualEditId: null, manualDraftCompetitionId: null, manualQuickEntry: false,
     pendingLiveRender: false,

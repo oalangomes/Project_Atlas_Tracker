@@ -13,7 +13,7 @@ const state = {
     compareFrom: null, compareTo: null,
     competitionTab: "results", chronologyType: "all", chronologyQuery: "", loanScope: "club", transferScope: "club",
     movementSeasonIndex: null, movementEditKind: null, movementEditId: null,
-    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "overview", seasonReportStorySnapshotId: null, seasonReportStoryMonth: "season", analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
+    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "overview", seasonReportSemester: null, analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
     mediaType: "all", mediaStatus: "all", mediaSources: null,
     manualSeasonId: null, manualTab: "competitions", manualEditKind: null, manualEditId: null, manualDraftCompetitionId: null, manualQuickEntry: false,
     pendingLiveRender: false,
@@ -77,12 +77,6 @@ const ATLAS_TEXT = {
 Object.assign(ATLAS_TEXT["pt-BR"], { moreContextTitle: "A comissão pediu mais contexto", moreContextHelp: "Responda apenas o que souber. Sua resposta será enviada separada das estatísticas importadas.", yourContext: "Sua resposta", sendContext: "Enviar contexto à comissão", contextSent: "Contexto enviado ao Ollama; atualizando a análise…" });
 Object.assign(ATLAS_TEXT["en-GB"], { moreContextTitle: "The commission needs more context", moreContextHelp: "Answer only what you know. Your response is sent separately from imported statistics.", yourContext: "Your answer", sendContext: "Send context to the commission", contextSent: "Context sent to Ollama; refreshing the analysis…" });
 Object.assign(ATLAS_TEXT["es-ES"], { moreContextTitle: "La comisión necesita más contexto", moreContextHelp: "Responde solo lo que sepas. Tu respuesta se envía por separado de las estatísticas importadas.", yourContext: "Tu respuesta", sendContext: "Enviar contexto a la comisión", contextSent: "Contexto enviado a Ollama; atualizando el análisis…" });
-const STORY_TEXT = {
-    "pt-BR": { tab: "Evolução mensal", all: "Consolidado", snapshot: "Snapshot", download: "Baixar Markdown", refresh: "Atualizar dados", noSnapshot: "Esta temporada ainda não tem snapshot selecionável.", noMatches: "Não há partidas concluídas neste recorte.", partial: "Parcial", complete: "Fechado no snapshot", matches: "Partidas", leaguePoints: "Pontos na liga", goals: "Gols pró / contra", coverage: "Exports / jogos", month: "Mês da partida", competition: "Competição", record: "V-E-D", opponent: "Adversário", venue: "Mando", score: "Placar", xg: "xG / xGA", shots: "Finalizações", passes: "Passes", standouts: "Maiores notas", players: "Atletas", position: "Posição", overall: "GER", potential: "Potencial", minutes: "Minutos", rating: "Nota média", sample: "Amostra", best: "Melhor atuação", worst: "Pior atuação", advanced: "Métricas dos exports", per90: "Por 90 min", superior: "Adversários de divisão superior", roster: "Mudanças no elenco cadastrado", quality: "Qualidade dos dados", noData: "n/d", noPerformance: "Sem atuação individual rastreada no mês.", seasonTrend: "Trajetória do elenco", sector: "Utilização por setor", observed: "Posição jogada confirmada", official: "Deltas oficiais reconstruídos", added: "Entradas", removed: "Saídas", none: "Nenhuma", details: "Análise individual", monthCoverage: "Cobertura dos indicadores coletivos", sourceNote: "Placar: fixtures. Métricas avançadas: apenas exports vinculados. Totais oficiais acumulados não são distribuídos entre meses.", marketNote: "Mudança cadastral não comprova transferência ou empréstimo concluído.", strengthNote: "Divisão superior é inferida do nível de liga no snapshot; não mede a dificuldade de cada partida.", noComparison: "Sem comparação mensal confiável", monthLink: "Abrir mês", total: "Temporada até o snapshot" },
-    "en-GB": { tab: "Monthly progression", all: "Season synthesis", snapshot: "Snapshot", download: "Download Markdown", refresh: "Refresh data", noSnapshot: "This season has no selectable snapshot yet.", noMatches: "No completed matches in this selection.", partial: "Partial", complete: "Closed as of snapshot", matches: "Matches", leaguePoints: "League points", goals: "Goals for / against", coverage: "Exports / matches", month: "Match month", competition: "Competition", record: "W-D-L", opponent: "Opponent", venue: "Venue", score: "Score", xg: "xG / xGA", shots: "Shots", passes: "Passes", standouts: "Top ratings", players: "Players", position: "Position", overall: "OVR", potential: "Potential", minutes: "Minutes", rating: "Average rating", sample: "Sample", best: "Best performance", worst: "Lowest rating", advanced: "Export metrics", per90: "Per 90 min", superior: "Higher-division opponents", roster: "Registered squad changes", quality: "Data quality", noData: "n/a", noPerformance: "No individual performance tracked this month.", seasonTrend: "Squad trajectory", sector: "Usage by unit", observed: "Confirmed played position", official: "Reconstructed official deltas", added: "Added", removed: "Removed", none: "None", details: "Individual analysis", monthCoverage: "Team metric coverage", sourceNote: "Scores come from fixtures. Advanced metrics cover linked exports only. Cumulative official totals are not spread across months.", marketNote: "A roster change does not prove a completed transfer or loan.", strengthNote: "Higher division follows the league level recorded at the snapshot; it does not measure each match's difficulty.", noComparison: "No reliable monthly comparison", monthLink: "Open month", total: "Season as of snapshot" },
-    "es-ES": { tab: "Evolución mensual", all: "Consolidado", snapshot: "Snapshot", download: "Descargar Markdown", refresh: "Actualizar datos", noSnapshot: "Esta temporada aún no tiene un snapshot seleccionable.", noMatches: "No hay partidos completados en este recorte.", partial: "Parcial", complete: "Cerrado en el snapshot", matches: "Partidos", leaguePoints: "Puntos de liga", goals: "Goles a favor / en contra", coverage: "Exports / partidos", month: "Mes del partido", competition: "Competición", record: "V-E-D", opponent: "Rival", venue: "Localía", score: "Marcador", xg: "xG / xGA", shots: "Remates", passes: "Pases", standouts: "Mejores notas", players: "Jugadores", position: "Posición", overall: "GRL", potential: "Potencial", minutes: "Minutos", rating: "Nota media", sample: "Muestra", best: "Mejor actuación", worst: "Peor nota", advanced: "Métricas de exports", per90: "Por 90 min", superior: "Rivales de división superior", roster: "Cambios en la plantilla registrada", quality: "Calidad de datos", noData: "n/d", noPerformance: "Sin actuación individual registrada este mes.", seasonTrend: "Trayectoria de la plantilla", sector: "Uso por sector", observed: "Posición jugada confirmada", official: "Deltas oficiales reconstruidos", added: "Entradas", removed: "Salidas", none: "Ninguno", details: "Análisis individual", monthCoverage: "Cobertura de métricas colectivas", sourceNote: "Marcadores de fixtures. Las métricas avanzadas cubren solo exports vinculados. Los acumulados oficiales no se distribuyen entre meses.", marketNote: "Un cambio de plantilla no confirma un traspaso o cesión concluida.", strengthNote: "La división superior proviene del nivel de liga en el snapshot; no mide la dificultad de cada partido.", noComparison: "Sin comparación mensual fiable", monthLink: "Abrir mes", total: "Temporada hasta el snapshot" },
-};
-function storyT(key) { return STORY_TEXT[atlasLanguage()]?.[key] || STORY_TEXT["pt-BR"][key] || key; }
 function atlasLanguage() { const selected = String(state.status?.settings?.language || "pt-BR"); return ATLAS_TEXT[selected] ? selected : "pt-BR"; }
 function tr(key) { return ATLAS_TEXT[atlasLanguage()][key] || ATLAS_TEXT["en-GB"][key] || key; }
 function applyAtlasLanguage() { const language = atlasLanguage(); document.documentElement.lang = language; $$("[data-nav-key]").forEach(item => { const key = String(item.dataset.navKey || ""); if (key)
@@ -829,7 +823,7 @@ function seasonReportPicker(options, selected) {
     return `<label class="page-filter"><span>Season</span><select data-season-report-season>${options.map((option) => `<option value="${option.season_index}" ${Number(option.season_index) === Number(selected) ? "selected" : ""}>${esc(option.label)}${option.is_current ? " · current" : ""}</option>`).join("")}</select></label>`;
 }
 function seasonReportTabs(active) {
-    const tabs = [["overview", "Overview"], ["sporting", storyT("tab")], ["competitions", "Competitions"], ["squad", "Squad & performance"], ["transfers", "Transfers"], ["awards", "Awards"], ["quality", "Data quality"]];
+    const tabs = [["overview", "Overview"], ["semester", "Semester"], ["competitions", "Competitions"], ["squad", "Squad & performance"], ["transfers", "Transfers"], ["awards", "Awards"], ["quality", "Data quality"]];
     return `<div class="page-tabs season-report-tabs">${tabs.map(([key, label]) => `<button class="${active === key ? "active" : ""}" data-season-report-tab="${key}">${label}</button>`).join("")}</div>`;
 }
 function awardPortrait(award) {
@@ -900,6 +894,12 @@ function seasonReportAwards(d) {
 function seasonReportQuality(d) {
     return `<div class="grid two-col">${qualityPanel(d.quality)}<section class="card pad"><h3 class="card-title">Report rules</h3><p class="chart-note">${esc(d.seasonReport?.method_note || "The report uses available data only.")}</p><p class="chart-note">Manual awards remain separate from automatically calculated Tracker awards. Missing competitions, fees or historical statistics are not filled in.</p></section></div>`;
 }
+function seasonReportSemester(semester) {
+    const metrics = semester?.metrics || {}, coverage = semester?.coverage || {}, players = semester?.players || [];
+    const periodSelect = `<label class="page-filter"><span>Calendar semester</span><select data-season-report-semester><option value="1" ${Number(semester?.semester) === 1 ? "selected" : ""}>Jan–Jun</option><option value="2" ${Number(semester?.semester) === 2 ? "selected" : ""}>Jul–Dec</option></select></label>`;
+    const playerRows = players.slice(0, 20).map((p) => `<tr><td>${p.playerEaId ? playerLink(p.playerEaId, p.name) : esc(p.name || "–")}</td><td class="center">${positionBadge(p.position)}</td><td class="num">${num(p.minutes)}</td><td class="num">${num(p.matchesWithRating)}</td><td class="num">${ratingValue(p.averageRating, true)}</td><td class="num">${num(p.detailedMatches)}</td><td>${(p.months || []).map((month) => esc(month)).join(", ")}</td></tr>`).join("");
+    return `<div class="page-filter-bar">${periodSelect}<span class="filter-hint">Calendar cut-off; only imported months up to the selected snapshot are used.</span></div><section class="card pad"><div class="card-title-row"><div><h2>${esc(semester?.periodLabel || "Semester")} sporting report</h2><span>Deterministic aggregation of monthly reports</span></div>${statusBadge(`${num(metrics.resultCoverage)} / ${num(metrics.fixtures)} results`, Number(metrics.resultCoverage) === Number(metrics.fixtures) ? "good" : "amber")}</div><div class="grid metrics analysis-metrics">${metric("Matches", num(metrics.fixtures), `${num(metrics.wins)} W · ${num(metrics.draws)} D · ${num(metrics.losses)} L`, "green")}${metric("Goals", `${num(metrics.goalsFor)}:${num(metrics.goalsAgainst)}`, "all selected months must be complete")}${metric("League points", num(metrics.pointsLeague), "league fixtures only", "blue")}${metric("Detailed exports", num(metrics.detailedExports), `${num(coverage.fixturesWithDetailedExport)} fixtures with linked exports`)}</div><p class="chart-note">Included months: ${esc((semester?.includedMonths || []).join(", ") || "none")}. Excluded months: ${esc((semester?.excludedMonths || []).join(", ") || "none")}. ${coverage.partialMonths?.length ? `Partial: ${esc(coverage.partialMonths.join(", "))}.` : ""}</p></section><section class="card"><header class="card-header"><h2>Player evidence</h2><span>ratings weighted by rated appearances</span></header>${players.length ? table([{ label: "Player" }, { label: "Pos.", cls: "center" }, { label: "Min", cls: "num" }, { label: "Rated apps", cls: "num" }, { label: "Avg. rating", cls: "num" }, { label: "Detailed", cls: "num" }, { label: "Months" }], playerRows) : '<div class="card-body muted">No completed managed matches in this calendar semester.</div>'}</section><section class="card pad"><h3 class="card-title">Limits</h3><p class="chart-note">${(semester?.limitations || []).map((item) => esc(item)).join(" ")}</p></section>`;
+}
 function downloadText(filename, text, type) { const blob = new Blob([text], { type }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 function exportSeasonReportCsv() { const d = currentSeasonReportData; if (!d)
     return; const m = d.metrics || {}, rows = [["Season", d.selectedSeasonLabel], ["League", d.seasonOverview?.leagueFinish?.league_name || ""], ["Position", d.seasonOverview?.leagueFinish?.position_display || ""], ["Matches", m.matches], ["Wins", m.wins], ["Draws", m.draws], ["Losses", m.losses], ["Goals", m.goals_for], ["Goals against", m.goals_against], ["Players", m.players_used]]; const awards = (d.seasonReport?.manual?.awards || []).map((a) => [a.award_label, a.display_name, a.reason || ""]); const csv = ["Section;Value;Note", ...rows.map((r) => r.map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`).join(";")), ...awards.map((r) => `"Award: ${String(r[0]).replaceAll('"', '""')}";"${String(r[1]).replaceAll('"', '""')}";"${String(r[2]).replaceAll('"', '""')}"`)].join("\r\n"); downloadText(`Atlas_Season_Report_${d.selectedSeasonLabel.replace('/', '-')}.csv`, `\ufeff${csv}`, "text/csv;charset=utf-8"); }
@@ -944,136 +944,51 @@ async function exportSeasonInfographic(format = "portrait") {
     link.href = canvas.toDataURL("image/png");
     link.click();
 }
-let currentSportingReportData = null;
-function storyNum(value, digits = 0) { return value == null ? esc(storyT("noData")) : num(value, digits); }
-function storyCategory(value) {
-    const labels = { "pt-BR": { profissional: "Profissional", academia: "Academia", "academia histórica": "Academia histórica", emprestado: "Emprestado", "histórico/saída": "Histórico/saída" }, "en-GB": { profissional: "Professional", academia: "Academy", "academia histórica": "Former academy", emprestado: "On loan", "histórico/saída": "Former squad" }, "es-ES": { profissional: "Profesional", academia: "Cantera", "academia histórica": "Cantera histórica", emprestado: "Cedido", "histórico/saída": "Histórico/salida" } };
-    return labels[atlasLanguage()]?.[value] || value || storyT("noData");
-}
-function storySample(player) {
-    if (atlasLanguage() === "pt-BR") return player.sample || storyT("noData");
-    const labels = {
-        "en-GB": { confiavel: "Reliable sample", recorte_util: "Usable sample", sem_minutagem: "No minutes", amostra_minima: "Very small sample (<90 min)", amostra_muito_curta: "Short sample (90–179 min)", amostra_curta: "Short sample (180–299 min)", jogos_insuficientes: "Too few valid matches" },
-        "es-ES": { confiavel: "Muestra fiable", recorte_util: "Muestra utilizable", sem_minutagem: "Sin minutos", amostra_minima: "Muestra mínima (<90 min)", amostra_muito_curta: "Muestra corta (90–179 min)", amostra_curta: "Muestra corta (180–299 min)", jogos_insuficientes: "Muy pocos partidos válidos" },
-    };
-    return labels[atlasLanguage()]?.[player.sampleCode] || player.sample || storyT("noData");
-}
-function storySnapshotPicker(options, selected) {
-    return `<label class="page-filter"><span>${esc(storyT("snapshot"))}</span><select data-story-snapshot>${options.map((option) => `<option value="${Number(option.id)}" ${Number(option.id) === Number(selected) ? "selected" : ""}>${esc(dateText(option.career_date))} · #${Number(option.id)}</option>`).join("")}</select></label>`;
-}
-function storyPerformance(item) {
-    if (!item)
-        return storyT("noData");
-    return `${esc(dateText(item.date))} · ${esc(item.opponent || storyT("noData"))} · ${esc(item.competition || storyT("noData"))} · ${storyNum(item.goalsFor)}:${storyNum(item.goalsAgainst)} · ${storyNum(item.rating, 1)} (${storyNum(item.minutes)} min)`;
-}
-function storyPlayerCard(player) {
-    const comparison = player.comparison || {}, detail = player.detailedStats || {}, coverage = player.detailedCoverage || {};
-    const metrics = Object.entries(detail).filter(([, value]) => value != null).map(([key, value]) => `<span>${esc(key.replaceAll("_", " "))}: <strong>${storyNum(value, key.includes("expected") ? 2 : 0)}</strong> <small>(${storyNum(coverage[key])}/${storyNum(player.detailedMatches)})</small></span>`).join("");
-    const rates = Object.entries(player.per90 || {}).map(([key, value]) => `<span>${esc(key.replaceAll("_", " "))}: <strong>${storyNum(value, 2)}</strong></span>`).join("");
-    const official = player.reconstructed ? `${storyNum(player.reconstructed.goals)} G · ${storyNum(player.reconstructed.assists)} A (${storyNum(player.reconstructedMatches)} ${esc(storyT("matches"))})` : storyT("noData");
-    return `<details class="story-player"><summary><span><strong>${esc(player.name)}</strong><small>${esc(storyCategory(player.category))} · ${esc(player.position || storyT("noData"))} · ${esc(storyT("overall"))} ${storyNum(player.overall)}</small></span><span>${storyNum(player.minutes)} min · ${storyNum(player.averageRating, 1)} (${storyNum(player.matchesWithRating)})</span></summary><div class="story-player-body"><p>${playerLink(player.playerEaId, player.name)} · ${esc(storyT("potential"))}: ${storyNum(player.potential)} · ${esc(storyT("sample"))}: ${esc(storySample(player))}</p><p>${esc(storyT("best"))}: ${storyPerformance(player.best)}<br>${esc(storyT("worst"))}: ${storyPerformance(player.worst)}</p><p>${esc(storyT("observed"))}: ${esc((player.observedPositions || []).join(", ") || storyT("noData"))} · ${esc(storyT("official"))}: ${official}</p><p>${esc(storyT("rating"))} Δ ${storyNum(comparison.ratingDelta, 2)} · ${esc(storyT("minutes"))} Δ ${storyNum(comparison.minutesDelta)} · ${esc(storyT("overall"))} Δ ${storyNum(comparison.overallDelta)}</p><div class="story-metric-list"><b>${esc(storyT("advanced"))} (${storyNum(player.detailedMatches)})</b>${metrics || `<span>${esc(storyT("noData"))}</span>`}</div><div class="story-metric-list"><b>${esc(storyT("per90"))}</b>${rates || `<span>${esc(storyT("noData"))}</span>`}</div></div></details>`;
-}
-function storyRosterChanges(month) {
-    const changes = month.rosterChanges;
-    if (!changes)
-        return "";
-    const names = new Map((month.players || []).map((player) => [Number(player.playerEaId), player.name]));
-    const list = (ids) => ids?.length ? ids.map((id) => esc(names.get(Number(id)) || `EA ${id}`)).join(", ") : esc(storyT("none"));
-    return card(storyT("roster"), `<p>${esc(storyT("added"))}: ${list(changes.added)}.</p><p>${esc(storyT("removed"))}: ${list(changes.removed)}.</p><p class="data-note">${esc(storyT("marketNote"))}</p>`);
-}
-function storyMonthView(report, month) {
-    const games = month.matches || [], players = month.players || [];
-    const record = Object.values(month.competitions || {}).reduce((total, row) => [total[0] + row.wins, total[1] + row.draws, total[2] + row.losses], [0, 0, 0]);
-    const metricCards = `<div class="grid metrics">${metric(storyT("matches"), storyNum(games.length), `${record.join("-")} ${storyT("record")}`)}${metric(storyT("leaguePoints"), storyNum(month.pointsLeague))}${metric(storyT("goals"), `${storyNum(month.goalsFor)} / ${storyNum(month.goalsAgainst)}`)}${metric(storyT("coverage"), `${storyNum(month.exports)} / ${storyNum(games.length)}`, month.partial ? storyT("partial") : storyT("complete"))}</div>`;
-    const competitions = Object.entries(month.competitions || {}).map(([name, row]) => `<tr><td>${esc(name)}</td><td class="num">${storyNum(row.matches)}</td><td class="num">${storyNum(row.wins)}-${storyNum(row.draws)}-${storyNum(row.losses)}</td></tr>`);
-    const matchRows = games.map((game) => `<tr><td>${esc(dateText(game.date))}</td><td>${esc(game.opponent || storyT("noData"))}<small class="table-subline">${esc(game.opponentLeague || storyT("noData"))}${game.superior ? ` · ${esc(storyT("superior"))}` : ""}</small></td><td>${esc(game.competition || storyT("noData"))}</td><td>${esc(game.venue || storyT("noData"))}</td><td class="num">${storyNum(game.goalsFor)}:${storyNum(game.goalsAgainst)}</td><td class="num">${storyNum(game.teamStats?.expected_goals_derived, 2)} / ${storyNum(game.opponentStats?.expected_goals_derived, 2)}</td><td class="num">${storyNum(game.teamStats?.shots)}</td><td class="num">${storyNum(game.teamStats?.passes)}</td><td>${esc((game.standouts || []).slice(0, 2).map((item) => `${item.name} ${num(item.rating, 1)}`).join(", ") || storyT("noData"))}</td></tr>`);
-    const superior = games.filter((game) => game.superior);
-    const superiorRows = superior.map((game) => { const used = players.flatMap((player) => (player.superiorOpponents || []).filter((item) => Number(item.fixtureId) === Number(game.fixtureId)).map((item) => `${player.name} ${storyNum(item.minutes)} min / ${storyNum(item.rating, 1)}`)); return `<tr><td>${esc(dateText(game.date))}</td><td>${esc(game.opponent)}</td><td>${storyNum(game.goalsFor)}:${storyNum(game.goalsAgainst)}</td><td>${esc(used.join(", ") || storyT("noData"))}</td></tr>`; });
-    const coverage = month.metricCoverage || {};
-    return `${metricCards}<section class="grid two-col"><section class="card pad"><h3 class="card-title">${esc(storyT("competition"))}</h3>${table([{ label: storyT("competition") }, { label: storyT("matches"), cls: "num" }, { label: storyT("record"), cls: "num" }], competitions)}</section><section class="card pad"><h3 class="card-title">${esc(storyT("quality"))}</h3><p>${esc(storyT("sourceNote"))}</p><p>${esc(storyT("monthCoverage"))}: xG ${storyNum(coverage.expected_goals_derived)}/${games.length}, NPK-xG ${storyNum(coverage.npk_expected_goals)}/${games.length}, ${esc(storyT("shots"))} ${storyNum(coverage.shots)}/${games.length}, ${esc(storyT("passes"))} ${storyNum(coverage.passes)}/${games.length}.</p><p>Snapshot ${storyNum(month.snapshotIdForPlayerState)} · ${storyNum(month.resultCoverage)}/${games.length} ${esc(storyT("matches"))} ${esc(storyT("score").toLowerCase())}.</p></section></section><section class="card pad"><h3 class="card-title">${esc(storyT("matches"))}</h3>${table([{ label: storyT("month") }, { label: storyT("opponent") }, { label: storyT("competition") }, { label: storyT("venue") }, { label: storyT("score"), cls: "num" }, { label: storyT("xg"), cls: "num" }, { label: storyT("shots"), cls: "num" }, { label: storyT("passes"), cls: "num" }, { label: storyT("standouts") }], matchRows)}<p class="data-note">${esc(storyT("strengthNote"))}</p></section><section class="card pad"><h3 class="card-title">${esc(storyT("players"))} · ${players.length}</h3><p class="data-note">${esc(storyT("sourceNote"))}</p><div class="story-player-list">${players.slice().sort((a, b) => (b.minutes ?? -1) - (a.minutes ?? -1) || String(a.name).localeCompare(String(b.name))).map(storyPlayerCard).join("")}</div></section>${superior.length ? `<section class="card pad"><h3 class="card-title">${esc(storyT("superior"))}</h3>${table([{ label: storyT("month") }, { label: storyT("opponent") }, { label: storyT("score") }, { label: storyT("players") }], superiorRows)}</section>` : ""}${storyRosterChanges(month)}`;
-}
-function storySector(position, category) {
-    if (String(category || "").startsWith("academia")) return "Academia";
-    const pos = String(position || "").toUpperCase();
-    if (pos === "GK") return "GK";
-    if (["LB", "RB", "LWB", "RWB"].includes(pos)) return "LB/RB";
-    if (["CB", "LCB", "RCB", "SW"].includes(pos)) return "CB";
-    if (["CDM", "CM"].includes(pos)) return "CDM/CM";
-    if (["CAM", "LW", "RW", "LM", "RM"].includes(pos)) return "CAM/W";
-    if (["ST", "CF"].includes(pos)) return "ST/CF";
-    return "Other";
-}
-function storySeasonView(report) {
-    const months = report.months || [];
-    if (!months.length)
-        return emptyState(storyT("tab"), storyT("noMatches"));
-    const monthRows = months.map((month) => { const record = Object.values(month.competitions || {}).reduce((total, row) => [total[0] + row.wins, total[1] + row.draws, total[2] + row.losses], [0, 0, 0]); return `<tr><td><button class="entity-link" data-story-open-month="${esc(month.month)}">${esc(month.month)}</button>${month.partial ? `<small class="table-subline">${esc(storyT("partial"))}</small>` : ""}</td><td class="num">${storyNum(month.matches.length)}</td><td class="num">${record.join("-")}</td><td class="num">${storyNum(month.pointsLeague)}</td><td class="num">${storyNum(month.goalsFor)}:${storyNum(month.goalsAgainst)}</td><td class="num">${storyNum(month.pointsPct, 1)}%</td><td class="num">${storyNum(month.exports)}/${month.matches.length}</td></tr>`; });
-    const allPlayers = [...new Map(months.flatMap((month) => month.players || []).map((player) => [Number(player.playerEaId), player])).values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
-    const trajectories = allPlayers.map((player) => { const series = months.map((month) => month.players.find((row) => Number(row.playerEaId) === Number(player.playerEaId))); const known = series.filter((row) => row?.overall != null); const delta = known.length > 1 ? known.at(-1).overall - known[0].overall : null; return `<tr><td>${esc(player.name)}<small class="table-subline">${esc(storyCategory(player.category))} · ${esc(player.position || storyT("noData"))}</small></td><td class="num">${delta == null ? esc(storyT("noData")) : `${delta > 0 ? "+" : ""}${num(delta)}`}</td>${series.map((row) => `<td class="num story-season-cell">${row ? `${storyNum(row.minutes)} min<br>${storyNum(row.averageRating, 1)} · ${storyNum(row.overall)} ${esc(storyT("overall"))}` : esc(storyT("noData"))}</td>`).join("")}</tr>`; });
-    const groups = ["GK", "LB/RB", "CB", "CDM/CM", "CAM/W", "ST/CF", "Academia"];
-    const sectorRows = groups.map((group) => `<tr><td>${esc(group)}</td>${months.map((month) => { const players = (month.players || []).filter((player) => storySector(player.position, player.category) === group && player.minutes != null && player.minutes > 0); return `<td class="num">${players.length} / ${players.reduce((sum, player) => sum + player.minutes, 0)} min</td>`; }).join("")}</tr>`);
-    const superior = months.flatMap((month) => month.matches.filter((match) => match.superior).map((match) => ({ ...match, month: month.month })));
-    const superiorRows = superior.map((match) => `<tr><td>${esc(dateText(match.date))}</td><td>${esc(match.opponent)}</td><td>${esc(match.opponentLeague || storyT("noData"))}</td><td>${storyNum(match.goalsFor)}:${storyNum(match.goalsAgainst)}</td><td>${esc((match.standouts || []).slice(0, 2).map((item) => `${item.name} ${num(item.rating, 1)}`).join(", ") || storyT("noData"))}</td></tr>`);
-    const changes = months.filter((month) => month.rosterChanges && (month.rosterChanges.added.length || month.rosterChanges.removed.length));
-    return `<div class="grid metrics">${metric(storyT("matches"), storyNum(report.fixtureCount), storyT("total"))}${metric(storyT("players"), storyNum(report.playerCount))}${metric(storyT("goals"), `${storyNum(months.every((month) => month.goalsFor != null) ? months.reduce((sum, month) => sum + month.goalsFor, 0) : null)} / ${storyNum(months.reduce((sum, month) => sum + (month.goalsAgainst || 0), 0))}`)}${metric(storyT("coverage"), `${storyNum(months.reduce((sum, month) => sum + month.exports, 0))} / ${storyNum(report.fixtureCount)}`)}</div><section class="card pad"><h3 class="card-title">${esc(storyT("all"))}</h3>${table([{ label: storyT("month") }, { label: storyT("matches"), cls: "num" }, { label: storyT("record"), cls: "num" }, { label: storyT("leaguePoints"), cls: "num" }, { label: storyT("goals"), cls: "num" }, { label: "%", cls: "num" }, { label: storyT("coverage"), cls: "num" }], monthRows)}<p class="data-note">${esc(storyT("sourceNote"))}</p></section><section class="card pad"><h3 class="card-title">${esc(storyT("seasonTrend"))}</h3>${table([{ label: storyT("players") }, { label: `Δ ${storyT("overall")}`, cls: "num" }, ...months.map((month) => ({ label: month.month, cls: "num" }))], trajectories, "story-season-table")}<p class="data-note">${esc(storyT("overall"))} · ${esc(storyT("minutes"))} · ${esc(storyT("rating"))}. ${esc(storyT("sourceNote"))}</p></section><section class="card pad"><h3 class="card-title">${esc(storyT("sector"))}</h3>${table([{ label: storyT("sector") }, ...months.map((month) => ({ label: month.month, cls: "num" }))], sectorRows)}<p class="data-note">${esc(storyT("players"))} / ${esc(storyT("minutes"))}; ${esc(storyT("position"))} conforme cadastro do mês.</p></section>${superior.length ? `<section class="card pad"><h3 class="card-title">${esc(storyT("superior"))}</h3>${table([{ label: storyT("month") }, { label: storyT("opponent") }, { label: storyT("competition") }, { label: storyT("score") }, { label: storyT("standouts") }], superiorRows)}<p class="data-note">${esc(storyT("strengthNote"))}</p></section>` : ""}${changes.map(storyRosterChanges).join("")}`;
-}
-function storyReportView(report) {
-    if (!report || !report.months?.length)
-        return emptyState(storyT("tab"), storyT("noMatches"));
-    const chosen = report.months.find((month) => month.month === state.seasonReportStoryMonth);
-    if (!chosen)
-        state.seasonReportStoryMonth = "season";
-    return `<div class="story-report-controls"><label class="page-filter"><span>${esc(storyT("month"))}</span><select data-story-month><option value="season" ${state.seasonReportStoryMonth === "season" ? "selected" : ""}>${esc(storyT("all"))}</option>${report.months.map((month) => `<option value="${esc(month.month)}" ${state.seasonReportStoryMonth === month.month ? "selected" : ""}>${esc(month.month)}${month.partial ? ` · ${esc(storyT("partial"))}` : ""}</option>`).join("")}</select></label><p>${esc(report.teamName)} · ${esc(storyT("snapshot"))} ${storyNum(report.snapshotId)} · ${esc(dateText(report.snapshotCareerDate))}</p></div><div data-story-body>${chosen ? storyMonthView(report, chosen) : storySeasonView(report)}</div>`;
-}
 async function renderSeasonReport() {
     const fallback = Number(currentSnapshot()?.season_index ?? 0);
     const selected = state.seasonReportSeasonIndex ?? fallback;
+    const semester = state.seasonReportSemester ?? (Number(String(currentSnapshot()?.career_date || "").slice(5, 7)) <= 6 ? 1 : 2);
     const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}`);
     currentSeasonReportData = d;
     state.seasonReportSeasonIndex = Number(d.selectedSeasonIndex);
     const report = d.seasonReport || {}, reportStatus = report.season_complete ? statusBadge("Complete", "good") : statusBadge("In progress", "blue");
     const active = state.seasonReportTab || "overview";
-    const storySnapshots = active === "sporting" ? state.snapshots.filter((snapshot) => Number(snapshot.season_index) === Number(d.selectedSeasonIndex)) : [];
-    let storySnapshotId = null, sporting = null;
-    if (active === "sporting" && storySnapshots.length) {
-        const preferred = [state.seasonReportStorySnapshotId, state.snapshotId, storySnapshots[0].id].find((id) => storySnapshots.some((snapshot) => Number(snapshot.id) === Number(id)));
-        storySnapshotId = Number(preferred);
-        state.seasonReportStorySnapshotId = storySnapshotId;
-        const key = `${state.careerId}:${d.selectedSeasonIndex}:${storySnapshotId}`;
-        if (currentSportingReportData?.key !== key)
-            currentSportingReportData = { key, report: await api(`/api/careers/${state.careerId}/sporting-reports?season_index=${Number(d.selectedSeasonIndex)}&snapshot_id=${storySnapshotId}`) };
-        sporting = currentSportingReportData.report;
-    }
-    const body = active === "sporting" ? (storySnapshotId ? storyReportView(sporting) : emptyState(storyT("tab"), storyT("noSnapshot"))) : active === "competitions" ? seasonReportCompetitions(d) : active === "squad" ? seasonReportSquad(d) : active === "transfers" ? seasonReportTransfers(d) : active === "awards" ? seasonReportAwards(d) : active === "quality" ? seasonReportQuality(d) : seasonReportOverview(d);
-    const actions = active === "sporting" ? (storySnapshotId ? `<button class="button" data-story-refresh>${esc(storyT("refresh"))}</button><button class="button primary" data-story-download>${esc(storyT("download"))}</button>` : "") : `<button class="button" data-season-report-print>Print / PDF</button><button class="button" data-season-report-csv>CSV</button><button class="button" data-season-report-image="square">Square PNG</button><button class="button primary" data-season-report-image="portrait">Portrait PNG</button>`;
-    const storyPicker = active === "sporting" && storySnapshots.length ? storySnapshotPicker(storySnapshots, storySnapshotId) : "";
-    content.innerHTML = `<div class="content-inner wide season-report-page">${pageHead("Season report", `${esc(d.selectedSeasonLabel)} · structured career report`, actions)}<div class="page-filter-bar">${seasonReportPicker(d.seasonOptions || [], Number(d.selectedSeasonIndex))}${storyPicker}<span class="filter-hint">${active === "sporting" ? `${esc(storyT("snapshot"))} ${storyNum(storySnapshotId)} · ${esc(storyT("sourceNote"))}` : `${reportStatus} Automatic and custom awards remain separate.`}</span></div>${seasonReportTabs(active)}${body}</div>`;
+    const semesterReport = active === "semester" ? await api(`/api/careers/${state.careerId}/sporting-reports/semester?season_index=${state.seasonReportSeasonIndex}&snapshot_id=${d.selectedSnapshotId}&semester=${semester}`) : null;
+    if (semesterReport)
+        state.seasonReportSemester = Number(semesterReport.semester);
+    const body = active === "semester" ? seasonReportSemester(semesterReport) : active === "competitions" ? seasonReportCompetitions(d) : active === "squad" ? seasonReportSquad(d) : active === "transfers" ? seasonReportTransfers(d) : active === "awards" ? seasonReportAwards(d) : active === "quality" ? seasonReportQuality(d) : seasonReportOverview(d);
+    content.innerHTML = `<div class="content-inner wide season-report-page">${pageHead("Season report", `${esc(d.selectedSeasonLabel)} · structured career report`, `<button class="button" data-season-report-print>Print / PDF</button><button class="button" data-season-report-csv>CSV</button><button class="button" data-season-report-image="square">Square PNG</button><button class="button primary" data-season-report-image="portrait">Portrait PNG</button>`)}<div class="page-filter-bar">${seasonReportPicker(d.seasonOptions || [], Number(d.selectedSeasonIndex))}<span class="filter-hint">${reportStatus} Automatic and custom awards remain separate.</span></div>${seasonReportTabs(active)}${body}</div>`;
 }
 async function renderAnalysis() {
     const renderToken = ++analysisRenderToken;
     const routeAtStart = state.route;
-    const load = async (path) => { try {
-        return await api(path);
+    const isCurrent = () => renderToken === analysisRenderToken && state.route === routeAtStart;
+    const active = routeAtStart === "commission" ? "commission" : state.analysisTab || "overview";
+    const title = routeAtStart === "commission" ? "Technical commission" : "Analysis";
+    const tabs = routeAtStart === "analysis" ? analysisTabs(active) : "";
+    content.innerHTML = `<div class="content-inner wide">${pageHead(title, "Loading career analysis…")}${tabs}<div class="card skeleton" style="height:300px"></div></div>`;
+    bindContent();
+    try {
+        await loadAnalysis(active, isCurrent);
     }
     catch (error) {
-        if (renderToken !== analysisRenderToken || state.route !== routeAtStart)
-            return null;
-        throw error;
-    } };
+        if (!isCurrent())
+            return;
+        const message = error instanceof Error ? error.message : String(error);
+        content.innerHTML = `<div class="content-inner wide">${pageHead(title, "")}${tabs}<div class="card empty error-card"><div role="alert"><h2>Analysis could not be loaded</h2><p>${esc(message)}</p><button class="button" data-analysis-retry>Try again</button></div></div></div>`;
+        $("[data-analysis-retry]", content).onclick = () => { void render(); };
+    }
+}
+async function loadAnalysis(active, isCurrent) {
     const fallback = Number(currentSnapshot()?.season_index ?? 0);
     const selected = state.analysisSeasonIndex ?? fallback;
-    const active = state.route === "commission" ? "commission" : state.analysisTab || "overview";
-    if (routeAtStart === "analysis") {
-        content.innerHTML = `<div class="content-inner wide">${pageHead("Analysis", "Loading career analysis…")}${analysisTabs(active)}<div class="card skeleton" style="height:300px"></div></div>`;
-        bindContent();
-    }
     if (active === "commission") {
-        const commission = await load(`/api/careers/${state.careerId}/commission?season_index=${selected}`);
-        if (!commission || renderToken !== analysisRenderToken || state.route !== routeAtStart)
+        const commission = await api(`/api/careers/${state.careerId}/commission?season_index=${selected}`);
+        if (!isCurrent())
             return;
         state.analysisSeasonIndex = Number(commission.selectedSeasonIndex);
         const reportCache = await api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${Number(commission.snapshot_id)}&mode=team_identity`).catch(() => ({ state: "missing" }));
-        if (renderToken !== analysisRenderToken || state.route !== routeAtStart)
+        if (!isCurrent())
             return;
         const body = technicalCommission(commission, reportCache);
         const filter = `<div class="page-filter-bar">${periodPicker(commission.seasonOptions || [], Number(commission.selectedSeasonIndex), "analysis")}<span class="filter-hint">${esc(commission.detailed_metric_scope || "Position and MatchStats coverage are shown for this season.")}</span></div>`;
@@ -1089,29 +1004,21 @@ async function renderAnalysis() {
         const query = new URLSearchParams({ snapshot_id: String(state.snapshotId), season_index: String(selected),
             competition: rotationFilters.competition, venue: rotationFilters.venue,
             opponent_tier: rotationFilters.opponentTier, opponent_formation: rotationFilters.opponentFormation });
-        const rotation = await load(`/api/careers/${state.careerId}/analysis/rotation?${query.toString()}`);
-        if (!rotation || renderToken !== analysisRenderToken || state.route !== routeAtStart)
+        const rotation = await api(`/api/careers/${state.careerId}/analysis/rotation?${query.toString()}`);
+        if (!isCurrent())
             return;
         state.analysisSeasonIndex = Number(rotation.selectedSeasonIndex);
         const filter = `<div class="page-filter-bar">${periodPicker(rotation.seasonOptions || [], Number(rotation.selectedSeasonIndex), "analysis")}<span class="filter-hint">Starting XI continuity and opponent context use evidence available at the selected snapshot.</span></div>`;
         content.innerHTML = `<div class="content-inner wide">${pageHead("Analysis", `career metrics · ${esc(rotation.selectedSeasonLabel)}`, `<button class="button" data-route="records">Records</button><button class="button" data-route="chronology">Career timeline</button>`)}${analysisTabs(active)}${filter}${rotationAnalysisView(rotation)}</div>`;
-        content.querySelectorAll("[data-rotation-filter]").forEach(node => node.onchange = async () => {
+        content.querySelectorAll("[data-rotation-filter]").forEach(node => node.onchange = () => {
             const key = node.dataset.rotationFilter;
             rotationFilters[key] = node.value;
-            setLoading();
-            try {
-                await renderAnalysis();
-                applyIcons(content);
-                bindContent();
-            }
-            catch (error) {
-                content.innerHTML = errorState("Rotation could not be loaded", String(error?.message || error));
-            }
+            void render();
         });
         return;
     }
-    const d = await load(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}`);
-    if (!d || renderToken !== analysisRenderToken || state.route !== routeAtStart)
+    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}`);
+    if (!isCurrent())
         return;
     state.analysisSeasonIndex = Number(d.selectedSeasonIndex);
     const leagueContext = d.metrics?.league_context || {};
@@ -1726,10 +1633,11 @@ async function renderTransfers() {
 async function renderYouth() {
     const d = await api(`/api/snapshots/${state.snapshotId}/youth`);
     const rows = d.players || [];
-    content.innerHTML = `<div class="content-inner wide">${pageHead("FC26 youth players", `Snapshot ${dateText(d.snapshot.career_date)} · imported records only`)}
-      <div class="data-note"><b>Read-only:</b> this page contains only youth players confirmed by the FC26 snapshot exporter. Project Atlas Tracker does not generate, reveal, edit or inject youth players.</div>
-      <div class="grid metrics">${metric("Players", num(d.summary.count), "confirmed in the selected snapshot")}${metric("Average OVR", d.summary.average_overall == null ? "–" : num(d.summary.average_overall, 1), "current ability", "green")}${metric("Average POT", d.summary.average_potential == null ? "–" : num(d.summary.average_potential, 1), "FC26 potential", "blue")}${metric("85+ POT", num(d.summary.elite), "high-potential players", "amber")}</div>
-      <section class="card">${rows.length ? table([{ label: "Player" }, { label: "Age", cls: "center" }, { label: "Pos.", cls: "center" }, { label: "OVR", cls: "center" }, { label: "POT", cls: "center" }, { label: "Est. market value", cls: "num" }, { label: "Est. wage", cls: "num" }], rows.map((p) => `<tr><td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${p.player_ea_id ? playerLink(p.player_ea_id, p.display_name) : esc(p.display_name || "Unknown player")}<small>FC26 youth export</small></div></div></td><td class="center">${p.age == null ? "–" : num(p.age)}</td><td class="center">${positionBadge(p.primary_position)}</td><td class="center">${overallBadge(p.overall)}</td><td class="center">${overallBadge(p.potential)}</td><td class="num" title="Project Atlas Tracker estimate">${money(p.market_value)}</td><td class="num" title="Project Atlas Tracker estimate">${money(p.weekly_wage)}</td></tr>`)) : '<div class="card-body muted">No FC26-confirmed youth players were found in this snapshot.</div>'}</section>
+    const report = (p) => `<details class="youth-development-report"><summary><b>Development report</b> · position review</summary><div class="card-body"><p class="data-note">The AI receives the registered position and OVR/POT path. Academy 5v5/11v11 matches, minutes and youth performance statistics are not imported, so it must not treat a position change as confirmed without professional evidence.</p><button class="button" data-commission-report data-mode="youth_development" data-player-ea-id="${num(p.player_ea_id)}" data-snapshot-id="${num(state.snapshotId)}" data-report-target="youth-development-${num(p.player_ea_id)}">Generate position review</button><div class="commission-report-output" data-commission-report-output data-report-slot="youth-development-${num(p.player_ea_id)}"></div></div></details>`;
+    content.innerHTML = `<div class="content-inner wide">${pageHead("FC26 youth players", `Snapshot ${dateText(d.snapshot.career_date)} · imported academy records`)}
+      <div class="data-note"><b>How to use this list:</b> open a player's development report for an AI-assisted position review. It distinguishes imported profile/history from unavailable academy match data; it does not approve a promotion or change the FC26 save.</div>
+      <div class="grid metrics">${metric("Players", num(d.summary.count), "confirmed in the selected snapshot")}${metric("Average OVR", d.summary.average_overall == null ? "–" : num(d.summary.average_overall, 1), "current ability", "green")}${metric("Average POT", d.summary.average_potential == null ? "–" : num(d.summary.average_potential, 1), "FC26 potential", "blue")}</div>
+      <section class="card"><header class="card-header"><h2>Imported youth roster</h2><span>Open a report for position guidance</span></header>${rows.length ? table([{ label: "Player" }, { label: "Age", cls: "center" }, { label: "Pos.", cls: "center" }, { label: "OVR", cls: "center" }, { label: "POT", cls: "center" }, { label: "AI position report" }, { label: "Est. market value", cls: "num" }, { label: "Est. wage", cls: "num" }], rows.map((p) => `<tr><td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${p.player_ea_id ? playerLink(p.player_ea_id, p.display_name) : esc(p.display_name || "Unknown player")}<small>FC26 youth export</small></div></div></td><td class="center">${p.age == null ? "–" : num(p.age)}</td><td class="center">${positionBadge(p.primary_position)}</td><td class="center">${overallBadge(p.overall)}</td><td class="center">${overallBadge(p.potential)}</td><td>${report(p)}</td><td class="num" title="Project Atlas Tracker estimate">${money(p.market_value)}</td><td class="num" title="Project Atlas Tracker estimate">${money(p.weekly_wage)}</td></tr>`)) : '<div class="card-body muted">No FC26-confirmed youth players were found in this snapshot.</div>'}</section>
     </div>`;
 }
 function goalkeeperSeasonView(season) {
@@ -3015,30 +2923,11 @@ function bindContent() {
         await renderLoans();
     else
         await renderTransfers(); applyIcons(content); bindContent(); });
-    $$('[data-analysis-season]', content).forEach(select => select.onchange = async () => { state.analysisSeasonIndex = Number(select.value); clearApiCache(); setLoading(); try {
-        await renderAnalysis();
-        applyIcons(content);
-        bindContent();
-    }
-    catch (error) {
-        content.innerHTML = errorState("Analysis could not be loaded", String(error?.message || error));
-    } });
+    $$('[data-analysis-season]', content).forEach(select => select.onchange = () => { state.analysisSeasonIndex = Number(select.value); clearApiCache(); void render(); });
     $$('[data-records-season]', content).forEach(select => select.onchange = async () => { state.recordsSeasonIndex = Number(select.value); clearApiCache(); await renderRecords(); applyIcons(content); bindContent(); });
-    $$('[data-season-report-season]', content).forEach(select => select.onchange = async () => { state.seasonReportSeasonIndex = Number(select.value); state.seasonReportStorySnapshotId = null; state.seasonReportStoryMonth = "season"; currentSportingReportData = null; clearApiCache(); await renderSeasonReport(); applyIcons(content); bindContent(); });
+    $$('[data-season-report-season]', content).forEach(select => select.onchange = async () => { state.seasonReportSeasonIndex = Number(select.value); clearApiCache(); await renderSeasonReport(); applyIcons(content); bindContent(); });
+    $$('[data-season-report-semester]', content).forEach(select => select.onchange = async () => { state.seasonReportSemester = Number(select.value); await renderSeasonReport(); applyIcons(content); bindContent(); });
     $$('[data-season-report-tab]', content).forEach((n) => n.onclick = async (e) => { e.stopPropagation(); state.seasonReportTab = n.dataset.seasonReportTab || 'overview'; await renderSeasonReport(); applyIcons(content); bindContent(); });
-    $$('[data-story-snapshot]', content).forEach(select => select.onchange = async () => { state.seasonReportStorySnapshotId = Number(select.value); state.seasonReportStoryMonth = "season"; currentSportingReportData = null; await renderSeasonReport(); applyIcons(content); bindContent(); });
-    const updateStoryBody = () => {
-        const report = currentSportingReportData?.report, target = $('[data-story-body]', content);
-        if (!report || !target) return;
-        const month = report.months.find((item) => item.month === state.seasonReportStoryMonth);
-        target.innerHTML = month ? storyMonthView(report, month) : storySeasonView(report);
-        applyIcons(target);
-        bindContent();
-    };
-    $$('[data-story-month]', content).forEach(select => select.onchange = () => { state.seasonReportStoryMonth = select.value; updateStoryBody(); });
-    $$('[data-story-open-month]', content).forEach(button => button.onclick = () => { state.seasonReportStoryMonth = button.dataset.storyOpenMonth; const picker = $('[data-story-month]', content); if (picker) picker.value = state.seasonReportStoryMonth; updateStoryBody(); });
-    $$('[data-story-refresh]', content).forEach(button => button.onclick = async () => { button.disabled = true; try { currentSportingReportData = null; clearApiCache(); await renderSeasonReport(); applyIcons(content); bindContent(); } catch (error) { toast(String(error?.message || error)); } finally { button.disabled = false; } });
-    $$('[data-story-download]', content).forEach(button => button.onclick = async () => { button.disabled = true; try { const month = state.seasonReportStoryMonth === "season" ? "" : `&month=${encodeURIComponent(state.seasonReportStoryMonth)}`; const file = await api(`/api/careers/${state.careerId}/sporting-reports?season_index=${state.seasonReportSeasonIndex}&snapshot_id=${state.seasonReportStorySnapshotId}&format=markdown${month}`); downloadText(file.fileName, file.content, "text/markdown;charset=utf-8"); } catch (error) { toast(String(error?.message || error)); } finally { button.disabled = false; } });
     const awardPlayerSelect = $('[data-season-award-player]', content);
     if (awardPlayerSelect)
         awardPlayerSelect.onchange = () => { const option = awardPlayerSelect.selectedOptions[0], name = $('[data-season-award-name]', content); if (name && option?.dataset.name)
@@ -3094,14 +2983,7 @@ function bindContent() {
                 resetCareerButton.textContent = 'Reset to selected snapshot';
             }
         };
-    $$('[data-analysis-tab]', content).forEach((n) => n.onclick = async (e) => { e.stopPropagation(); state.analysisTab = n.dataset.analysisTab || 'overview'; setLoading(); try {
-        await renderAnalysis();
-        applyIcons(content);
-        bindContent();
-    }
-    catch (error) {
-        content.innerHTML = errorState("Analysis could not be loaded", String(error?.message || error));
-    } });
+    $$('[data-analysis-tab]', content).forEach((n) => n.onclick = (e) => { e.stopPropagation(); state.analysisTab = n.dataset.analysisTab || 'overview'; void render(); });
     $$('[data-commission-ollama]', content).forEach((n) => n.onclick = async () => { const out = $('[data-commission-ai-output]', content); n.disabled = true; n.textContent = 'Analyzing locally…'; if (out)
         out.textContent = 'Waiting for the local model. The Atlas panel remains available.'; try {
         const result = await api(`/api/careers/${state.careerId}/commission/ollama`, { method: 'POST', body: JSON.stringify({ snapshot_id: Number(n.dataset.snapshotId) }) });
@@ -3136,7 +3018,7 @@ function bindContent() {
         const output = target ? $(`[data-report-slot="${target}"]`, content) : $('[data-commission-report-output]', content);
         const payload = { snapshot_id: Number(button.dataset.snapshotId || state.snapshotId), mode, force_refresh: button.dataset.forceRefresh === '1' };
         const fixtureId = Number(button.dataset.fixtureId || fixture?.value || 0), playerId = Number(button.dataset.playerEaId || player?.value || 0);
-        if (mode === 'player' || mode === 'player_form' || mode === 'player_season' || mode === 'match_player')
+        if (mode === 'player' || mode === 'player_form' || mode === 'player_season' || mode === 'match_player' || mode === 'youth_development')
             payload.player_ea_id = playerId;
         if (mode === 'match' || mode === 'match_player' || mode === 'next_match')
             payload.fixture_id = fixtureId;
@@ -3257,7 +3139,7 @@ function bindContent() {
     const pendingRetro = sessionStorage.getItem(`atlas-retro-${state.careerId}`);
     if (pendingRetro && retroButton)
         void pollRetroactive(pendingRetro);
-    $$('[data-snapshot]', content).forEach((n) => n.onclick = async () => { state.snapshotId = Number(n.dataset.snapshot); state.seasonReportStorySnapshotId = null; state.seasonReportStoryMonth = "season"; currentSportingReportData = null; snapshotSelect.value = String(state.snapshotId); updateSystemUi(); await render(); });
+    $$('[data-snapshot]', content).forEach((n) => n.onclick = async () => { state.snapshotId = Number(n.dataset.snapshot); snapshotSelect.value = String(state.snapshotId); updateSystemUi(); await render(); });
     $$('[data-action]', content).forEach((n) => n.onclick = () => handleAction(n.dataset.action));
     $$('[data-media-source]', content).forEach((n) => n.onclick = async () => { const result = await api('/api/media/sources/pick', { method: 'POST', body: JSON.stringify({ sourceType: n.dataset.mediaSource }) }); if (result.ok) {
         toast('Media source added');
@@ -3270,8 +3152,8 @@ function bindContent() {
     $$('[data-save-competition-media]', content).forEach((n) => n.onclick = async () => { const objectId = Number(n.dataset.saveCompetitionMedia), input = $(`[data-competition-media-id="${objectId}"]`, content), raw = String(input?.value || '').trim(); await api('/api/media/competition-mappings', { method: 'POST', body: JSON.stringify({ snapshotId: state.snapshotId, competitionObjectId: objectId, mediaCompetitionId: raw ? Number(raw) : null }) }); clearApiCache(); toast(raw ? 'Competition logo assigned' : 'Assignment removed'); await renderMedia(); applyIcons(content); bindContent(); });
 }
 function bindShell() {
-    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.seasonReportStorySnapshotId = null; state.seasonReportStoryMonth = "season"; currentSportingReportData = null; state.clubTab = "overview"; state.competitionListTab = "deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
-    snapshotSelect.onchange = () => { clearApiCache(); state.snapshotId = Number(snapshotSelect.value); state.compareTo = state.snapshotId; state.seasonReportStorySnapshotId = null; state.seasonReportStoryMonth = "season"; currentSportingReportData = null; updateSystemUi(); navigate(state.route, state.routeData, false); };
+    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.seasonReportSemester = null; state.clubTab = "overview"; state.competitionListTab = "deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
+    snapshotSelect.onchange = () => { clearApiCache(); state.snapshotId = Number(snapshotSelect.value); state.compareTo = state.snapshotId; updateSystemUi(); navigate(state.route, state.routeData, false); };
     $("#backButton").onclick = () => goHistory(-1);
     $("#forwardButton").onclick = () => goHistory(1);
     $("#scanButton").onclick = () => handleAction("scan");

@@ -346,6 +346,42 @@ class ManualDataService:
             ).fetchall()]
         return {"seasons": seasons, "competitions": competitions, "stats": stats, "development": development}
 
+    def youth_plans(self, career_id: int, player_id: int | None = None, *, include_inactive: bool = False) -> list[dict[str, Any]]:
+        """Return coach-authored youth plans with immutable revision history.
+
+        This is deliberately separate from manual OVR/POT points: a plan is a
+        decision record, while development points are historical observations.
+        """
+        with self.database.connect() as conn:
+            clauses = ["career_id=?"]
+            params: list[Any] = [career_id]
+            if player_id is not None:
+                clauses.append("player_ea_id=?")
+                params.append(player_id)
+            if not include_inactive:
+                clauses.append("active=1")
+            plans = [dict(row) for row in conn.execute(
+                f"SELECT * FROM manual_youth_development_plans WHERE {' AND '.join(clauses)} "
+                "ORDER BY active DESC, updated_at DESC, display_name COLLATE NOCASE",
+                params,
+            ).fetchall()]
+            for plan in plans:
+                revisions = [dict(row) for row in conn.execute(
+                    """SELECT revision,recorded_at,content_json
+                       FROM manual_youth_development_plan_revisions
+                       WHERE plan_id=? ORDER BY revision DESC""",
+                    (plan["id"],),
+                ).fetchall()]
+                parsed_revisions = []
+                for revision in revisions:
+                    try:
+                        content = json.loads(revision.pop("content_json") or "{}")
+                    except json.JSONDecodeError:
+                        content = {}
+                    parsed_revisions.append({**revision, **content})
+                plan["revisions"] = parsed_revisions
+        return plans
+
     def save_season(self, career_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         season_id = optional_int(payload.get("id"), minimum=1, label="Season ID")
         season_index = optional_int(payload.get("seasonIndex"), minimum=0, maximum=99, label="Season number")
@@ -871,6 +907,124 @@ class ManualDataService:
             self._log(conn, career_id, "delete", "player_development", development_id, dict(row))
             conn.execute("DELETE FROM manual_player_development WHERE id=?", (development_id,))
         return {"ok": True, "id": development_id}
+
+    def save_youth_plan(self, career_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create or revise a coach-owned plan for a youth player.
+
+        The selected snapshot is stored as the factual basis.  The plan itself
+        stays manual, so its priority and integration decision cannot be
+        mistaken for a calculation from unavailable academy match data.
+        """
+        player_id = optional_int(payload.get("playerEaId"), minimum=1, label="Player ID")
+        snapshot_id = optional_int(payload.get("basisSnapshotId"), minimum=1, label="Basis snapshot")
+        if player_id is None or snapshot_id is None:
+            raise ValueError("Player and basis snapshot are required.")
+        display_name = clean_text(payload.get("displayName"), required=True, label="Player name")
+        intended_role = clean_text(payload.get("intendedRole"), label="Intended role", max_length=120)
+        objectives = clean_text(payload.get("objectives"), required=True, label="Plan objectives", max_length=2000)
+        priority = str(payload.get("opportunityPriority") or "standard").strip().lower()
+        if priority not in {"low", "standard", "high"}:
+            raise ValueError("Opportunity priority is invalid.")
+        decision = str(payload.get("integrationDecision") or "monitor").strip().lower()
+        if decision not in {"monitor", "review", "integrate"}:
+            raise ValueError("Integration decision is invalid.")
+        horizon_date = optional_iso_date(payload.get("horizonDate"), label="Review date")
+        notes = clean_text(payload.get("notes"), label="Coach notes", max_length=2000)
+        now = utc_now()
+        with self.database.transaction() as conn:
+            snapshot = conn.execute(
+                "SELECT id FROM snapshots WHERE id=? AND career_id=?", (snapshot_id, career_id)
+            ).fetchone()
+            if not snapshot:
+                raise ValueError("Basis snapshot does not belong to this career.")
+            youth = conn.execute(
+                "SELECT 1 FROM youth_player_states WHERE snapshot_id=? AND player_ea_id=?",
+                (snapshot_id, player_id),
+            ).fetchone()
+            if not youth:
+                raise ValueError("Player is not present in the youth export of the basis snapshot.")
+            existing = conn.execute(
+                "SELECT * FROM manual_youth_development_plans WHERE career_id=? AND player_ea_id=?",
+                (career_id, player_id),
+            ).fetchone()
+            if existing:
+                plan_id = int(existing["id"])
+                revision = int(existing["revision"]) + 1
+                conn.execute(
+                    """UPDATE manual_youth_development_plans
+                       SET display_name=?,basis_snapshot_id=?,intended_role=?,objectives=?,
+                           opportunity_priority=?,integration_decision=?,horizon_date=?,notes=?,
+                           revision=?,active=1,updated_at=?
+                       WHERE id=?""",
+                    (display_name, snapshot_id, intended_role, objectives, priority, decision,
+                     horizon_date, notes, revision, now, plan_id),
+                )
+                action = "revise"
+            else:
+                cursor = conn.execute(
+                    """INSERT INTO manual_youth_development_plans(
+                           career_id,player_ea_id,display_name,basis_snapshot_id,intended_role,objectives,
+                           opportunity_priority,integration_decision,horizon_date,notes,revision,active,created_at,updated_at)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,1,1,?,?)""",
+                    (career_id, player_id, display_name, snapshot_id, intended_role, objectives,
+                     priority, decision, horizon_date, notes, now, now),
+                )
+                plan_id = int(cursor.lastrowid)
+                revision = 1
+                action = "create"
+            row = dict(conn.execute(
+                "SELECT * FROM manual_youth_development_plans WHERE id=?", (plan_id,)
+            ).fetchone())
+            revision_content = {
+                "basisSnapshotId": snapshot_id,
+                "displayName": display_name,
+                "intendedRole": intended_role,
+                "objectives": objectives,
+                "opportunityPriority": priority,
+                "integrationDecision": decision,
+                "horizonDate": horizon_date,
+                "notes": notes,
+                "active": True,
+            }
+            conn.execute(
+                """INSERT INTO manual_youth_development_plan_revisions(plan_id,revision,recorded_at,content_json)
+                   VALUES(?,?,?,?)""",
+                (plan_id, revision, now, json.dumps(revision_content, ensure_ascii=False)),
+            )
+            self._log(conn, career_id, action, "youth_development_plan", plan_id, revision_content)
+        row["revisions"] = [{"revision": revision, "recorded_at": now, **revision_content}]
+        return row
+
+    def archive_youth_plan(self, career_id: int, plan_id: int) -> dict[str, Any]:
+        """Archive a plan while retaining every decision revision for audit."""
+        now = utc_now()
+        with self.database.transaction() as conn:
+            row = conn.execute(
+                "SELECT * FROM manual_youth_development_plans WHERE id=? AND career_id=?", (plan_id, career_id)
+            ).fetchone()
+            if not row:
+                raise ValueError("Youth development plan not found.")
+            plan = dict(row)
+            if not plan["active"]:
+                return {"ok": True, "id": plan_id, "alreadyArchived": True}
+            revision = int(plan["revision"]) + 1
+            conn.execute(
+                "UPDATE manual_youth_development_plans SET active=0,revision=?,updated_at=? WHERE id=?",
+                (revision, now, plan_id),
+            )
+            content = {
+                "basisSnapshotId": plan["basis_snapshot_id"], "displayName": plan["display_name"],
+                "intendedRole": plan["intended_role"], "objectives": plan["objectives"],
+                "opportunityPriority": plan["opportunity_priority"], "integrationDecision": plan["integration_decision"],
+                "horizonDate": plan["horizon_date"], "notes": plan["notes"], "active": False,
+            }
+            conn.execute(
+                """INSERT INTO manual_youth_development_plan_revisions(plan_id,revision,recorded_at,content_json)
+                   VALUES(?,?,?,?)""",
+                (plan_id, revision, now, json.dumps(content, ensure_ascii=False)),
+            )
+            self._log(conn, career_id, "archive", "youth_development_plan", plan_id, content)
+        return {"ok": True, "id": plan_id, "revision": revision}
 
     AWARD_CATEGORIES = {
         "player_of_season": "Player of the Season",
