@@ -11,7 +11,8 @@ from urllib.request import Request, urlopen
 from unittest.mock import patch
 
 from atlas.db import Database
-from atlas.commission import _briefing_facts, _report_source_hash
+from atlas.commission import (_briefing_facts, _prepare_fixture_briefing, _report_source_hash,
+                              queue_auto_commission_reports)
 from atlas.match_diary import (MatchDiaryService, diary_at_fixture, formation_context,
                                normalize_content, own_formation_context)
 from atlas.server_http import ApiHandler
@@ -133,6 +134,53 @@ class MatchDiaryTests(unittest.TestCase):
             self.assertIn("manual", coach["source"])
             self.assertTrue(coach["value"]["retrospective_to_snapshot"])
             self.assertNotEqual(before_hash, after_hash)
+
+    def test_auto_queue_reuses_fixture_evidence_and_workers_see_new_diary_revision(self):
+        with self.database.transaction() as conn:
+            conn.executemany(
+                """INSERT INTO player_match_performances(snapshot_id,artificial_key,fixture_key,player_ea_id,
+                        display_name,date,minutes_played,rating,raw_json)
+                   VALUES(1,?,'match-1',?,?,'2025-09-01',90,7,'{"managed_team_id":10}')""",
+                [("p11", 11, "First player"), ("p12", 12, "Second player")],
+            )
+        requests = [("match", None), ("match_player", 11), ("match_player", 12)]
+        expected_keys = []
+        with self.database.connect() as conn:
+            for mode, player_id in requests:
+                context, _, scope = _briefing_facts(conn, 1, 1, mode, 1, player_id, "pt-BR")
+                expected_keys.append(f"auto:1:{mode}:{scope}:{_report_source_hash(context, 1, mode, scope)}")
+
+        work_items = {}
+
+        def record_job(career_id, work, dedupe_key):
+            self.assertEqual(career_id, 1)
+            work_items[dedupe_key] = work
+            return {"job_id": str(len(work_items)), "status": "queued"}
+
+        def persist_diary_during_preflight(*args):
+            if lookup.call_count == 1:
+                self.service.save(1, 1, {"author": "Coach", "note": "New evidence after preflight started"})
+            return None
+
+        with patch("atlas.settings.application_language", return_value="pt-BR"), \
+             patch("atlas.commission._prepare_fixture_briefing", wraps=_prepare_fixture_briefing) as prepare, \
+             patch("atlas.commission._cached_report_row", side_effect=persist_diary_during_preflight) as lookup, \
+             patch("atlas.commission.start_commission_report_job", side_effect=record_job):
+            jobs = queue_auto_commission_reports(self.database, 1, 1, include_team_identity=False)
+
+        prepare.assert_called_once()
+        self.assertEqual(list(work_items), expected_keys)
+        self.assertEqual([(job["mode"], job["player_ea_id"]) for job in jobs],
+                         [("match", ""), ("match_player", "11"), ("match_player", "12")])
+
+        with patch("atlas.settings.application_language", return_value="pt-BR"), \
+             patch("atlas.commission.ollama_models", return_value={"available": False}):
+            worker_result = work_items[expected_keys[-1]]()
+
+        self.assertTrue(worker_result["fallback"])
+        facts = {fact["id"]: fact["value"] for fact in worker_result["context"]["facts"]}
+        self.assertEqual(facts["coach_diary"]["note"], "New evidence after preflight started")
+        self.assertEqual(facts["selected_match_player"]["player_ea_id"], 12)
 
     def test_http_save_and_read_use_career_fixture_route(self):
         server = ThreadingHTTPServer(("127.0.0.1", 0), ApiHandler)

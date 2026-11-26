@@ -13,6 +13,8 @@ import urllib.request
 import uuid
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
+from dataclasses import dataclass
 from threading import Lock
 from typing import Any
 
@@ -1053,12 +1055,175 @@ def get_ollama_analysis(conn: Any, career_id: int, snapshot_id: int, model: str 
     return result
 
 
+@dataclass(frozen=True)
+class _FixtureBriefing:
+    snapshot: sqlite3.Row
+    fixture: sqlite3.Row
+    facts: list[dict[str, Any]]
+    detailed: dict[str, Any] | None
+    observed_positions: dict[int, tuple[str, str]]
+
+
+def _prepare_fixture_briefing(
+    conn: Any, snapshot: sqlite3.Row, fixture_id: int, *, completed_match: bool,
+) -> _FixtureBriefing:
+    career_id = int(snapshot["career_id"])
+    snapshot_id = int(snapshot["id"])
+    team_id = int(snapshot["managed_team_ea_id"] or -1)
+    facts: list[dict[str, Any]] = []
+
+    def fact(key: str, label: str, value: Any, source: str) -> None:
+        if value is not None:
+            facts.append({"id": key, "label": label, "value": value, "source": source})
+
+    row = conn.execute(
+        """SELECT fo.*,f.fixture_key,f.home_team_ea_id,f.away_team_ea_id,f.competition_object_id
+             FROM fixture_observations fo JOIN fixtures f ON f.id=fo.fixture_id
+             WHERE fo.snapshot_id=? AND fo.fixture_id=? AND fo.managed_team_involved=1""",
+        (snapshot_id, fixture_id),
+    ).fetchone()
+    if not row:
+        raise ValueError("Selected match is not part of this career snapshot.")
+    completed = row["is_completed"] == 1
+    if completed_match and not completed:
+        raise ValueError("Match reports are available only for completed matches.")
+    if not completed_match and completed:
+        raise ValueError("Preparation reports require an upcoming match.")
+    home_team_id = int(row["home_team_ea_id"] or -1)
+    away_team_id = int(row["away_team_ea_id"] or -1)
+    managed_is_home = home_team_id == team_id
+    opponent_id = away_team_id if managed_is_home else home_team_id
+    match = {"fixture_id": int(fixture_id), "date": row["date"], "competition": row["competition_name"],
+             "home": row["home_team_name"], "away": row["away_team_name"], "completed": completed,
+             "managed_team_side": "home" if managed_is_home else "away",
+             "managed_team_ea_id": team_id, "opponent_ea_id": opponent_id,
+             "opponent_specific_history_available": False,
+             "event_timing_available": False}
+    if completed:
+        match["score"] = [row["home_score"], row["away_score"]]
+        match["managed_score"] = row["home_score"] if managed_is_home else row["away_score"]
+        match["opponent_score"] = row["away_score"] if managed_is_home else row["home_score"]
+    fact("match", "Fixture", match, "Atlas fixture calendar")
+    coach_diary = diary_at_fixture(conn, career_id, int(fixture_id), snapshot)
+    if coach_diary:
+        fact("coach_diary", "Coach observation, manually recorded and versioned", {
+            "revision": coach_diary["revision"], "author": coach_diary["author"],
+            "recorded_at": coach_diary["updated_at"], "observed_at": coach_diary["observed_at"],
+            "retrospective_to_snapshot": coach_diary.get("retrospective"),
+            "note": coach_diary["content"].get("note"),
+            "own_formation": coach_diary["ownFormationContext"],
+            "opponent_formation": coach_diary["formationContext"],
+            "own_lineup": coach_diary["content"].get("ownLineup"),
+            "opponent_lineup": coach_diary["content"].get("opponentLineup"),
+        }, "coach-authored manual observation; not extracted from FC26 or independently verified")
+    if row["date"] and opponent_id > 0:
+        from .match_competitive_context import pre_match_competitive_context
+        competitive = pre_match_competitive_context(
+            conn, career_id, snapshot, str(row["date"]), team_id, opponent_id,
+            row["raw_json"] if "raw_json" in row.keys() else None)
+        fact("pre_match_competitive_context", "Verified opponent context before this fixture",
+             competitive, "same-career, same-season save snapshot strictly before fixture date; "
+                          "available roster mean and league identity; table rank only from complete prior fixtures")
+    if completed_match and opponent_id > 0:
+        prior_snapshot = conn.execute(
+            "SELECT id FROM snapshots WHERE career_id=? AND season_index=? AND import_sequence<=? ORDER BY import_sequence DESC,id DESC LIMIT 1",
+            (career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"])),
+        ).fetchone()
+        history_rows = []
+        if prior_snapshot:
+            history_rows = conn.execute(
+                """SELECT DISTINCT f.id,fo.managed_team_result
+                     FROM fixture_observations fo JOIN fixtures f ON f.id=fo.fixture_id
+                    WHERE fo.snapshot_id=? AND fo.managed_team_involved=1 AND fo.is_completed=1 AND f.id<>?
+                      AND fo.date<?
+                      AND (f.home_team_ea_id=? OR f.away_team_ea_id=?)""",
+                (int(prior_snapshot["id"]), int(fixture_id), str(row["date"]), opponent_id, opponent_id),
+            ).fetchall()
+        fact("opponent_history", "Earlier recorded meetings with this opponent", {
+            "opponent_ea_id": opponent_id, "previous_meetings": len(history_rows),
+            "previous_wins": sum(1 for item in history_rows if str(item["managed_team_result"] or "").upper() == "W"),
+        }, "completed Atlas fixtures in the latest snapshot available at the selected career date")
+        if row["date"]:
+            prior_team_context = _prior_match_context(conn, career_id, snapshot, fixture_id, team_id, str(row["date"]))
+            prior_team_context["opponent_reference_scope"] = "pooled across the managed team's earlier opponents; not a history of the current named opponent"
+            prior_team_context["current_opponent_specific_history_available"] = False
+            fact("pre_match_team_context", "Team performance before this fixture",
+                 prior_team_context,
+                 "career-scoped linked MatchStats dated strictly before the selected fixture")
+    detailed = None
+    observed_positions: dict[int, tuple[str, str]] = {}
+    if completed_match:
+        export = conn.execute(
+            """SELECT e.id FROM match_stat_exports e JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
+                 WHERE e.fixture_id=? AND e.career_id=? AND source_snapshot.season_index=?
+                 AND source_snapshot.import_sequence<=?
+                 AND e.linkage_status='linked' AND e.export_status IN
+                     ('complete_participant_export','participant_export_complete_with_unresolved_nonparticipant')
+                 AND (e.superseded_by_export_id IS NULL OR EXISTS (
+                     SELECT 1 FROM match_stat_exports successor
+                     JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
+                     WHERE successor.id=e.superseded_by_export_id
+                       AND successor_snapshot.import_sequence>?))
+                 ORDER BY source_snapshot.import_sequence DESC,e.id DESC LIMIT 1""",
+            (fixture_id, career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"]),
+             int(snapshot["import_sequence"])),
+        ).fetchone()
+        if export:
+            from .match_stats import detailed_match
+            detailed = detailed_match(conn, int(fixture_id), career_id=career_id,
+                                      as_of_import_sequence=int(snapshot["import_sequence"]),
+                                      season_index=int(snapshot["season_index"]))
+            if not detailed or int(detailed.get("exportId") or -1) != int(export["id"]):
+                raise ValueError("The selected MatchStats export changed while the report context was being assembled.")
+            teams = detailed.get("teams") or []
+            team_names = {home_team_id: row["home_team_name"], away_team_id: row["away_team_name"]}
+            team_sides = {home_team_id: "home", away_team_id: "away"}
+            team_stats = [{"team_index": int(team["teamIndex"]), "team_ea_id": team.get("teamEaId"),
+                           "team_name": team_names.get(int(team.get("teamEaId") or -1)),
+                           "team_side": team_sides.get(int(team.get("teamEaId") or -1)),
+                           "stats": _compact_metrics(team.get("stats") or {}, REPORT_TEAM_FIELDS)} for team in teams]
+            fact("matchstats", "Linked FC26 match statistics", team_stats, "complete linked MatchStats export")
+            fact("match_evidence", "Match indicator evidence", fixture_evidence(
+                dict(snapshot), int(fixture_id), detailed),
+                "same fixture evidence contract as Match Center and snapshot coverage")
+            observed_rows = conn.execute(
+                """SELECT player_ea_id,actual_position,actual_position_source FROM player_match_performances
+                     WHERE snapshot_id=? AND fixture_key=?
+                       AND actual_position_source IN ('career_playermatchratinghistory_position','career_playerlastmatchhistory_latest_match')""",
+                (snapshot_id, row["fixture_key"]),
+            ).fetchall()
+            observed_positions = {int(item["player_ea_id"]):
+                                  (str(item["actual_position"]).upper(), str(item["actual_position_source"]))
+                                  for item in observed_rows
+                                  if trusted_actual_position(item["actual_position"], item["actual_position_source"])}
+            from .goalkeeper_metrics import fixture_goalkeepers
+            goalkeeper_evidence = fixture_goalkeepers(
+                teams, detailed.get("players") or [],
+                observed_positions={player_id: {"position": position, "source": source}
+                                    for player_id, (position, source) in observed_positions.items()})
+            fact("goalkeeper_evidence", "Goalkeeper attribution and contextual indicators",
+                 goalkeeper_evidence, "linked FC26 MatchStats and trusted observed position when available")
+        else:
+            fact("matchstats_missing", "MatchStats coverage", "No complete linked export for this fixture", "Atlas linkage status")
+            fact("match_evidence", "Match indicator evidence", fixture_evidence(
+                dict(snapshot), int(fixture_id)),
+                "same fixture evidence contract as Match Center and snapshot coverage")
+    return _FixtureBriefing(snapshot, row, facts, detailed, observed_positions)
+
+
 def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                     fixture_id: int | None, player_ea_id: int | None,
                     language_override: str | None = None,
-                    clarifications: list[dict[str, str]] | None = None) -> tuple[dict[str, Any], list[str], str]:
+                    clarifications: list[dict[str, str]] | None = None, *,
+                    prepared_fixture: _FixtureBriefing | None = None) -> tuple[dict[str, Any], list[str], str]:
     """Assemble small, career-scoped fact packs for dynamic local reports."""
-    snapshot = conn.execute("SELECT * FROM snapshots WHERE id=? AND career_id=?", (snapshot_id, career_id)).fetchone()
+    if prepared_fixture is not None:
+        snapshot = prepared_fixture.snapshot
+        if (mode not in {"match", "match_player"} or int(snapshot["id"]) != snapshot_id
+                or int(snapshot["career_id"]) != career_id or int(prepared_fixture.fixture["fixture_id"]) != fixture_id):
+            raise ValueError("Prepared evidence does not match the selected career, snapshot and fixture.")
+    else:
+        snapshot = conn.execute("SELECT * FROM snapshots WHERE id=? AND career_id=?", (snapshot_id, career_id)).fetchone()
     if not snapshot:
         raise ValueError("Snapshot does not belong to the selected career.")
     team_id = int(snapshot["managed_team_ea_id"] or -1)
@@ -1071,133 +1236,20 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
     if mode in {"match", "match_player", "next_match"}:
         if fixture_id is None:
             raise ValueError("Select a match from the current career calendar.")
-        row = conn.execute(
-            """SELECT fo.*,f.fixture_key,f.home_team_ea_id,f.away_team_ea_id,f.competition_object_id
-                 FROM fixture_observations fo JOIN fixtures f ON f.id=fo.fixture_id
-                 WHERE fo.snapshot_id=? AND fo.fixture_id=? AND fo.managed_team_involved=1""",
-            (snapshot_id, fixture_id),
-        ).fetchone()
-        if not row:
-            raise ValueError("Selected match is not part of this career snapshot.")
-        completed = row["is_completed"] == 1
-        if mode in {"match", "match_player"} and not completed:
-            raise ValueError("Match reports are available only for completed matches.")
-        if mode == "next_match" and completed:
-            raise ValueError("Preparation reports require an upcoming match.")
-        home_team_id = int(row["home_team_ea_id"] or -1)
-        away_team_id = int(row["away_team_ea_id"] or -1)
-        managed_is_home = home_team_id == team_id
-        opponent_id = away_team_id if managed_is_home else home_team_id
-        match = {"fixture_id": int(fixture_id), "date": row["date"], "competition": row["competition_name"],
-                 "home": row["home_team_name"], "away": row["away_team_name"], "completed": completed,
-                 "managed_team_side": "home" if managed_is_home else "away",
-                 "managed_team_ea_id": team_id, "opponent_ea_id": opponent_id,
-                 "opponent_specific_history_available": False,
-                 "event_timing_available": False}
-        if completed:
-            match["score"] = [row["home_score"], row["away_score"]]
-            match["managed_score"] = row["home_score"] if managed_is_home else row["away_score"]
-            match["opponent_score"] = row["away_score"] if managed_is_home else row["home_score"]
-        fact("match", "Fixture", match, "Atlas fixture calendar")
-        coach_diary = diary_at_fixture(conn, career_id, int(fixture_id), snapshot)
-        if coach_diary:
-            fact("coach_diary", "Coach observation, manually recorded and versioned", {
-                "revision": coach_diary["revision"], "author": coach_diary["author"],
-                "recorded_at": coach_diary["updated_at"], "observed_at": coach_diary["observed_at"],
-                "retrospective_to_snapshot": coach_diary.get("retrospective"),
-                "note": coach_diary["content"].get("note"),
-                "own_formation": coach_diary["ownFormationContext"],
-                "opponent_formation": coach_diary["formationContext"],
-                "own_lineup": coach_diary["content"].get("ownLineup"),
-                "opponent_lineup": coach_diary["content"].get("opponentLineup"),
-            }, "coach-authored manual observation; not extracted from FC26 or independently verified")
-        if row["date"] and opponent_id > 0:
-            from .match_competitive_context import pre_match_competitive_context
-            competitive = pre_match_competitive_context(
-                conn, career_id, snapshot, str(row["date"]), team_id, opponent_id,
-                row["raw_json"] if "raw_json" in row.keys() else None)
-            fact("pre_match_competitive_context", "Verified opponent context before this fixture",
-                 competitive, "same-career, same-season save snapshot strictly before fixture date; "
-                              "available roster mean and league identity; table rank only from complete prior fixtures")
-        if mode in {"match", "match_player"} and completed and opponent_id > 0:
-            prior_snapshot = conn.execute(
-                "SELECT id FROM snapshots WHERE career_id=? AND season_index=? AND import_sequence<=? ORDER BY import_sequence DESC,id DESC LIMIT 1",
-                (career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"])),
-            ).fetchone()
-            history_rows = []
-            if prior_snapshot:
-                history_rows = conn.execute(
-                    """SELECT DISTINCT f.id,fo.managed_team_result
-                         FROM fixture_observations fo JOIN fixtures f ON f.id=fo.fixture_id
-                        WHERE fo.snapshot_id=? AND fo.managed_team_involved=1 AND fo.is_completed=1 AND f.id<>?
-                          AND fo.date<?
-                          AND (f.home_team_ea_id=? OR f.away_team_ea_id=?)""",
-                    (int(prior_snapshot["id"]), int(fixture_id), str(row["date"]), opponent_id, opponent_id),
-                ).fetchall()
-            fact("opponent_history", "Earlier recorded meetings with this opponent", {
-                "opponent_ea_id": opponent_id, "previous_meetings": len(history_rows),
-                "previous_wins": sum(1 for item in history_rows if str(item["managed_team_result"] or "").upper() == "W"),
-            }, "completed Atlas fixtures in the latest snapshot available at the selected career date")
-            if row["date"]:
-                prior_team_context = _prior_match_context(conn, career_id, snapshot, fixture_id, team_id, str(row["date"]))
-                prior_team_context["opponent_reference_scope"] = "pooled across the managed team's earlier opponents; not a history of the current named opponent"
-                prior_team_context["current_opponent_specific_history_available"] = False
-                fact("pre_match_team_context", "Team performance before this fixture",
-                     prior_team_context,
-                     "career-scoped linked MatchStats dated strictly before the selected fixture")
+        briefing = prepared_fixture or _prepare_fixture_briefing(
+            conn, snapshot, fixture_id, completed_match=mode != "next_match",
+        )
+        row = briefing.fixture
+        facts.extend(deepcopy(briefing.facts) if prepared_fixture is not None else briefing.facts)
         if mode in {"match", "match_player"}:
-            detailed = None
-            export = conn.execute(
-                """SELECT e.id FROM match_stat_exports e JOIN snapshots source_snapshot ON source_snapshot.id=e.snapshot_id
-                     WHERE e.fixture_id=? AND e.career_id=? AND source_snapshot.season_index=?
-                     AND source_snapshot.import_sequence<=?
-                     AND e.linkage_status='linked' AND e.export_status IN
-                         ('complete_participant_export','participant_export_complete_with_unresolved_nonparticipant')
-                     AND (e.superseded_by_export_id IS NULL OR EXISTS (
-                         SELECT 1 FROM match_stat_exports successor
-                         JOIN snapshots successor_snapshot ON successor_snapshot.id=successor.snapshot_id
-                         WHERE successor.id=e.superseded_by_export_id
-                           AND successor_snapshot.import_sequence>?))
-                     ORDER BY source_snapshot.import_sequence DESC,e.id DESC LIMIT 1""",
-                (fixture_id, career_id, int(snapshot["season_index"]), int(snapshot["import_sequence"]),
-                 int(snapshot["import_sequence"])),
-            ).fetchone()
-            if export:
-                from .match_stats import detailed_match
-                detailed = detailed_match(conn, int(fixture_id), career_id=career_id,
-                                          as_of_import_sequence=int(snapshot["import_sequence"]),
-                                          season_index=int(snapshot["season_index"]))
-                if not detailed or int(detailed.get("exportId") or -1) != int(export["id"]):
-                    raise ValueError("The selected MatchStats export changed while the report context was being assembled.")
+            detailed = briefing.detailed
+            if detailed:
                 teams = detailed.get("teams") or []
-                teams_by_id = {int(team.get("teamEaId") or -1): team for team in teams}
+                home_team_id = int(row["home_team_ea_id"] or -1)
+                away_team_id = int(row["away_team_ea_id"] or -1)
                 team_names = {home_team_id: row["home_team_name"], away_team_id: row["away_team_name"]}
                 team_sides = {home_team_id: "home", away_team_id: "away"}
-                team_stats = [{"team_index": int(team["teamIndex"]), "team_ea_id": team.get("teamEaId"),
-                               "team_name": team_names.get(int(team.get("teamEaId") or -1)),
-                               "team_side": team_sides.get(int(team.get("teamEaId") or -1)),
-                               "stats": _compact_metrics(team.get("stats") or {}, REPORT_TEAM_FIELDS)} for team in teams]
-                fact("matchstats", "Linked FC26 match statistics", team_stats, "complete linked MatchStats export")
-                fact("match_evidence", "Match indicator evidence", fixture_evidence(
-                    dict(snapshot), int(fixture_id), detailed),
-                    "same fixture evidence contract as Match Center and snapshot coverage")
-                observed_rows = conn.execute(
-                    """SELECT player_ea_id,actual_position,actual_position_source FROM player_match_performances
-                         WHERE snapshot_id=? AND fixture_key=?
-                           AND actual_position_source IN ('career_playermatchratinghistory_position','career_playerlastmatchhistory_latest_match')""",
-                    (snapshot_id, row["fixture_key"]),
-                ).fetchall()
-                observed_positions = {int(item["player_ea_id"]):
-                                      (str(item["actual_position"]).upper(), str(item["actual_position_source"]))
-                                      for item in observed_rows
-                                      if trusted_actual_position(item["actual_position"], item["actual_position_source"])}
-                from .goalkeeper_metrics import fixture_goalkeepers
-                goalkeeper_evidence = fixture_goalkeepers(
-                    teams, detailed.get("players") or [],
-                    observed_positions={player_id: {"position": position, "source": source}
-                                        for player_id, (position, source) in observed_positions.items()})
-                fact("goalkeeper_evidence", "Goalkeeper attribution and contextual indicators",
-                     goalkeeper_evidence, "linked FC26 MatchStats and trusted observed position when available")
+                observed_positions = briefing.observed_positions
                 player_facts = []
                 for item in detailed.get("players") or []:
                     player_id = int(item["playerEaId"])
@@ -1214,7 +1266,7 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                                          "registered_position": item.get("primaryPosition"),
                                          "observed_position": observed[0] if observed else None,
                                          "observed_position_source": observed[1] if observed else None,
-                                         "team_ea_id": item.get("teamEaId"), "team_index": item.get("teamIndex"),
+                                         "team_index": item.get("teamIndex"),
                                          "minutes": stats.get("minutes_played"), "rating": stats.get("game_rating"),
                                          "stats": _compact_metrics(stats, metric_fields)})
                 fact("match_players", "Player match performances and position evidence", player_facts,
@@ -1242,10 +1294,6 @@ def _briefing_facts(conn: Any, career_id: int, snapshot_id: int, mode: str,
                     fact("selected_match_player", "Selected player in this match", participant, "complete linked MatchStats participant row")
                     scope = f"fixture:{fixture_id}:player:{player_ea_id}"
             else:
-                fact("matchstats_missing", "MatchStats coverage", "No complete linked export for this fixture", "Atlas linkage status")
-                fact("match_evidence", "Match indicator evidence", fixture_evidence(
-                    dict(snapshot), int(fixture_id)),
-                    "same fixture evidence contract as Match Center and snapshot coverage")
                 if mode == "match_player":
                     if player_ea_id is None:
                         raise ValueError("Select a player from the current match.")
@@ -4274,12 +4322,16 @@ def start_commission_report_job(career_id: int, work: Any, dedupe_key: str | Non
 def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int,
                                   snapshot_id: int | None = None, *,
                                   include_team_identity: bool = True) -> list[dict[str, str]]:
-    """Queue one persisted match report and refresh the season identity after a new result is linked."""
+    """Check automatic reports against one read transaction before submitting their jobs."""
     from .db import Database
+    from .settings import application_language
+
     if not isinstance(database, Database):
         raise TypeError("Automatic commission reports require the active Atlas Database.")
+    to_schedule: list[tuple[str, int | None, int | None, str]] = []
     with database.connect() as conn:
         _ensure_report_cache(conn)
+        conn.execute("BEGIN")
         if snapshot_id is None:
             latest = conn.execute(
                 """SELECT s.id FROM snapshots s JOIN fixture_observations fo ON fo.snapshot_id=s.id
@@ -4290,33 +4342,51 @@ def queue_auto_commission_reports(database: Any, career_id: int, fixture_id: int
         if snapshot_id is None:
             return []
         _, selected_model, _ = resolve_report_model(conn, None)
-        snapshot = conn.execute("SELECT managed_team_ea_id FROM snapshots WHERE id=? AND career_id=?",
+        snapshot = conn.execute("SELECT * FROM snapshots WHERE id=? AND career_id=?",
                                 (snapshot_id, career_id)).fetchone()
-        team_id = int(snapshot["managed_team_ea_id"] or -1) if snapshot else -1
-        pending: list[tuple[str, int | None, int | None]] = [("match", fixture_id, None)]
+        if not snapshot:
+            return []
+        team_id = int(snapshot["managed_team_ea_id"] or -1)
+        language = application_language()
+        try:
+            prepared_fixture = _prepare_fixture_briefing(conn, snapshot, fixture_id, completed_match=True)
+        except (ValueError, sqlite3.Error):
+            prepared_fixture = None
+
+        pending: list[tuple[str, int | None, int | None]] = []
+        if prepared_fixture is not None:
+            pending.append(("match", fixture_id, None))
         if include_team_identity:
             pending.append(("team_identity", None, None))
-        if team_id > 0:
+        if prepared_fixture is not None and team_id > 0:
             pending.extend(("match_player", fixture_id, player_id) for player_id in
                            _managed_player_ids_for_fixture(conn, career_id, int(snapshot_id), fixture_id, team_id))
-        scheduled = []
         for mode, report_fixture, player_id in pending:
             try:
-                context, _, scope = _briefing_facts(conn, career_id, snapshot_id, mode, report_fixture, player_id)
+                context, _, scope = _briefing_facts(
+                    conn, career_id, snapshot_id, mode, report_fixture, player_id, language,
+                    prepared_fixture=prepared_fixture if report_fixture is not None else None,
+                )
                 source_hash = _report_source_hash(context, career_id, mode, scope)
                 if _cached_report_row(conn, career_id, mode, scope, source_hash):
                     continue
-                dedupe = f"auto:{career_id}:{mode}:{scope}:{source_hash}"
-                def work(mode=mode, report_fixture=report_fixture, player_id=player_id, selected_model=selected_model):
-                    with database.connect() as report_conn:
-                        return get_commission_report(report_conn, career_id, int(snapshot_id), mode,
-                                                     fixture_id=report_fixture, player_ea_id=player_id, model=selected_model)
-                job = start_commission_report_job(career_id, work, dedupe)
-                job.update({"mode": mode, "player_ea_id": str(player_id or "")})
-                scheduled.append(job)
+                to_schedule.append((mode, report_fixture, player_id, f"auto:{career_id}:{mode}:{scope}:{source_hash}"))
             except (ValueError, sqlite3.Error):
                 continue
-        return scheduled
+
+    scheduled = []
+    for mode, report_fixture, player_id, dedupe in to_schedule:
+        # The worker reads fresh facts after queueing, so imports and diary edits
+        # committed in the meantime still participate in cache validation.
+        def work(mode=mode, report_fixture=report_fixture, player_id=player_id):
+            with database.connect() as report_conn:
+                return get_commission_report(report_conn, career_id, int(snapshot_id), mode,
+                                             fixture_id=report_fixture, player_ea_id=player_id, model=selected_model)
+
+        job = start_commission_report_job(career_id, work, dedupe)
+        job.update({"mode": mode, "player_ea_id": str(player_id or "")})
+        scheduled.append(job)
+    return scheduled
 
 
 def queue_auto_reports_for_imported_snapshots(database: Any, results: list[Any]) -> list[dict[str, str]]:

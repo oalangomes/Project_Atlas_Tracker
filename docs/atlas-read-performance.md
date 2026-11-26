@@ -25,7 +25,15 @@ Nas medições diretas de Análise, a resolução de mídia foi substituída pel
 
 O frontend compartilha a promessa de um GET idêntico em curso para Análise, Rotação, Elenco e status de relatório da Comissão. Ao concluir, o próximo GET consulta novamente a API. A invalidação já usada pelas importações e alterações da interface também limpa essas promessas.
 
-A próxima oportunidade é compartilhar o contexto comum da partida durante o agendamento de vários relatórios. O reuso pode ficar restrito ao lote, com carreira, fixture, snapshot e sequência de importação como escopo. Para guardar projeções completas entre requisições, a invalidação também precisaria acompanhar vínculos e supersessões de MatchStats, edições manuais e configurações de apresentação. O cache persistente da Comissão continua revalidando as evidências.
+### Agendamento de relatórios da Comissão
+
+`queue_auto_commission_reports` abre uma transação de leitura para checar a partida e os atletas. A carreira, a partida e o snapshot selecionado delimitam o contexto, incluindo a sequência de importação que define os exports elegíveis. Calendário, diário, contexto do adversário, histórico coletivo e MatchStats da partida são carregados uma vez. Cada relatório conserva seus fatos individuais, a comparação por atleta e o hash de evidências.
+
+O contexto compartilhado dura apenas durante a checagem do lote. A transação termina antes de os jobs entrarem na fila. Cada worker abre sua própria conexão e revalida os fatos e o cache persistente usando os dados disponíveis naquele momento. Isso inclui edições do diário ou importações confirmadas enquanto o job aguarda.
+
+No SQLite ativo em modo somente leitura, a checagem da partida 1707 no snapshot 113 processou 17 relatórios, todos já no cache persistente. Em três execuções por revisão, a mediana passou de **0,586 s para 0,168 s**. O contador do SQLite passou de **2.062 para 159 instruções**, incluindo os comandos da transação. Os 17 hashes de evidências foram idênticos. A medição fixou o idioma, substituiu o agendador por um registrador local e excluiu o relatório de identidade da temporada. Ela cobre a decisão de agendamento e não mede a geração de texto.
+
+Para guardar projeções completas entre requisições, a invalidação precisaria acompanhar vínculos e supersessões de MatchStats, edições manuais e configurações de apresentação.
 
 Os próximos caminhos para perfil separado são a abertura do elenco com simulação ainda pendente, o cálculo de finanças por atleta e o polling do relógio, que também carrega o histórico recente de transfer pulses. O custo e as dependências da simulação estão na [auditoria de armazenamento](atlas-storage-optimization.md).
 
