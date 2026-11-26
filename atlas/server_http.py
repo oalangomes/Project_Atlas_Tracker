@@ -346,7 +346,10 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             career_id = int(match.group(1))
             snapshot_id = as_int((query.get("snapshot_id") or [None])[0])
             season_index = as_int((query.get("season_index") or [None])[0])
-            if season_index is not None and season_index < 0:
+            view = (query.get("view") or [None])[0]
+            if view not in {None, "overview", "performance", "squad", "seasons", "records", "season-report"}:
+                raise ValueError("Unsupported analysis view.")
+            if season_index is not None and season_index < -1:
                 season_index = None
             if snapshot_id is None:
                 with self.state.database.connect() as conn:
@@ -354,7 +357,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
                 if not latest:
                     raise ValueError("Analysis requires at least one snapshot.")
                 snapshot_id = int(latest["id"])
-            self._json(self._analysis(career_id, snapshot_id, season_index))
+            self._json(self._analysis(career_id, snapshot_id, season_index, view=view))
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/commission", path)

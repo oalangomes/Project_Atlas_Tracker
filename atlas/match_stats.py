@@ -476,9 +476,9 @@ def _match_events(players: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(events, key=lambda item: (priority.get(str(item.get("type")), 20), str(item.get("displayName") or "")))
 
 
-def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int | None = None,
-                   as_of_import_sequence: int | None = None,
-                   season_index: int | None = None) -> dict[str, Any] | None:
+def linked_match_export(conn: sqlite3.Connection, fixture_id: int, *, career_id: int | None = None,
+                        as_of_import_sequence: int | None = None,
+                        season_index: int | None = None) -> sqlite3.Row | None:
     clauses = ["mse.fixture_id=?",
                "mse.linkage_status='linked'", "mse.export_status IN (?,?)"]
     params: list[Any] = [fixture_id, *sorted(COMPLETE_EXPORT_STATUSES)]
@@ -500,43 +500,55 @@ def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int 
     if as_of_import_sequence is not None:
         clauses.append("source_snapshot.import_sequence<=?")
         params.append(int(as_of_import_sequence))
-    export = conn.execute(
+    return conn.execute(
         "SELECT mse.* FROM match_stat_exports mse LEFT JOIN snapshots source_snapshot ON source_snapshot.id=mse.snapshot_id WHERE "
         + " AND ".join(clauses) + " ORDER BY source_snapshot.import_sequence DESC,mse.id DESC LIMIT 1", tuple(params)
     ).fetchone()
+
+
+def detailed_match_teams(conn: sqlite3.Connection, export_id: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT * FROM match_team_detailed_stats WHERE export_id=? ORDER BY team_index", (export_id,)
+    ).fetchall()
+    if len(rows) != 2:
+        return []
+    teams = [{"teamIndex": int(row["team_index"]), "teamEaId": row["team_ea_id"],
+              "stats": _team_single_match_metrics(_json_object(row["stats_json"]))} for row in rows]
+    _add_team_expected_goals_from_opponent_penalty(teams[0]["stats"], teams[1]["stats"])
+    _add_team_expected_goals_from_opponent_penalty(teams[1]["stats"], teams[0]["stats"])
+    return teams
+
+
+def detailed_match(conn: sqlite3.Connection, fixture_id: int, *, career_id: int | None = None,
+                   as_of_import_sequence: int | None = None,
+                   season_index: int | None = None) -> dict[str, Any] | None:
+    export = linked_match_export(conn, fixture_id, career_id=career_id,
+                                 as_of_import_sequence=as_of_import_sequence, season_index=season_index)
     if not export:
         return None
+    teams = detailed_match_teams(conn, export["id"])
+    if not teams:
+        return None
     player_rows = conn.execute(
-        "SELECT * FROM match_player_detailed_stats WHERE export_id=? ORDER BY team_index,game_rating DESC,minutes_played DESC",
-        (export["id"],),
+        """SELECT d.player_ea_id,d.team_index,d.stats_json,p.display_name,p.primary_position,p.team_ea_id
+           FROM match_player_detailed_stats d
+           LEFT JOIN player_states p ON p.snapshot_id=? AND p.ea_player_id=d.player_ea_id
+           WHERE d.export_id=? ORDER BY d.team_index,d.game_rating DESC,d.minutes_played DESC""",
+        (export["snapshot_id"], export["id"]),
     ).fetchall()
     players: list[dict[str, Any]] = []
     for row in player_rows:
         stats = _json_object(row["stats_json"])
         _recalculate_rates(stats)
         _add_context_metrics(stats, matches=1)
-        player_id = int(row["player_ea_id"])
-        context = conn.execute(
-            "SELECT display_name,primary_position,team_ea_id FROM player_states WHERE snapshot_id=? AND ea_player_id=?",
-            (export["snapshot_id"], player_id),
-        ).fetchone() if export["snapshot_id"] is not None else None
         players.append({
-            "playerEaId": player_id,
-            "displayName": context["display_name"] if context else None,
-            "primaryPosition": context["primary_position"] if context else None,
-            "teamEaId": context["team_ea_id"] if context else None,
+            "playerEaId": int(row["player_ea_id"]),
+            "displayName": row["display_name"],
+            "primaryPosition": row["primary_position"],
+            "teamEaId": row["team_ea_id"],
             "teamIndex": int(row["team_index"]),
             "stats": stats,
         })
-    team_rows = conn.execute(
-        "SELECT * FROM match_team_detailed_stats WHERE export_id=? ORDER BY team_index", (export["id"],)
-    ).fetchall()
-    teams = [{"teamIndex": int(row["team_index"]), "teamEaId": row["team_ea_id"], "stats": _team_single_match_metrics(_json_object(row["stats_json"]))} for row in team_rows]
-    if len(teams) != 2:
-        return None
-    if len(teams) == 2:
-        _add_team_expected_goals_from_opponent_penalty(teams[0]["stats"], teams[1]["stats"])
-        _add_team_expected_goals_from_opponent_penalty(teams[1]["stats"], teams[0]["stats"])
     from .goalkeeper_metrics import fixture_goalkeepers
     goalkeeper_evidence = fixture_goalkeepers(teams, players)
     return {

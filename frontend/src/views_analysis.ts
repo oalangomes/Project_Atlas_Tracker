@@ -400,7 +400,7 @@ async function renderSeasonReport(): Promise<void> {
     const fallback = Number(currentSnapshot()?.season_index ?? 0);
     const selected = state.seasonReportSeasonIndex ?? fallback;
     const semester=state.seasonReportSemester ?? (Number(String(currentSnapshot()?.career_date||"").slice(5,7))<=6?1:2);
-    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}`);
+    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}&view=season-report`);
     currentSeasonReportData=d;
     state.seasonReportSeasonIndex = Number(d.selectedSeasonIndex);
     const report=d.seasonReport||{}, reportStatus=report.season_complete?statusBadge("Complete","good"):statusBadge("In progress","blue");
@@ -465,7 +465,7 @@ async function loadAnalysis(active: string, isCurrent: () => boolean): Promise<v
       });
       return;
     }
-    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}`);
+    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}&view=${active}`);
     if (!isCurrent()) return;
     state.analysisSeasonIndex = Number(d.selectedSeasonIndex);
     const leagueContext = d.metrics?.league_context || {};
@@ -479,7 +479,7 @@ async function loadAnalysis(active: string, isCurrent: () => boolean): Promise<v
 
 async function renderRecords(): Promise<void> {
     const selected = state.recordsSeasonIndex ?? -1;
-    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}`);
+    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}&view=records`);
     state.recordsSeasonIndex = Number(d.selectedSeasonIndex);
     content.innerHTML = `<div class="content-inner wide">${pageHead("Records", `Player, match, streak and transfer records · ${esc(d.selectedSeasonLabel)}`, `<button class="button" data-route="analysis">Back to analysis</button>`)}
       <div class="page-filter-bar">${periodPicker(d.seasonOptions || [], Number(d.selectedSeasonIndex), "records")}<span class="filter-hint">The entire career is analysed by default.</span></div>

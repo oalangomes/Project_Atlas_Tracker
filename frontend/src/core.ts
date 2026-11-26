@@ -4,6 +4,7 @@ let lastMediaProgressPhase: string | null = null;
 let lastMediaPending: number | null = null;
 let mediaRefreshPending = false;
 const apiCache = new Map<string, { time: number; value: Promise<any> }>();
+const pendingApiReads = new Map<string, Promise<any>>();
 
 interface AtlasState {
     status: StatusResponse | null;
@@ -336,7 +337,10 @@ function matchEvidenceMarkup(evidence: any) {
     const observed = positions.filter((position: any) => position.state === "observed").length;
     return `<div class="data-note">MatchStats: ${statusBadge(states[evidence.state] || evidence.state, evidence.state === "complete" ? "good" : "warn")} · career ${num(evidence.careerId)} · snapshot ${num(evidence.snapshotId)} · fixture ${num(evidence.fixtureId)} · contract ${esc(evidence.version)} · source snapshot ${source.sourceSnapshotId == null ? "–" : num(source.sourceSnapshotId)} · export ${source.exportId == null ? "–" : num(source.exportId)}${evidence.reason ? ` · ${esc(evidence.reason)}` : ""}</div>${rows.length ? table([{label:"Side"},{label:"Indicator"},{label:"Value",cls:"num"},{label:"Unit"},{label:"Origin"},{label:"Method / absence"}],rows) : ""}${positions.length ? `<p class="data-note">Observed match positions: ${num(observed)} / ${num(positions.length)}. Natural position is kept separate; ${num(positions.filter((position: any) => position.backfilledFromEarlierSnapshot).length)} positions came from an earlier eligible snapshot.</p>` : ""}`;
 }
-function clearApiCache() { apiCache.clear(); }
+function clearApiCache() {
+    apiCache.clear();
+    pendingApiReads.clear();
+}
 function cacheableApiPath(path: string, options?: RequestInit): boolean {
     const method = String(options?.method || "GET").toUpperCase();
     if (method !== "GET") return false;
@@ -346,6 +350,13 @@ async function api<T = JsonRecord>(path: string, options?: RequestInit): Promise
     const cacheable = cacheableApiPath(path, options);
     const cached = cacheable ? apiCache.get(path) : null;
     if (cached && Date.now() - cached.time < 300000) return cached.value;
+    // These views can change under the same snapshot ID. Share only an in-flight read.
+    const sharePending = !options && (
+        /^\/api\/careers\/\d+\/(?:analysis(?:\/rotation)?|commission\/report-cache)\?/.test(path)
+        || /^\/api\/snapshots\/\d+\/squad$/.test(path)
+    );
+    const pending = sharePending ? pendingApiReads.get(path) : undefined;
+    if (pending) return pending;
     const request = (async () => {
         const r = await fetch(path, { headers: { "Content-Type": "application/json", ...(options?.headers || {}) }, ...options });
         const p = await r.json().catch(() => ({}));
@@ -353,8 +364,15 @@ async function api<T = JsonRecord>(path: string, options?: RequestInit): Promise
         return p;
     })();
     if (cacheable) apiCache.set(path, { time: Date.now(), value: request });
+    if (sharePending) pendingApiReads.set(path, request);
     try { return await request as T; }
-    catch (error) { if (cacheable) apiCache.delete(path); throw error; }
+    catch (error) {
+        if (cacheable && apiCache.get(path)?.value === request) apiCache.delete(path);
+        throw error;
+    }
+    finally {
+        if (sharePending && pendingApiReads.get(path) === request) pendingApiReads.delete(path);
+    }
 }
 function setLLMProvider(provider: string): void {
     state.llmProvider = provider;

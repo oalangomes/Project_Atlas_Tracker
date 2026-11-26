@@ -196,13 +196,26 @@ function detailedPlayerMatchesView(matches:any[]):string {
     return table([{label:"Season"},{label:"Date"},{label:"Match"},{label:"Competition"},{label:"Min.",cls:"num"},{label:"Rating",cls:"num"},{label:"G/A",cls:"num"},{label:"NPK-xG",cls:"num"},{label:"xA",cls:"num"},{label:"SoT/Sh",cls:"num"},{label:"Pass %",cls:"num"},{label:"Key P.",cls:"num"},{label:"Duels",cls:"num"}],matches.map((m:any)=>{const s=m.stats||{};const attempts=Number(s.offense_duels_attempted||0)+Number(s.defense_duels_attempted||0)+Number(s.aerial_duels_attempted||0),wins=Number(s.offense_duels_won||0)+Number(s.defense_duels_won||0)+Number(s.aerial_duels_won||0);return `<tr><td>S${num(Number(m.seasonIndex)+1)}</td><td>${dateText(m.date)}</td><td>${matchLink(m.fixtureId,`${m.homeTeamName||"?"} – ${m.awayTeamName||"?"}`)}<details class="inline-match-detail"><summary>All values</summary>${detailedAggregateGroups(s)}</details></td><td>${esc(m.competitionName||"–")}</td><td class="num">${num(s.minutes_played)}</td><td class="num"><b>${s.game_rating==null?"–":num(s.game_rating,1)}</b></td><td class="num">${num(s.goals_derived)}/${num(s.assists)}</td><td class="num">${num(s.npk_expected_goals,2)}</td><td class="num">${num(s.expected_assists,2)}</td><td class="num">${num(s.shots_on_target)}/${num(s.shots)}</td><td class="num">${s.pass_accuracy_pct_derived==null?"–":num(s.pass_accuracy_pct_derived,1)}</td><td class="num">${num(s.key_passes)}</td><td class="num">${attempts?`${num(wins)}/${num(attempts)}`:"–"}</td></tr>`;}));
 }
 async function renderPlayer() {
-    const d = await api(`/api/snapshots/${state.snapshotId}/players/${Number(state.routeData.id)}`), p = d.player || {}, r = d.roster || {}, raw = p.raw || {}, financial = d.financial || {}, atlasFinance=d.playerFinance||{}, market = atlasFinance.market || financial.market_value || {}, wageModel=atlasFinance.wage||{}, wage = {value:wageModel.display,label:wageModel.displayLabel,annual:wageModel.annualDisplay}, tabs = ["overview", "stats", "matches", "development", "analysis", "commission", "attributes", "career"];
+    const {snapshotId, careerId, routeData} = state;
+    const isCurrent = () => state.route === "player" && state.routeData === routeData && state.snapshotId === snapshotId;
+    const d = await api(`/api/snapshots/${snapshotId}/players/${Number(routeData.id)}`), p = d.player || {}, r = d.roster || {}, raw = p.raw || {}, financial = d.financial || {}, atlasFinance=d.playerFinance||{}, market = atlasFinance.market || financial.market_value || {}, wageModel=atlasFinance.wage||{}, wage = {value:wageModel.display,label:wageModel.displayLabel,annual:wageModel.annualDisplay}, tabs = ["overview", "stats", "matches", "development", "analysis", "commission", "attributes", "career"];
+    if (!isCurrent()) return;
     state.playerTab = state.routeData.tab || state.playerTab || "commission";
     if (!tabs.includes(state.playerTab)) state.playerTab = "commission";
-    const playerCommissionCache:any=await api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${Number(state.snapshotId)}&mode=player&player_ea_id=${Number(p.ea_player_id)}`).catch(()=>({state:"error"}));
-    if (["missing","stale","error"].includes(playerCommissionCache.state)) {
-        const started:any=await api(`/api/careers/${state.careerId}/commission/report-jobs`,{method:"POST",body:JSON.stringify({snapshot_id:Number(state.snapshotId),mode:"player",player_ea_id:Number(p.ea_player_id)})}).catch(()=>null);
-        if(started) playerCommissionCache.state=started.status||"queued";
+    const reportScope = {snapshot_id: Number(snapshotId), mode: "player", player_ea_id: Number(p.ea_player_id)};
+    let playerCommissionCache: any;
+    if (state.playerTab === "analysis" || state.playerTab === "commission") {
+        playerCommissionCache = await api(`/api/careers/${careerId}/commission/report-cache?snapshot_id=${reportScope.snapshot_id}&mode=${reportScope.mode}&player_ea_id=${reportScope.player_ea_id}`).catch(() => ({state: "error"}));
+        if (!isCurrent()) return;
+        if (["missing", "stale", "error"].includes(playerCommissionCache.state)) {
+            const started = await api(`/api/careers/${careerId}/commission/report-jobs`, {
+                method: "POST", body: JSON.stringify(reportScope),
+            }).catch(() => null);
+            if (!isCurrent()) return;
+            if (started?.status === "queued" || started?.status === "running") {
+                playerCommissionCache = {...playerCommissionCache, state: started.status};
+            }
+        }
     }
 
     const tabLabels: Record<string, string> = { overview: "Overview", stats: "Season statistics", matches: "Matches", development: "Development", analysis: "Analysis", commission: "Technical commission", attributes: "Attributes", career: "Contract & history" };
@@ -227,8 +240,7 @@ async function renderPlayer() {
         const rankText = (rank:any,total:any) => rank && total ? `#${num(rank)} of ${num(total)}` : "–";
         const comparisonTabs = `<div class="comparison-controls"><div class="page-tabs compact"><button class="${scope === "club" ? "active" : ""}" data-player-comparison-scope="club">At club</button><button class="${scope === "league" ? "active" : ""}" data-player-comparison-scope="league">League-wide</button></div><label class="comparison-mode"><span>Compare by</span><select data-player-comparison-mode><option value="group" ${mode === "group" ? "selected" : ""}>Position group</option><option value="position" ${mode === "position" ? "selected" : ""}>Exact position</option></select></label></div>`;
 
-        const p1Scope = {snapshot_id:Number(state.snapshotId),mode:"player",player_ea_id:Number(p.ea_player_id)};
-        const p1Cache:any = await api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${p1Scope.snapshot_id}&mode=player&player_ea_id=${p1Scope.player_ea_id}`.trim()).catch(()=>({state:"error"}));
+        const p1Cache = playerCommissionCache;
         const p1Saved = p1Cache.result || {};
         const p1Text = atlasLanguage()==="en-GB"
             ? {ai:"Technical commission",context:"AI interpretation · Atlas evidence",generate:"Generate analysis",refresh:"Refresh analysis",detail:"Complete report",metrics:"MatchStats / 90 min",coverage:"Available linked detailed matches",without:"No linked detailed FC26 matches in the selected season",contract:"Attribute percentiles by current club/league and registered position, not on-pitch output",peer:"Attribute comparison highlights",stale:"Outdated context · refresh the analysis",review:"Some AI findings require review",fallback:"Summary based on deterministic fallback",offline:"No saved local AI report; the existing Atlas analysis remains available",working:"The local analysis is being prepared"}
@@ -237,7 +249,7 @@ async function renderPlayer() {
             : {ai:"Comissão Técnica",context:"Interpretação da IA · evidências do Atlas",generate:"Gerar análise",refresh:"Atualizar análise",detail:"Relatório completo",metrics:"MatchStats / 90 min",coverage:"Partidas detalhadas vinculadas",without:"Sem partidas detalhadas vinculadas nesta temporada",contract:"Percentis de atributos no clube/na liga e por posição cadastrada; não medem rendimento em campo",peer:"Destaques dos atributos",stale:"Contexto desatualizado · atualize a análise",review:"Algumas conclusões exigem revisão",fallback:"Resumo baseado em fallback determinístico",offline:"Ainda sem relatório local de IA; a análise original do Atlas continua disponível",working:"A avaliação local está em processamento"};
         const p1Ready = p1Cache.state==="ready" || p1Cache.state==="stale";
         const p1Warnings = [p1Cache.state==="stale"?p1Text.stale:null,p1Saved.review_required?p1Text.review:null,p1Saved.report?.summary?.model_generated===false?p1Text.fallback:null].filter(Boolean);
-        const p1Reading = p1Ready ? commissionReportMarkup(p1Saved,p1Scope) : `<div class="player-p1-empty">${esc(p1Cache.state==="running"||p1Cache.state==="queued"?p1Text.working:p1Text.offline)}</div>`;
+        const p1Reading = p1Ready ? commissionReportMarkup(p1Saved,reportScope) : `<div class="player-p1-empty">${esc(p1Cache.state==="running"||p1Cache.state==="queued"?p1Text.working:p1Text.offline)}</div>`;
         const p1AiCard = `<section class="card player-p1-ai"><header class="card-header"><div><h2>${esc(p1Text.ai)}</h2><p>${esc(p1Text.context)}</p></div><span class="status-badge ${p1Cache.state==="ready"?"good":"amber"}">${esc(p1Cache.state||"missing")}</span></header><div class="card-body">${p1Warnings.length?`<div class="player-p1-warnings">${p1Warnings.map(item=>`<p>${esc(item)}</p>`).join("")}</div>`:""}<div data-commission-report-output data-report-slot="player-p1-integrated" class="player-p1-report-output">${p1Reading}</div><div class="player-p1-actions"><button class="button primary" data-commission-report data-report-target="player-p1-integrated" data-mode="player" data-player-ea-id="${Number(p.ea_player_id)}" data-snapshot-id="${Number(state.snapshotId)}" data-force-refresh="${p1Cache.state==="ready"?"1":"0"}">${esc(p1Cache.state==="ready"?p1Text.refresh:p1Text.generate)}</button><button class="button" data-player-tab="commission">${esc(p1Text.detail)}</button></div></div></section>`;
         const p1DetailedStats = d.detailedSeasonStats?.available ? d.detailedSeasonStats.aggregate||{} : null;
         const p1DetailedFields = [{label:"xG+xA / 90",key:"xg_plus_xa_per90"},{label:"Passes-chave / 90",key:"key_passes_per90"},{label:"Recuperações / 90",key:"possession_won_per90"},{label:"Finalizações / 90",key:"shots_per90"}];

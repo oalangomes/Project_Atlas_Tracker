@@ -336,12 +336,10 @@ class EntityQueryMixin:
         for option in self._season_options(conn, career_id):
             season_index = int(option["season_index"])
             for event_type, events in (
-                ("transfer", self._season_transfer_events(conn, career_id, season_index)),
-                ("loan", self._season_loan_events(conn, career_id, season_index)),
+                ("transfer", self._season_transfer_events(conn, career_id, season_index, player_id=player_id)),
+                ("loan", self._season_loan_events(conn, career_id, season_index, player_id=player_id)),
             ):
                 for event in events:
-                    if as_int(event.get("player_ea_id")) != player_id:
-                        continue
                     event_date = event.get("date") or event.get("first_observed_date") or event.get("last_observed_date")
                     if as_of_date and (not event_date or str(event_date) > as_of_date):
                         continue

@@ -141,7 +141,20 @@ function bindMatchDiary(d:any):void {
 }
 
 async function renderMatch() {
-    const d = await api(`/api/snapshots/${state.snapshotId}/matches/${Number(state.routeData.id)}`), m = d.match;
+    const {snapshotId, careerId, routeData} = state;
+    const isCurrent = () => state.route === "match" && state.routeData === routeData && state.snapshotId === snapshotId;
+    const d = await api(`/api/snapshots/${snapshotId}/matches/${Number(routeData.id)}`), m = d.match;
+    if (!isCurrent()) return;
+    const commissionPath = `/api/careers/${careerId}/commission`;
+    const reportScope = {snapshot_id: Number(snapshotId), fixture_id: Number(m.fixture_id)};
+    const readReport = (playerId?: number) => {
+        const query = new URLSearchParams({
+            snapshot_id: String(reportScope.snapshot_id), fixture_id: String(reportScope.fixture_id),
+            mode: playerId === undefined ? "match" : "match_player",
+        });
+        if (playerId !== undefined) query.set("player_ea_id", String(playerId));
+        return api(`${commissionPath}/report-cache?${query}`);
+    };
     const stadium = d.stadium, detailed=d.detailedStats||{}, hasDetailed=!!detailed.available;
     const stadiumSection = stadium ? `<section class="card stadium-match-card"><header class="card-header"><div><h2>${esc(stadium.name || "Stadium")}</h2><p>${d.stadiumSource === "fixture" ? "Stadium exported for this match" : "Home stadium fallback — the actual venue may differ for neutral finals"}</p></div><div class="row-actions">${statusBadge(stadium.stadiumTypeLabel || "Unknown type", stadium.stadiumType === "authentic" ? "good" : stadium.stadiumType === "generic" ? "blue" : "")}${statusBadge(d.stadiumSource === "fixture" ? "Fixture data" : "Fallback", d.stadiumSource === "fixture" ? "good" : "")}</div></header><div class="stadium-gallery">${(stadium.variants || []).length ? (stadium.variants || []).map((variant: any, index: any) => `<figure class="stadium-variant ${index === 0 ? "primary" : ""}">${mediaImg(variant, stadium.name, "stadium-match-image", false)}<figcaption>Variant ${esc(variant.variant || index + 1)}</figcaption></figure>`).join("") : `<div class="card-body muted">A stadium is assigned, but no image has been imported yet.</div>`}</div></section>` : "";
     const teamById=new Map<number,any>((detailed.teams||[]).map((t:any)=>[Number(t.teamEaId),t] as [number,any]));
@@ -171,7 +184,6 @@ async function renderMatch() {
     const teamByIndex=new Map<number,any>((detailed.teams||[]).map((t:any)=>[Number(t.teamIndex),t] as [number,any]));
     const eventTeamName=(idx:any)=>{const team=teamByIndex.get(Number(idx)),id=Number(team?.teamEaId);return id===Number(m.home_team_ea_id)?m.home_team_name:id===Number(m.away_team_ea_id)?m.away_team_name:`Team ${num(Number(idx)+1)}`;};
     const events=hasDetailed?`<section class="card"><header class="card-header"><div><h2>Event overview</h2><p>Exported events — no inferred chronology or match minute</p></div></header><div class="match-event-grid">${(detailed.events||[]).length?(detailed.events||[]).map((e:any)=>`<div class="match-event ${esc(e.type)}"><span class="event-icon">${e.type==="yellow_card"?"▰":e.type==="red_card"?"■":e.type==="motm"?"★":e.type==="goal"||e.type==="penalty_goal"?"●":"•"}</span><div><strong>${esc(eventNames.get(Number(e.playerEaId))||e.displayName||`Player ${e.playerEaId}`)}</strong><small>${esc(e.label)}${Number(e.count)>1?` ×${num(e.count)}`:""}</small></div><span>${esc(eventTeamName(e.teamIndex))}</span></div>`).join(""):`<div class="card-body muted">No exported events for this match.</div>`}</div><div class="data-note">${esc(detailed.eventTimingNote||"")}</div></section>`:"";
-    const matchPlayerAnalysisHtml=new Map<number,string>();
     const ownGoalkeeperSide=(detailed.goalkeeperEvidence?.sides||[]).find((side:any)=>Number(side.teamEaId)===Number(d.snapshot?.managed_team_ea_id));
     const goalkeeperContextFor=(p:any)=>{
         if(Number(p.match_team_ea_id??p.team_ea_id)!==Number(d.snapshot?.managed_team_ea_id))return "";
@@ -181,7 +193,7 @@ async function renderMatch() {
         return goalkeeperPlayerContext(ownGoalkeeperSide,keeper,detailed.goalkeeperEvidence?.interpretationLimit||"");
     };
     const performanceRow=(p:any)=>{const s=p.detailedStats||p.reconstructedStats||{};const detailedRow=!!p.detailedStats;const observedPosition=observedPositionOf(p);return `<tr>
-        <td><div class="player-line">${playerPortrait(p.media,p.display_name,"table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id,p.display_name)}${detailedPlayerDrawer(p,matchPlayerAnalysisHtml.get(Number(p.player_ea_id))||"",goalkeeperContextFor(p))}</div></div></td>
+        <td><div class="player-line">${playerPortrait(p.media,p.display_name,"table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id,p.display_name)}${detailedPlayerDrawer(p,m.is_completed&&participants.has(Number(p.player_ea_id))?`<div data-match-player-analysis="${Number(p.player_ea_id)}" aria-live="polite"></div>`:"",goalkeeperContextFor(p))}</div></div></td>
         <td class="center" data-sort="${positionOrder(observedPosition??p.primary_position,p.primary_position_id)}">${observedPosition?`${positionBadge(observedPosition)}<small class="match-position-source">FC26 record</small>`:`${positionBadge(p.primary_position)}<small class="match-position-source">Registered · match N/D</small>`}</td><td class="num">${num(s.minutes_played??p.minutes_played)}</td><td class="num"><b>${s.game_rating!=null?num(s.game_rating,1):p.rating?num(p.rating,1):"–"}</b></td>
         <td class="num">${detailedRow?`${num(s.goals_derived)}/${num(s.assists)}`:s.source?`${num(s.goals)}/${num(s.assists)}`:"–"}</td><td class="num">${detailedRow?num(s.npk_expected_goals,2):"–"}</td><td class="num">${detailedRow?num(s.expected_assists,2):"–"}</td><td class="num">${detailedRow?`${num(s.shots_on_target)}/${num(s.shots)}`:"–"}</td><td class="num">${detailedRow&&s.pass_accuracy_pct_derived!=null?`${num(s.pass_accuracy_pct_derived,1)} %`:"–"}</td><td class="num">${detailedRow?num(s.key_passes):"–"}</td><td class="num">${detailedRow?num(s.possession_won):"–"}</td><td class="num">${detailedRow?num(s.possession_lost):"–"}</td><td>${detailedRow?statusBadge("FC26 Detail","good"):s.source?statusBadge("Snapshot-Delta","blue"):statusBadge(p.join_status||"Direct")}</td></tr>`;};
     const performanceHeaders=[{label:"Player"},{label:"Pos.",cls:"center"},{label:"Min.",cls:"num"},{label:"Rating",cls:"num"},{label:"G/A",cls:"num"},{label:"NPK-xG",cls:"num"},{label:"xA",cls:"num"},{label:"SoT/Sh",cls:"num"},{label:"Pass %",cls:"num"},{label:"Key P.",cls:"num"},{label:"Ball +",cls:"num"},{label:"Ball -",cls:"num"},{label:"Source"}];
@@ -200,16 +212,14 @@ async function renderMatch() {
     for(const p of d.performances||[]){if(performanceTeam(p)===primaryTeamId&&Number(p.minutes_played||0)>0)participants.set(Number(p.player_ea_id),{...p,detailedStats:p.detailedStats||detailedPlayers.get(Number(p.player_ea_id))?.stats||null});}
     for(const p of detailed.players||[]){if(Number(p.teamEaId)===primaryTeamId&&Number(p.stats?.minutes_played||0)>0&&!participants.has(Number(p.playerEaId)))participants.set(Number(p.playerEaId),{player_ea_id:Number(p.playerEaId),display_name:p.displayName||`Player ${p.playerEaId}`,minutes_played:p.stats?.minutes_played,actual_position:"",primary_position:p.primaryPosition,detailedStats:p.stats,match_team_ea_id:primaryTeamId});}
     const ownPlayers=[...participants.values()].sort((a:any,b:any)=>Number(b.minutes_played||0)-Number(a.minutes_played||0));
-    const automaticReportQueue:any=m.is_completed?await api(`/api/careers/${state.careerId}/commission/match-analysis-jobs`,{method:"POST",body:JSON.stringify({snapshot_id:Number(state.snapshotId),fixture_id:Number(m.fixture_id)})}).catch(()=>({scheduled:[]})):{scheduled:[]};
-    const individualCaches=await Promise.all(ownPlayers.map((p:any)=>api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${Number(state.snapshotId)}&mode=match_player&fixture_id=${Number(m.fixture_id)}&player_ea_id=${Number(p.player_ea_id)}`).catch(()=>({state:"missing"}))));
     const matchPlayerAnalysis=(cached:any,p:any)=>{const report=cached.result?.report||{},items=(report.observations||[]).slice(0,4),observed=observedPositionOf(p);const role=observed?`Posição registrada no export: ${observed}`:`Posição cadastrada: ${p?.primary_position||"N/D"} · atuação não registrada`;if(cached.state==="ready"||cached.state==="stale")return `<section class="match-player-ai-summary"><strong>Comissão · ${esc(report.summary?.text||"Análise desta atuação")}</strong>${items.length?`<ul>${items.map((item:any)=>`<li><span class="commission-claim-kind ${esc(item.kind||"fact")}">${esc(item.kind==="inference"?"Leitura técnica":"Fato")}</span> ${esc(item.text)}</li>`).join("")}</ul>`:""}<small>${esc(role)} · contexto desta partida · ${esc(cached.generated_at||"")}</small></section>`;if(cached.state==="queued"||cached.state==="running")return `<section class="match-player-ai-summary"><small>A Comissão está analisando esta atuação em segundo plano.</small></section>`;return `<section class="match-player-ai-summary"><small>A análise individual será iniciada para esta partida concluída.</small></section>`;};
-    ownPlayers.forEach((p:any,index:number)=>{const queued=(automaticReportQueue.scheduled||[]).find((job:any)=>job.mode==="match_player"&&Number(job.player_ea_id)===Number(p.player_ea_id));const cached=queued&&["queued","running"].includes(queued.status)&&individualCaches[index].state==="stale"?{state:queued.status}:individualCaches[index];matchPlayerAnalysisHtml.set(Number(p.player_ea_id),`<div data-match-player-analysis="${Number(p.player_ea_id)}">${matchPlayerAnalysis(cached,p)}</div>`);});
     const performanceTable=(items:any[])=>items.length?table(performanceHeaders,items.map(performanceRow)):`<div class="card-body muted">No player performances were exported for this team.</div>`;
     const duplicateNote=Number(d.performanceDiagnostics?.suppressedSnapshotDuplicates||0)>0?`<div class="data-note">Tracker combined ${num(d.performanceDiagnostics.suppressedSnapshotDuplicates)} duplicate snapshot rating row${Number(d.performanceDiagnostics.suppressedSnapshotDuplicates)===1?"":"s"} for this match.</div>`:"";
     const phaseCopy=atlasLanguage()==="en-GB"?{start:"Estimated starting formation",startLines:"Initial XI lines",note:"From recorded positions of the starting XI; later role changes are not assessed."}:atlasLanguage()==="es-ES"?{start:"Formación inicial estimada",startLines:"Líneas del XI inicial",note:"Según las posiciones registradas del XI inicial; no se evalúan cambios posteriores."}:{start:"Formação inicial estimada",startLines:"Linhas do XI inicial",note:"Pelas posições registradas do XI inicial; mudanças posteriores não são avaliadas."};
     const lineupHint=(teamId:number)=>{const phase=(d.lineupPhases?.teams||[]).find((item:any)=>Number(item.teamEaId)===teamId);return phase?.initialFormation?`<div class="match-lineup-hint"><strong>${esc(phase.initialPrecision==="role_bands"?phaseCopy.start:phaseCopy.startLines)} ${esc(phase.initialFormation)}</strong><small>${esc(phaseCopy.note)}</small></div>`:"";};
     const performanceBody=hasTeamSplit?`<div class="card-body" style="padding-bottom:0"><div class="tabbar match-performance-tabs"><button class="active" data-match-performance-team="primary">${esc(teamName(primaryTeamId))} <b>${num(primaryPerformances.length)}</b></button><button data-match-performance-team="secondary">${esc(teamName(secondaryTeamId))} <b>${num(secondaryPerformances.length)}</b></button></div></div><div data-match-performance-panel="primary">${lineupHint(primaryTeamId)}${performanceTable(primaryPerformances)}</div><div data-match-performance-panel="secondary" hidden>${lineupHint(secondaryTeamId)}${performanceTable(secondaryPerformances)}</div>${duplicateNote}`:`${lineupHint(primaryTeamId)}${performanceTable(d.performances)}${duplicateNote}`;
-    const reportCache:any=m.is_completed?await api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${Number(state.snapshotId)}&mode=match&fixture_id=${Number(m.fixture_id)}`).catch(()=>({state:"missing"})):({state:"missing"});
+    const reportCache:any=m.is_completed?await readReport().catch(()=>({state:"missing"})):({state:"missing"});
+    if (!isCurrent()) return;
     const savedReport=reportCache.result||{},savedBody=savedReport.report||{},savedCatalog=new Map((savedReport.fact_catalog||[]).map((f:any)=>[f.id,f.label]));
     const savedRefs=(ids:any[])=>esc((ids||[]).map((id:any)=>savedCatalog.get(id)||id).join(" · "));
     const kindLabel=(kind:string)=>kind==="fact"?tr("claimFact"):kind==="hypothesis"?tr("claimHypothesis"):tr("claimInference");
@@ -217,8 +227,7 @@ async function renderMatch() {
     const commissionNote=savedBody.commission_note?.text?`<p class="commission-note"><strong>${tr("commissionNote")}:</strong> ${esc(savedBody.commission_note.text)}<small>${savedRefs(savedBody.commission_note.fact_refs)}</small></p>`:"";
     const reportReview=savedReport.review_required?`<p class="chart-note">Some claims were filtered by source-scope checks; the remaining analysis is still shown.</p>`:"";
     const matchReportOutput=reportCache.state==="ready"||reportCache.state==="stale"?`${reportReview}<div class="commission-report-head"><strong>${esc(savedBody.summary?.text||"Saved technical report")}</strong><small><span class="commission-claim-kind ${esc(savedBody.summary?.kind||"inference")}">${esc(kindLabel(savedBody.summary?.kind))}</span> · ${esc(savedReport.model||"AI provider")} · ${esc(reportCache.generated_at||"")}</small></div>${savedBody.summary?.limitations?`<p class="commission-claim-limit">Limit: ${esc(savedBody.summary.limitations)}</p>`:""}${commissionNote}${savedItems(savedBody.observations)}${savedItems(savedBody.recommendations)}${commissionFollowupForm(savedBody.information_requests,{snapshot_id:Number(state.snapshotId),mode:"match",fixture_id:Number(m.fixture_id),model:savedReport.model,coach_context:savedReport.fact_catalog?.find((f:any)=>f.id==="coach_context")?.value})}<details class="report-provenance"><summary>Evidence coverage and validation</summary><small>${num(savedReport.validation?.accepted_claims)} claims kept · ${num(savedReport.validation?.rejected_claims)} filtered · ${esc(savedReport.validation?.interpretation_quality||"Interpretation quality not independently scored")} · ${savedRefs(savedBody.summary?.fact_refs)}</small></details>`:reportCache.state==="queued"||reportCache.state==="running"?"The Technical Commission is analyzing this match in the background. You can keep using Atlas.":"Generate a contextual report from this match and its prior recorded performances. The analysis is saved with this career's data.";
-    const automaticMatchReportQueued=(automaticReportQueue.scheduled||[]).some((job:any)=>job.mode==="match"&&["queued","running"].includes(job.status));
-    const matchReportSection=`<section class="card"><header class="card-header"><div><h2>Technical Commission diagnosis</h2><p>Match indicators in context of prior recorded performances</p></div><span class="status-badge ${reportCache.state==="ready"?"good":""}">${esc(reportCache.state||"missing")}</span></header><div class="card-body"><div data-commission-report-output data-report-slot="match-overall" class="commission-report-output" aria-live="polite">${matchReportOutput}</div>${m.is_completed?(automaticMatchReportQueued||reportCache.state==="queued"||reportCache.state==="running"?'<p class="muted">The match analysis and player reports are running in the background.</p>':`<button class="button primary" data-commission-report data-mode="match" data-fixture-id="${m.fixture_id}" data-snapshot-id="${num(state.snapshotId)}" data-force-refresh="${reportCache.state==="ready"?"1":"0"}">${reportCache.state==="ready"?"Refresh match analysis":"Generate match analysis"}</button>`):'<p class="muted">Analysis becomes available when the match is complete.</p>'}</div></section>`;
+    const matchReportSection=`<section class="card"><header class="card-header"><div><h2>Technical Commission diagnosis</h2><p>Match indicators in context of prior recorded performances</p></div><span class="status-badge ${reportCache.state==="ready"?"good":""}">${esc(reportCache.state||"missing")}</span></header><div class="card-body"><div data-commission-report-output data-report-slot="match-overall" class="commission-report-output" aria-live="polite">${matchReportOutput}</div>${m.is_completed?`<button class="button primary" data-commission-report data-mode="match" data-fixture-id="${m.fixture_id}" data-snapshot-id="${reportScope.snapshot_id}" data-force-refresh="${reportCache.state==="ready"?"1":"0"}">${reportCache.state==="ready"?"Refresh match analysis":"Generate match analysis"}</button>`:'<p class="muted">Analysis becomes available when the match is complete.</p>'}</div></section>`;
 
 
     // P0: uses only canonical MatchStats and pre-match evidence already available in Atlas.
@@ -271,32 +280,75 @@ async function renderMatch() {
       ${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings",d.capabilities?.matchRatings?"Available":"Partial","ratings and minutes")}${metric("Detailed FC26 data",hasDetailed?"Available":"Not available",hasDetailed?`${num(detailed.players?.length||0)} participants`:"snapshot data fallback",hasDetailed?"green":"amber")}${metric("Events",hasDetailed?num(detailed.events?.length||0):"–",hasDetailed?"not chronological · no confirmed minutes":"no detailed source")}${metric("Link confidence",hasDetailed?`${num(detailed.linkageConfidence*100,0)} %`:"–","import linkage metadata")}${metric("xG model",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG + NPK-xG":"NPK-xG"):"–",hasDetailed?(homeStats.expected_goals_derived!=null||awayStats.expected_goals_derived!=null?"Team-xG = NPK-xG + 0.7 × penalty attempts":"direct FC26 NPK value"):"")}</div><p class="data-note">${esc(detailed.xgNote||"")} ${esc(detailed.eventTimingNote||"")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
     </div>`;
     bindMatchDiary(d);
-    const queuedReportJobs=(automaticReportQueue.scheduled||[]).filter((job:any)=>job?.job_id);
-    if(queuedReportJobs.length){
-        void (async()=>{
-            for(let attempt=0;attempt<240&&content.querySelector('[data-report-slot="match-overall"]');attempt++){
-                await new Promise(resolve=>setTimeout(resolve,5000));
-                for(const queued of queuedReportJobs){
-                    if(queued.refreshed)continue;
-                    const current:any=await api(`/api/careers/${state.careerId}/commission/report-jobs/${queued.job_id}`).catch(()=>null);
-                    if(!current)continue;
-                    queued.status=current.status;
-                    if(current.status==="complete"&&queued.mode==="match_player"){
-                        const cached:any=await api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${Number(state.snapshotId)}&mode=match_player&fixture_id=${Number(m.fixture_id)}&player_ea_id=${Number(queued.player_ea_id)}`).catch(()=>null);
-                        const target=Array.from(content.querySelectorAll<HTMLElement>('[data-match-player-analysis]')).find(node=>Number(node.dataset.matchPlayerAnalysis)===Number(queued.player_ea_id));
-                        if(target)target.innerHTML=matchPlayerAnalysis(cached||{state:"missing"},ownPlayers.find((player:any)=>Number(player.player_ea_id)===Number(queued.player_ea_id)));
-                    }else if(current.status==="complete"&&queued.mode==="match"){
-                        const cached:any=await api(`/api/careers/${state.careerId}/commission/report-cache?snapshot_id=${Number(state.snapshotId)}&mode=match&fixture_id=${Number(m.fixture_id)}`).catch(()=>null);
-                        const target=content.querySelector<HTMLElement>('[data-report-slot="match-overall"]'),body=cached?.result?.report||{};
-                        if(target&&cached?.state==="ready")target.innerHTML=`<div class="commission-report-head"><strong>${esc(body.summary?.text||"Match report ready")}</strong><small>${esc(cached.model||"AI provider")} · ${esc(cached.generated_at||"")}</small></div>${savedItems(body.observations)}${savedItems(body.recommendations)}`;
-                    }else if(current.status==="failed"&&queued.mode==="match_player"){
-                        const target=Array.from(content.querySelectorAll<HTMLElement>('[data-match-player-analysis]')).find(node=>Number(node.dataset.matchPlayerAnalysis)===Number(queued.player_ea_id));
-                        if(target)target.innerHTML='<section class="match-player-ai-summary"><small>A análise desta atuação falhou; os números registrados continuam disponíveis.</small></section>';
-                    }
-                    if(["complete","failed"].includes(current.status))queued.refreshed=true;
-                }
-                if(queuedReportJobs.every((job:any)=>["complete","failed"].includes(job.status)))break;
+    if (m.is_completed) {
+        const scheduling = api(`${commissionPath}/match-analysis-jobs`, {
+            method: "POST", body: JSON.stringify(reportScope),
+        }).then(result => result.scheduled || []).catch(() => []);
+        const waitForReport = async (jobId: string, isVisible: () => boolean) => {
+            for (let attempt = 0; attempt < 240 && isVisible(); attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                if (!isVisible()) return;
+                const job = await api(`${commissionPath}/report-jobs/${jobId}`).catch(() => null);
+                if (job?.status === "complete" || job?.status === "failed") return job.status;
             }
+        };
+        for (const target of content.querySelectorAll<HTMLElement>("[data-match-player-analysis]")) {
+            const drawer = target.closest("details")!;
+            const playerId = Number(target.dataset.matchPlayerAnalysis);
+            const visible = () => isCurrent() && target.isConnected && drawer.open;
+            let loading = false;
+            drawer.addEventListener("toggle", async () => {
+                if (!visible() || loading) return;
+                loading = true;
+                const player = participants.get(playerId);
+                try {
+                    const cached = await readReport(playerId).catch((): JsonRecord => ({state: "error"}));
+                    if (!visible()) return;
+                    target.innerHTML = matchPlayerAnalysis(cached, player);
+                    if (cached.state === "ready") return;
+                    const jobs = await scheduling;
+                    const jobId = cached.job_id || jobs.find((job: any) =>
+                        job.mode === "match_player" && Number(job.player_ea_id) === playerId)?.job_id;
+                    if (!jobId || !visible()) return;
+                    target.innerHTML = matchPlayerAnalysis({state: "running"}, player);
+                    const status = await waitForReport(jobId, visible);
+                    if (!visible()) return;
+                    if (status === "complete") {
+                        const refreshed = await readReport(playerId).catch(() => ({state: "error"}));
+                        if (visible()) target.innerHTML = matchPlayerAnalysis(refreshed, player);
+                    } else if (status === "failed") {
+                        target.textContent = "A análise desta atuação falhou.";
+                    }
+                } finally {
+                    loading = false;
+                }
+            });
+        }
+        const reportTarget = content.querySelector<HTMLElement>('[data-report-slot="match-overall"]')!;
+        const reportCard = reportTarget.closest("section")!;
+        const reportButton = reportCard.querySelector<HTMLButtonElement>("[data-commission-report]")!;
+        const reportBadge = reportCard.querySelector<HTMLElement>(".status-badge")!;
+        const visible = () => isCurrent() && reportTarget.isConnected;
+        if (reportCache.job_id) reportButton.disabled = true;
+        void (async () => {
+            const jobs = await scheduling;
+            const jobId = reportCache.job_id || jobs.find((job: any) => job.mode === "match")?.job_id;
+            if (!visible() || !jobId) return;
+            reportButton.disabled = true;
+            reportBadge.textContent = "running";
+            const status = await waitForReport(jobId, visible);
+            if (!visible()) return;
+            reportButton.disabled = false;
+            reportBadge.textContent = status === "failed" ? "failed" : reportCache.state;
+            if (status !== "complete") return;
+            const cached = await readReport().catch(() => null);
+            if (!visible() || cached?.state !== "ready") return;
+            const body = cached.result?.report || {};
+            reportBadge.textContent = "ready";
+            reportBadge.classList.add("good");
+            reportButton.textContent = "Refresh match analysis";
+            reportButton.dataset.forceRefresh = "1";
+            reportTarget.innerHTML = `<div class="commission-report-head"><strong>${esc(body.summary?.text||"Match report ready")}</strong><small>${esc(cached.model||"AI provider")} · ${esc(cached.generated_at||"")}</small></div>${savedItems(body.observations)}${savedItems(body.recommendations)}`;
         })();
     }
     $$("[data-match-performance-team]",content).forEach((button:any)=>button.onclick=()=>{

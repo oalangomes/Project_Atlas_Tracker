@@ -179,7 +179,10 @@ class AnalysisQueryMixin:
             "open_fixture_count": open_count,
         }
 
-    def _snapshot_transfer_events(self, conn: Any, career_id: int, season_index: int) -> list[dict[str, Any]]:
+    def _snapshot_transfer_events(
+        self, conn: Any, career_id: int, season_index: int, *,
+        team_id: int | None = None, player_id: int | None = None,
+    ) -> list[dict[str, Any]]:
         season_snapshots = conn.execute(
             """SELECT * FROM snapshots WHERE career_id=? AND season_index=?
                ORDER BY import_sequence""",
@@ -193,17 +196,33 @@ class AnalysisQueryMixin:
             (career_id, season_snapshots[0]["import_sequence"]),
         ).fetchone()
         ordered = ([previous] if previous else []) + list(season_snapshots)
+        player_filter = "AND old.ea_player_id=?" if player_id is not None else ""
+        player_args = (player_id,) if player_id is not None else ()
         events: list[dict[str, Any]] = []
         for before, after in zip(ordered, ordered[1:]):
             # Return only movements from SQLite. Most player rows have large
             # raw JSON and represent the same club in consecutive snapshots.
+            candidates = ""
+            source = "player_states old"
+            args: tuple[Any, ...] = ()
+            if team_id is not None:
+                candidates = """WITH candidates AS (
+                    SELECT ea_player_id FROM player_states WHERE snapshot_id=? AND team_ea_id=?
+                    UNION
+                    SELECT ea_player_id FROM player_states WHERE snapshot_id=? AND team_ea_id=?
+                )"""
+                # Drive the join from the indexed rosters in both snapshots. Incoming
+                # players may only appear on the managed team in the later snapshot.
+                source = "candidates CROSS JOIN player_states old ON old.ea_player_id=candidates.ea_player_id"
+                args = (before["id"], team_id, after["id"], team_id)
             movements = conn.execute(
-                """SELECT new.ea_player_id,new.display_name,new.overall,new.primary_position,new.raw_json,
+                f"""{candidates}
+                   SELECT new.ea_player_id,new.display_name,new.overall,new.primary_position,new.raw_json,
                           old.display_name old_name,old.team_ea_id from_id,old.team_name from_name,
                           new.team_ea_id to_id,new.team_name to_name
-                   FROM player_states old JOIN player_states new
+                   FROM {source} JOIN player_states new
                      ON new.snapshot_id=? AND new.ea_player_id=old.ea_player_id
-                   WHERE old.snapshot_id=? AND old.team_ea_id<>new.team_ea_id
+                   WHERE old.snapshot_id=? AND old.team_ea_id<>new.team_ea_id {player_filter}
                      AND NOT EXISTS (
                          SELECT 1 FROM loan_states l
                          WHERE l.snapshot_id IN (old.snapshot_id,new.snapshot_id)
@@ -211,18 +230,18 @@ class AnalysisQueryMixin:
                            AND l.parent_team_ea_id=old.team_ea_id AND l.loan_team_ea_id=new.team_ea_id
                      )
                    ORDER BY new.ea_player_id""",
-                (after["id"], before["id"]),
+                (*args, after["id"], before["id"], *player_args),
             )
             for row in movements:
-                player_id, from_id, to_id = row["ea_player_id"], row["from_id"], row["to_id"]
+                moved_player_id, from_id, to_id = row["ea_player_id"], row["from_id"], row["to_id"]
                 player_raw = parse_raw(row["raw_json"])
                 events.append({
-                    "eventKey": f"derived:{before['id']}:{after['id']}:{player_id}:{from_id}:{to_id}",
+                    "eventKey": f"derived:{before['id']}:{after['id']}:{moved_player_id}:{from_id}:{to_id}",
                     "date": after["career_date"],
                     "season_index": season_index,
                     "fromSnapshotId": before["id"],
                     "toSnapshotId": after["id"],
-                    "player_ea_id": player_id,
+                    "player_ea_id": moved_player_id,
                     "display_name": row["display_name"] or row["old_name"],
                     "overall": row["overall"],
                     "primary_position": row["primary_position"],
@@ -328,8 +347,11 @@ class AnalysisQueryMixin:
             })
         return result
 
-    def _season_transfer_events(self, conn: Any, career_id: int, season_index: int) -> list[dict[str, Any]]:
-        derived = self._snapshot_transfer_events(conn, career_id, season_index)
+    def _season_transfer_events(
+        self, conn: Any, career_id: int, season_index: int, *,
+        team_id: int | None = None, player_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        derived = self._snapshot_transfer_events(conn, career_id, season_index, team_id=team_id, player_id=player_id)
         agreements = self._presigned_transfer_events(conn, career_id, season_index)
         by_pair: dict[tuple[int | None, int | None, int | None], dict[str, Any]] = {
             (as_int(item.get("player_ea_id")), as_int(item.get("from_team_ea_id")), as_int(item.get("to_team_ea_id"))): item
@@ -349,29 +371,45 @@ class AnalysisQueryMixin:
             else:
                 unmatched.append(agreement)
         events = derived + unmatched + self._manual_transaction_events(conn, career_id, season_index, "transfer")
+        if team_id is not None:
+            events = [item for item in events if team_id in
+                      (as_int(item.get("from_team_ea_id")), as_int(item.get("to_team_ea_id")))]
+        if player_id is not None:
+            events = [item for item in events if as_int(item.get("player_ea_id")) == player_id]
         events.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("display_name") or "")), reverse=True)
         return events
 
-    def _season_loan_events(self, conn: Any, career_id: int, season_index: int) -> list[dict[str, Any]]:
+    def _season_loan_events(
+        self, conn: Any, career_id: int, season_index: int, *,
+        team_id: int | None = None, player_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        filters = ["s.career_id=?", "s.season_index=?"]
+        args = [career_id, season_index]
+        if team_id is not None:
+            filters.append("(l.parent_team_ea_id=? OR l.loan_team_ea_id=?)")
+            args.extend((team_id, team_id))
+        if player_id is not None:
+            filters.append("l.player_ea_id=?")
+            args.append(player_id)
         rows = conn.execute(
-            """SELECT l.*,s.id source_snapshot_id,s.career_date,s.import_sequence,
+            f"""SELECT l.*,s.id source_snapshot_id,s.career_date,s.import_sequence,
                       p.display_name,p.overall,p.primary_position,p.raw_json player_raw,
                       parent.team_name parent_team_name,loan.team_name loan_team_name
                FROM loan_states l JOIN snapshots s ON s.id=l.snapshot_id
                LEFT JOIN player_states p ON p.snapshot_id=l.snapshot_id AND p.ea_player_id=l.player_ea_id
                LEFT JOIN team_states parent ON parent.snapshot_id=l.snapshot_id AND parent.ea_team_id=l.parent_team_ea_id
                LEFT JOIN team_states loan ON loan.snapshot_id=l.snapshot_id AND loan.ea_team_id=l.loan_team_ea_id
-               WHERE s.career_id=? AND s.season_index=?
+               WHERE {' AND '.join(filters)}
                ORDER BY s.import_sequence""",
-            (career_id, season_index),
+            args,
         ).fetchall()
         observed: dict[tuple[int, int, int], dict[str, Any]] = {}
         for row in rows:
             item = dict(row)
             key = (int(item["player_ea_id"]), int(item["parent_team_ea_id"]), int(item["loan_team_ea_id"]))
-            raw = parse_raw(item.pop("player_raw", None))
             event = observed.get(key)
             if event is None:
+                raw = parse_raw(item.get("player_raw"))
                 event = {
                     "eventKey": f"loan:{season_index}:{key[0]}:{key[1]}:{key[2]}",
                     "date": item.get("career_date"),
@@ -410,6 +448,11 @@ class AnalysisQueryMixin:
                 "loan_team_name": item.get("to_team_name"),
                 "is_loan_to_buy": None,
             })
+        if team_id is not None:
+            events = [item for item in events if team_id in
+                      (as_int(item.get("parent_team_ea_id")), as_int(item.get("loan_team_ea_id")))]
+        if player_id is not None:
+            events = [item for item in events if as_int(item.get("player_ea_id")) == player_id]
         events.sort(key=lambda item: (str(item.get("date") or ""), str(item.get("display_name") or "")), reverse=True)
         return events
 
@@ -944,9 +987,11 @@ class AnalysisQueryMixin:
             team_id = as_int(option.get("managed_team_ea_id"))
             if index in movements_by_season:
                 transfers, loans = movements_by_season[index]
+            elif team_id is None:
+                transfers, loans = [], []
             else:
-                transfers = self._season_transfer_events(conn, career_id, index)
-                loans = self._season_loan_events(conn, career_id, index)
+                transfers = self._season_transfer_events(conn, career_id, index, team_id=team_id)
+                loans = self._season_loan_events(conn, career_id, index, team_id=team_id)
             own_transfers = [event for event in transfers if team_id is not None and team_id in {as_int(event.get("from_team_ea_id")), as_int(event.get("to_team_ea_id"))}]
             own_loans = [event for event in loans if team_id is not None and team_id in {as_int(event.get("parent_team_ea_id")), as_int(event.get("loan_team_ea_id"))}]
             league = history_by_index.get(index, {})
@@ -1274,18 +1319,44 @@ class AnalysisQueryMixin:
             "notes": notes,
         }
 
-    def _analysis(self, career_id: int, snapshot_id: int, requested_season: int | None = None) -> dict[str, Any]:
+    def _analysis_squad_trend(self, conn: Any, snapshots: list[Any]) -> list[dict[str, Any]]:
+        trend = []
+        for snap in snapshots:
+            player_rows = conn.execute(
+                """SELECT p.overall,p.raw_json FROM roster_states r JOIN player_states p
+                   ON p.snapshot_id=r.snapshot_id AND p.ea_player_id=r.player_ea_id
+                   WHERE r.snapshot_id=? AND r.team_ea_id=?""",
+                (snap["id"], snap["managed_team_ea_id"]),
+            ).fetchall()
+            overalls = [value for row in player_rows if (value := as_int(row["overall"])) is not None]
+            ages = [age for row in player_rows if (age := age_on_date(
+                parse_raw(row["raw_json"]).get("birthdate_raw"), snap["career_date"],
+            )) is not None]
+            trend.append({
+                "snapshot_id": snap["id"],
+                "career_date": snap["career_date"],
+                "season_index": snap["season_index"],
+                "average_overall": round(sum(overalls) / len(overalls), 2) if overalls else None,
+                "average_age": round(sum(ages) / len(ages), 2) if ages else None,
+                "squad_count": len(player_rows),
+            })
+        return trend
+
+    def _analysis(
+        self, career_id: int, snapshot_id: int, requested_season: int | None = None, *,
+        view: str | None = None,
+    ) -> dict[str, Any]:
         with self.state.database.connect() as conn:
             snapshot = self._snapshot(conn, snapshot_id)
             if int(snapshot["career_id"]) != int(career_id):
                 raise ValueError("Snapshot does not belong to the selected career.")
-            options = self._season_options(conn, career_id)
             if requested_season == -1:
+                options = self._season_options(conn, career_id)
                 selected_indices = [int(item["season_index"]) for item in options]
                 selected_label = "All seasons"
                 selected_option = None
             else:
-                selected_index, _, selected_option = self._season_context(conn, snapshot, requested_season)
+                selected_index, options, selected_option = self._season_context(conn, snapshot, requested_season)
                 selected_indices = [selected_index]
                 selected_label = str(selected_option.get("label") or self._season_label(selected_index))
             selected_options = [item for item in options if int(item["season_index"]) in selected_indices]
@@ -1296,6 +1367,38 @@ class AnalysisQueryMixin:
                 (career_id, *values),
             ).fetchall() if values else []
             latest = snapshots[-1] if snapshots else snapshot
+            managed_team_id = as_int(latest["managed_team_ea_id"])
+            scope = {
+                "careerId": career_id,
+                "snapshotId": snapshot_id,
+                "selectedSnapshotId": int(latest["id"]),
+                "seasonOptions": options,
+                "selectedSeasonIndex": -1 if requested_season == -1 else selected_indices[0],
+                "selectedSeasonLabel": selected_label,
+            }
+            match_intelligence = detailed_analysis(
+                conn, career_id, selected_indices, managed_team_id, as_of_import_sequence=int(latest["import_sequence"]),
+            ) if view != "records" else None
+            defense = defense_context(
+                conn, career_id, selected_indices, managed_team_id, as_of_import_sequence=int(latest["import_sequence"]),
+            ) if view in {None, "performance", "season-report"} else None
+            if view == "performance":
+                return {**scope, "matchIntelligence": match_intelligence, "defenseContext": defense}
+            if view == "squad":
+                squad = self._deep_squad_analysis(conn, career_id, snapshots, selected_options)
+                squad.pop("_allPerformance", None)
+                trend = self._analysis_squad_trend(conn, snapshots)
+                latest_squad = trend[-1] if trend else {}
+                return {
+                    **scope, "matchIntelligence": match_intelligence, "squadAnalysis": squad, "squadTrend": trend,
+                    "metrics": {key: latest_squad.get(key, default) for key, default in (
+                        ("squad_count", 0), ("average_overall", None), ("average_age", None),
+                    )},
+                }
+            league_history = self._league_history(conn, career_id, managed_team_id, int(latest["id"])) if managed_team_id is not None else []
+            if view == "seasons":
+                return {**scope, "matchIntelligence": match_intelligence,
+                        "seasonComparison": self._season_comparison(conn, career_id, options, league_history, {})}
 
             match_rows = conn.execute(
                 f"""WITH ranked AS (
@@ -1324,12 +1427,6 @@ class AnalysisQueryMixin:
                 else:
                     goals_for += aw; goals_against += hs
 
-            managed_team_id = as_int(latest["managed_team_ea_id"])
-            match_intelligence = detailed_analysis(conn, career_id, selected_indices, managed_team_id,
-                                                   as_of_import_sequence=int(latest["import_sequence"]))
-            defense = defense_context(conn, career_id, selected_indices, managed_team_id,
-                                      as_of_import_sequence=int(latest["import_sequence"]))
-            league_history = self._league_history(conn, career_id, managed_team_id, int(latest["id"])) if managed_team_id is not None else []
             selected_history = [row for row in league_history if int(row["season_index"]) in selected_indices]
             levels = [as_int(row.get("league_level")) for row in selected_history]
             levels = [level for level in levels if level is not None and level > 0]
@@ -1378,10 +1475,14 @@ class AnalysisQueryMixin:
             transfer_activity: list[dict[str, Any]] = []
             option_by_index = {int(item["season_index"]): item for item in options}
             for index in selected_indices:
-                transfers = self._season_transfer_events(conn, career_id, index)
-                loans = self._season_loan_events(conn, career_id, index)
-                movements_by_season[index] = (transfers, loans)
                 season_team_id = as_int(option_by_index.get(index, {}).get("managed_team_ea_id"))
+                movement_team_id = season_team_id if view is not None else None
+                if view is not None and movement_team_id is None:
+                    transfers, loans = [], []
+                else:
+                    transfers = self._season_transfer_events(conn, career_id, index, team_id=movement_team_id)
+                    loans = self._season_loan_events(conn, career_id, index, team_id=movement_team_id)
+                movements_by_season[index] = (transfers, loans)
                 for event in transfers:
                     event["direction"] = (
                         "Incoming" if season_team_id is not None and as_int(event.get("to_team_ea_id")) == season_team_id
@@ -1436,39 +1537,14 @@ class AnalysisQueryMixin:
                 (career_id, *values),
             ).fetchone()[0] if values else 0
 
-            squad_trend: list[dict[str, Any]] = []
-            for snap in snapshots:
-                player_rows = conn.execute(
-                    """SELECT p.overall,p.raw_json FROM roster_states r JOIN player_states p
-                       ON p.snapshot_id=r.snapshot_id AND p.ea_player_id=r.player_ea_id
-                       WHERE r.snapshot_id=? AND r.team_ea_id=?""",
-                    (snap["id"], snap["managed_team_ea_id"]),
-                ).fetchall()
-                overalls = [as_int(row["overall"]) for row in player_rows if as_int(row["overall"]) is not None]
-                ages = []
-                for row in player_rows:
-                    raw = parse_raw(row["raw_json"])
-                    age = age_on_date(raw.get("birthdate_raw"), snap["career_date"])
-                    if age is not None:
-                        ages.append(age)
-                squad_trend.append({
-                    "snapshot_id": snap["id"],
-                    "career_date": snap["career_date"],
-                    "season_index": snap["season_index"],
-                    "average_overall": round(sum(overalls) / len(overalls), 2) if overalls else None,
-                    "average_age": round(sum(ages) / len(ages), 2) if ages else None,
-                    "squad_count": len(player_rows),
-                })
-
+            trend_snapshots = snapshots if view is None else snapshots[-1:]
+            squad_trend = self._analysis_squad_trend(conn, trend_snapshots) if view != "records" else []
             current_squad = squad_trend[-1] if squad_trend else {"squad_count": 0, "average_overall": None, "average_age": None}
             competitions: list[dict[str, Any]] = []
             leaders: list[dict[str, Any]] = []
-            if len(selected_indices) == 1:
+            if len(selected_indices) == 1 and view != "records":
                 index = selected_indices[0]
-                latest_season_snapshot = conn.execute(
-                    """SELECT * FROM snapshots WHERE career_id=? AND season_index=? ORDER BY import_sequence DESC LIMIT 1""",
-                    (career_id, index),
-                ).fetchone()
+                latest_season_snapshot = snapshots[-1] if snapshots else None
                 if latest_season_snapshot:
                     competitions = rows_to_dicts(conn.execute(
                         """SELECT f.competition_object_id,MAX(fo.competition_name) competition_name,COUNT(*) matches,
@@ -1504,10 +1580,10 @@ class AnalysisQueryMixin:
                         competitions.append(item)
                         known_names.add(name_key)
 
-            deep_squad = self._deep_squad_analysis(conn, career_id, list(snapshots), selected_options)
+            deep_squad = self._deep_squad_analysis(conn, career_id, snapshots, selected_options) if view != "overview" else {}
             all_performance = deep_squad.pop("_allPerformance", [])
-            records = self._record_catalog(list(match_rows), all_performance, all_transfers, selected_label)
-            season_comparison = self._season_comparison(conn, career_id, options, league_history, movements_by_season)
+            records = self._record_catalog(list(match_rows), all_performance, all_transfers, selected_label) if view != "overview" else {}
+            season_comparison = self._season_comparison(conn, career_id, options, league_history, movements_by_season) if view is None else []
 
             unknown_fees = sum(event.get("fee") is None for event in all_transfers if event.get("direction") != "Global")
             quality_items = [
@@ -1519,7 +1595,7 @@ class AnalysisQueryMixin:
             if requested_season != -1 and selected_option and selected_option.get("is_current"):
                 quality_items.append({"level": "info", "label": "Current season is not yet marked as complete"})
             season_report = None
-            if len(selected_indices) == 1:
+            if len(selected_indices) == 1 and view in {None, "season-report"}:
                 report_league = selected_history[-1] if selected_history else None
                 if selected_option and selected_option.get("is_current") and league_context.get("mode") == "current":
                     base = dict(report_league or {})
@@ -1549,12 +1625,7 @@ class AnalysisQueryMixin:
                 season_report["squadAnalysis"] = deep_squad
 
         return {
-            "careerId": career_id,
-            "snapshotId": snapshot_id,
-            "selectedSnapshotId": int(latest["id"]),
-            "seasonOptions": options,
-            "selectedSeasonIndex": -1 if requested_season == -1 else selected_indices[0],
-            "selectedSeasonLabel": selected_label,
+            **scope,
             "metrics": {
                 "seasons": len(selected_indices),
                 "matches": len(match_rows),

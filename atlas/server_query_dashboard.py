@@ -193,7 +193,8 @@ class DashboardQueryMixin:
                                  THEN SUM(CASE WHEN average_rating>0 AND COALESCE(appearances,0)>0 THEN average_rating*appearances ELSE 0 END)
                                     / SUM(CASE WHEN average_rating>0 AND COALESCE(appearances,0)>0 THEN appearances ELSE 0 END)
                             END average_rating
-                     FROM season_stat_states GROUP BY snapshot_id,player_ea_id,represented_team_ea_id
+                     FROM season_stat_states WHERE snapshot_id=?
+                     GROUP BY snapshot_id,player_ea_id,represented_team_ea_id
                    ) stats ON stats.snapshot_id=p.snapshot_id AND stats.player_ea_id=p.ea_player_id AND stats.represented_team_ea_id=p.team_ea_id
                    LEFT JOIN contract_states c ON c.snapshot_id=p.snapshot_id AND c.player_ea_id=p.ea_player_id
                    LEFT JOIN youth_player_states y ON y.snapshot_id=p.snapshot_id AND y.player_ea_id=p.ea_player_id
@@ -201,7 +202,7 @@ class DashboardQueryMixin:
                    WHERE r.snapshot_id=? AND r.team_ea_id=?
                    ORDER BY CASE WHEN r.jersey_number IS NULL OR r.jersey_number=0 THEN 999 ELSE r.jersey_number END,
                             p.display_name""",
-                (snapshot_id, snap["managed_team_ea_id"]),
+                (snapshot_id, snapshot_id, snap["managed_team_ea_id"]),
             ).fetchall()
             team = conn.execute(
                 "SELECT * FROM team_states WHERE snapshot_id=? AND ea_team_id=?",

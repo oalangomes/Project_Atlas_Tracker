@@ -7,6 +7,9 @@ com `mode=ro` e `PRAGMA query_only=ON`. Não houve migração, `VACUUM` nem muda
 no esquema de produção. As alterações neste repositório são somente o protótipo,
 seus testes e este relatório.
 
+A [medição das consultas interativas](atlas-read-performance.md) cobre o Elenco,
+a Análise e a Comissão Técnica no workspace ativo em 26/11/2026.
+
 ## 1. Fluxo confirmado pelo código
 
 | Etapa | Implementação e efeito |

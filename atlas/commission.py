@@ -194,7 +194,7 @@ def _coach_can_answer_information_request(question: str, reason: str) -> bool:
 def _prior_match_context(conn: Any, career_id: int, snapshot: Any, fixture_id: int,
                          managed_team_id: int, match_date: str) -> dict[str, Any]:
     """Build pre-match references from complete exports visible in this career snapshot only."""
-    from .match_stats import detailed_match
+    from .match_stats import detailed_match_teams, linked_match_export
 
     rows = conn.execute(
         """SELECT DISTINCT fo.fixture_id,fo.date,fo.home_team_name,fo.away_team_name,
@@ -223,13 +223,14 @@ def _prior_match_context(conn: Any, career_id: int, snapshot: Any, fixture_id: i
     ).fetchall()
     history: list[dict[str, Any]] = []
     for row in rows:
-        detailed = detailed_match(conn, int(row["fixture_id"]), career_id=career_id,
-                                  as_of_import_sequence=int(snapshot["import_sequence"]),
-                                  season_index=int(snapshot["season_index"]))
-        if not detailed or int(detailed.get("exportId") or -1) != int(row["export_id"]):
+        export = linked_match_export(conn, int(row["fixture_id"]), career_id=career_id,
+                                     as_of_import_sequence=int(snapshot["import_sequence"]),
+                                     season_index=int(snapshot["season_index"]))
+        if not export or export["id"] != row["export_id"]:
             continue
-        own = next((team for team in detailed.get("teams", []) if int(team.get("teamEaId") or -1) == managed_team_id), None)
-        opponent = next((team for team in detailed.get("teams", []) if team is not own), None)
+        teams = detailed_match_teams(conn, export["id"])
+        own = next((team for team in teams if int(team.get("teamEaId") or -1) == managed_team_id), None)
+        opponent = next((team for team in teams if team is not own), None)
         if not own or not opponent:
             continue
         home = int(row["home_team_ea_id"] or -1) == managed_team_id
@@ -3860,7 +3861,7 @@ def get_cached_commission_report(conn: Any, career_id: int, snapshot_id: int, mo
                 "scope_key": scope, "source_hash": current_hash,
                 "snapshot_id": int(row["snapshot_id"]), "generated_at": row["generated_at"], "result": value}
     row = _cached_report_row(conn, career_id, mode, scope)
-    auto_key = f"auto:{career_id}:{mode}:{scope}:{selected}:{current_hash}"
+    auto_key = f"auto:{career_id}:{mode}:{scope}:{current_hash}"
     with _REPORT_JOB_LOCK:
         job_id = _REPORT_JOB_KEYS.get(auto_key)
         job = _REPORT_JOBS.get(job_id) if job_id else None
