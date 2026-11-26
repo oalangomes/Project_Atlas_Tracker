@@ -32,7 +32,7 @@ MIN_USABLE_MINUTES = 300
 MIN_USABLE_GAMES = 3
 RELIABLE_MINUTES = 450
 RELIABLE_GAMES = 5
-METRIC_VERSION = 4
+METRIC_VERSION = 5
 REPORT_VERSION = 37
 MATCH_PLAYER_REPORT_CONTRACT = 8
 MATCH_CONTEXT_REPORT_CONTRACT = 1
@@ -110,9 +110,17 @@ def assess_sample(minutes: int, valid_games: int) -> dict[str, Any]:
 
 
 def _weighted_rating(rows: list[dict[str, Any]]) -> float | None:
-    rated = [(float(r["rating"]), max(1, int(r["minutes_played"] or 0))) for r in rows if r.get("rating") is not None]
+    rated = [(float(r["rating"]), max(1, int(r.get("minutes_played", r.get("minutes")) or 0)))
+             for r in rows if r.get("rating") is not None]
     total = sum(weight for _, weight in rated)
     return round(sum(rating * weight for rating, weight in rated) / total, 2) if total else None
+
+
+def _sporting_order(row: dict[str, Any]) -> tuple[str, str, int, str]:
+    """Fixture date/time and numeric id win over a lexical fixture key."""
+    return (str(row.get("fixture_date") or row.get("date") or ""),
+            str(row.get("fixture_time") or ""), int(row.get("fixture_id") or 0),
+            str(row.get("fixture_key") or ""))
 
 
 def _float(value: Any) -> float | None:
@@ -384,11 +392,12 @@ def _position_group(pos: str | None) -> str:
     if p in {"CB", "LCB", "RCB", "SW"}: return "Zagueiro"
     if p in {"LB", "LWB"}: return "Corredor esquerdo defensivo"
     if p in {"RB", "RWB"}: return "Corredor direito defensivo"
-    if p in {"CDM", "CM"}: return "Meio-campo central"
-    if p in {"CAM"}: return "Meia ofensivo"
+    if p in {"LDM", "RDM", "CDM"}: return "Volante"
+    if p in {"LCM", "RCM", "CM"}: return "Meio-campo central"
+    if p in {"LAM", "RAM", "CAM"}: return "Meia ofensivo"
     if p in {"LM", "LW"}: return "Corredor esquerdo ofensivo"
     if p in {"RM", "RW"}: return "Corredor direito ofensivo"
-    if p in {"ST", "CF"}: return "Atacante"
+    if p in {"LS", "RS", "ST", "CF", "LF", "RF"}: return "Atacante"
     return "N/D"
 
 
@@ -420,7 +429,7 @@ def _function_comparisons(detailed: list[dict[str, Any]]) -> list[dict[str, Any]
         result.append({"position": label, "players": len({int(r["player_ea_id"]) for r in rows}),
                        "matches": totals["appearances"], "minutes": totals["minutes"],
                        "goals_per90": totals["goals_per90"], "xg_per90": totals["xg_per90"],
-                       "xa_per90": totals["xa_per90"], "average_rating": totals["average_rating"],
+                       "xa_per90": totals["xa_per90"], "average_rating": _weighted_rating(rows),
                        "sample": totals["sample"]})
     return result
 
@@ -626,8 +635,7 @@ def analyze_players(players: list[dict[str, Any]], performances: list[dict[str, 
     total_appearances = 0
     for player in players:
         player_id = int(player["ea_player_id"])
-        rows = by_player.get(player_id, [])
-        rows.sort(key=lambda r: (str(r.get("date") or ""), str(r.get("fixture_key") or "")))
+        rows = sorted(by_player.get(player_id, []), key=_sporting_order)
         valid = []
         for row in rows:
             minutes = int(row.get("minutes_played") or 0)
@@ -657,8 +665,33 @@ def analyze_players(players: list[dict[str, Any]], performances: list[dict[str, 
             moment, recommendation = "Estável", "Manter acompanhamento"
         detailed_rows = detail_by_player.get(player_id, [])
         detail_totals = _sum_stats(detailed_rows)
-        # Match-specific positional provenance only: latest-lineup snapshots are excluded.
-        observed_positions = [_position_group(r.get("match_position")) for r in detailed_rows if r.get("match_position")]
+        # Each trusted position describes the entire appearance. Do not split an
+        # appearance into phases when minutes by phase were not captured.
+        role_rows: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        covered_fixtures: set[str] = set()
+        for row in rows:
+            position = trusted_actual_position(row.get("actual_position"), row.get("actual_position_source"))
+            if position and _position_group(position) != "N/D":
+                role_rows[_position_group(position)].append(row)
+                if row.get("fixture_key"):
+                    covered_fixtures.add(str(row["fixture_key"]))
+        for row in detailed_rows:
+            position = row.get("match_position")
+            fixture_key = str(row.get("fixture_key") or "")
+            if position and _position_group(position) != "N/D" and fixture_key not in covered_fixtures:
+                role_rows[_position_group(position)].append({
+                    "minutes_played": row.get("minutes"), "rating": row.get("rating"),
+                    "date": row.get("date"), "fixture_key": fixture_key,
+                })
+                if fixture_key:
+                    covered_fixtures.add(fixture_key)
+        role_evidence = [{"position": label, "matches": len(items),
+                          "minutes": sum(max(0, int(item.get("minutes_played") or 0)) for item in items),
+                          "average_rating": _weighted_rating(items),
+                          "source": "trusted match position"}
+                         for label, items in role_rows.items()]
+        role_evidence.sort(key=lambda item: (-item["minutes"], -item["matches"], item["position"]))
+        dominant_role = role_evidence[0]["position"] if role_evidence else None
         registered_position = player.get("primary_position") or "N/D"
         total_appearances += len(rows)
         result.append({
@@ -669,8 +702,12 @@ def analyze_players(players: list[dict[str, Any]], performances: list[dict[str, 
             "recent_delta": delta, "sample": sample, "moment": moment, "recommendation": recommendation,
             "goals": detail_totals.get("npk_goals"), "assists": detail_totals.get("assists"),
             "detailed_stats": detailed_rows, "metrics": detail_totals,
-            "match_position": observed_positions[-1] if observed_positions else None,
-            "position_sample_source": "posição por atuação registrada no histórico de rating" if observed_positions else "posição principal cadastrada no elenco",
+            "match_position": dominant_role, "observed_roles": role_evidence,
+            "position_sample_source": "posição observada em atuação com origem confiável" if role_evidence else "sem posição observada confiável",
+            "minutes_decision": {"status": "abstain", "reason": "hierarquia formal não registrada"},
+            "recent_fixtures": [{"fixture_key": r.get("fixture_key"), "date": r.get("fixture_date") or r.get("date"),
+                                 "time": r.get("fixture_time"), "minutes": r.get("minutes_played"), "rating": r.get("rating")}
+                                for r in reversed(latest_five)],
             "latest_date": rows[-1].get("date") if rows else None,
             "source": "player_match_performances" if rows else None,
         })
@@ -678,6 +715,29 @@ def analyze_players(players: list[dict[str, Any]], performances: list[dict[str, 
     result.sort(key=lambda p: (p["recent_rating"] is None, -(p["recent_rating"] or 0), p["display_name"].casefold()))
     position_comparisons = _cohort_comparisons(result, "position")
     function_comparisons = _function_comparisons(detailed)
+    for player in result:
+        role = player.get("match_position")
+        own = next((item for item in player["observed_roles"] if item["position"] == role), None)
+        if not own or own["minutes"] < RELIABLE_MINUTES or own["matches"] < RELIABLE_GAMES:
+            player["functional_rival"] = {"status": "insufficient_sample", "position": role,
+                                          "minimum_minutes": RELIABLE_MINUTES, "minimum_matches": RELIABLE_GAMES}
+            continue
+        peers = [(candidate, next((item for item in candidate["observed_roles"] if item["position"] == role), None))
+                 for candidate in result if candidate["player_ea_id"] != player["player_ea_id"] and candidate.get("match_position") == role]
+        eligible = [(candidate, item) for candidate, item in peers if item and item["minutes"] >= RELIABLE_MINUTES
+                    and item["matches"] >= RELIABLE_GAMES and item["average_rating"] is not None]
+        if not eligible or own["average_rating"] is None:
+            player["functional_rival"] = {"status": "no_eligible_rival", "position": role,
+                                          "minimum_minutes": RELIABLE_MINUTES, "minimum_matches": RELIABLE_GAMES}
+            continue
+        rival, evidence = min(eligible, key=lambda pair: (abs(pair[1]["minutes"] - own["minutes"]),
+                                                           -pair[1]["minutes"], pair[0]["player_ea_id"]))
+        player["functional_rival"] = {"status": "comparable", "position": role,
+                                      "player_ea_id": rival["player_ea_id"], "display_name": rival["display_name"],
+                                      "minutes": evidence["minutes"], "matches": evidence["matches"],
+                                      "average_rating": evidence["average_rating"],
+                                      "rating_delta": round(own["average_rating"] - evidence["average_rating"], 2),
+                                      "method": "observed role, trusted appearances, minutes-weighted rating"}
     for player in result:
         player.pop("detailed_stats", None)
     return {
@@ -721,6 +781,18 @@ def _read_data(conn: Any, career_id: int, snapshot_id: int) -> tuple[Any, list[d
         (snapshot_id, team_id, season_start, season_start, next_season_start, next_season_start,
          snapshot["career_date"], snapshot["career_date"]))] if team_id is not None else []
     available_tables = {str(row[0]) for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    if performances and "fixture_observations" in available_tables:
+        columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(fixture_observations)")}
+        if {"fixture_key", "fixture_id", "date"}.issubset(columns):
+            time_expression = "time" if "time" in columns else "NULL"
+            fixture_order = {str(row["fixture_key"]): dict(row) for row in conn.execute(
+                f"SELECT fixture_key,fixture_id,date,{time_expression} fixture_time FROM fixture_observations WHERE snapshot_id=?",
+                (snapshot_id,))}
+            for item in performances:
+                fixture = fixture_order.get(str(item.get("fixture_key") or ""))
+                if fixture:
+                    item.update(fixture_date=fixture["date"], fixture_time=fixture["fixture_time"],
+                                fixture_id=fixture["fixture_id"])
     fixture_rows = []
     if team_id is not None and {"match_stat_exports", "match_team_detailed_stats"}.issubset(available_tables):
         fixture_rows = conn.execute(
