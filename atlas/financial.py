@@ -411,6 +411,7 @@ class FinancialService:
         *,
         roster: sqlite3.Row | dict[str, Any] | None = None,
         contract: sqlite3.Row | dict[str, Any] | None = None,
+        team_state: sqlite3.Row | dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         snap = dict(snapshot)
         item = dict(player)
@@ -419,8 +420,8 @@ class FinancialService:
         roster_raw = parse_raw(roster_item.get("raw_json") or roster_item.get("raw"))
         contract_item = dict(contract) if contract else {}
         team_id = as_int(item.get("team_ea_id"))
-        team = None
-        if team_id is not None:
+        team = team_state
+        if team is None and team_id is not None:
             team = conn.execute(
                 "SELECT * FROM team_states WHERE snapshot_id=? AND ea_team_id=?", (snap["id"], team_id)
             ).fetchone()
@@ -447,17 +448,14 @@ class FinancialService:
 
         managed_team_id = as_int(snap.get("managed_team_ea_id"))
         contract_team_id = as_int(contract_item.get("team_ea_id"))
-        own_outgoing_loan = False
-        if managed_team_id is not None and as_int(item.get("ea_player_id")) is not None:
-            own_outgoing_loan = conn.execute(
+        own_club = managed_team_id is not None and (team_id == managed_team_id or contract_team_id == managed_team_id)
+        if not own_club and managed_team_id is not None and as_int(item.get("ea_player_id")) is not None:
+            own_club = conn.execute(
                 """SELECT 1 FROM loan_states
                    WHERE snapshot_id=? AND player_ea_id=? AND parent_team_ea_id=?
                    LIMIT 1""",
                 (snap["id"], item.get("ea_player_id"), managed_team_id),
             ).fetchone() is not None
-        own_club = managed_team_id is not None and (
-            team_id == managed_team_id or contract_team_id == managed_team_id or own_outgoing_loan
-        )
         if own_club:
             exact_wage = as_int(contract_item.get("wage"))
             wage = {

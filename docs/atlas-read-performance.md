@@ -35,8 +35,32 @@ No SQLite ativo em modo somente leitura, a checagem da partida 1707 no snapshot 
 
 Para guardar projeções completas entre requisições, a invalidação precisaria acompanhar vínculos e supersessões de MatchStats, edições manuais e configurações de apresentação.
 
-Os próximos caminhos para perfil separado são a abertura do elenco com simulação ainda pendente, o cálculo de finanças por atleta e o polling do relógio, que também carrega o histórico recente de transfer pulses. O custo e as dependências da simulação estão na [auditoria de armazenamento](atlas-storage-optimization.md).
+### Finanças e dinâmica do Elenco
+
+A rota de Elenco consulta a dinâmica e os dados financeiros em lote. Depois de verificar a simulação uma vez, lê os estados individuais do snapshot, os vínculos de elenco e os contratos em consultas agrupadas. O cálculo usa uma data efetiva por snapshot e um contexto de mercado por clube durante a requisição. Os salários observados, as avaliações e a ordem da resposta continuam vinculados a cada atleta. As chamadas de perfil individual reutilizam o cálculo com um único ID.
+
+No snapshot 113, com 30 atletas no Elenco e 21.359 estados de jogador no banco, a mediana de quatro leituras passou de **3,852 s para 0,189 s**. As instruções SQL passaram de **545 para 19**, as conexões de **121 para 5** e a verificação da simulação de **30 para 1**. O JSON teve o mesmo SHA-256 nas oito execuções. A medição usou o SQLite ativo em modo somente leitura, com a mesma resposta vazia de mídia nas duas versões. Mede a montagem do Elenco com os estados já calculados.
+
+### Página de Clube
+
+Clube usa o mesmo lote de finanças e dinâmica. Para clubes com jogadores no elenco, a chamada em lote prepara os estados antes de o Clube ler as estatísticas simuladas. Uma consulta ao Clube sem jogadores só prepara a simulação mundial, usada na classificação e nas estatísticas coletivas.
+
+No snapshot 113 do banco ativo, a resposta do Clube com 30 atletas teve o mesmo SHA-256 nas oito execuções. A mediana passou de **4,430 s para 0,546 s**, as instruções SQL de **501 para 60** e as conexões de **129 para 11**. A medição chamou a consulta do Clube sobre SQLite em modo somente leitura, com respostas de mídia vazias e sem decorar o JSON com os filtros da API.
+
+### Primeira abertura do Elenco
+
+`GET /api/snapshots/{id}/squad?view=roster` devolve os dados importados do elenco sem disparar o modelo financeiro ou a simulação. A interface começa pela consulta completa. Se ela ainda estiver pendente após 300 ms, pede a prévia e disponibiliza a lista e os filtros assim que ela chega. Os valores são preenchidos na mesma tabela quando a consulta completa termina. Se ela falhar após a prévia, a lista fica disponível e a interface permite tentar novamente. O GET sem `view` continua devolvendo a resposta completa.
+
+Uma cópia seletiva do banco manteve os estados calculados do snapshot anterior (112) e iniciou o snapshot 113 com a simulação e a dinâmica pendentes. A prévia devolveu as 30 linhas **0,376 s após o início da abertura**, incluindo a espera de 300 ms e concorrendo com a consulta completa. A consulta completa levou **14,097 s**, dos quais **7,284 s** foram da simulação mundial do snapshot. A segunda consulta completa levou **0,193 s** e apresentou o mesmo JSON da primeira. A medição isola mídia e decoração da API. O cenário de vários snapshots anteriores pendentes fica fora desse recorte. O custo e as dependências da simulação estão na [auditoria de armazenamento](atlas-storage-optimization.md).
+
+### Relógio da carreira
+
+A inicialização e o polling usam `GET /api/careers/{id}/clock?view=summary`, que devolve a data efetiva, a fonte e os identificadores. A página de Importações continua usando o formato completo, com contagem e até 20 pulsos recentes. Quando o polling detecta um snapshot novo, o carregamento dos seletores reaproveita o status já recebido e faz uma leitura do relógio.
+
+A versão anterior executava seis instruções SQL para atualizar o relógio. O resumo executou **duas** no mesmo banco, e o relógio completo passou a executar **quatro**, com o mesmo JSON. A carreira medida tinha zero pulsos gravados. O teste com pulsos confirma a seleção da data mais recente e a preservação da lista. O resumo também evita a resolução de nomes e o filtro de apresentação, pois devolve apenas metadados do relógio.
 
 ## Verificação
 
 Execute `py -3 -m unittest discover -s tests -q` e `npm.cmd run build --prefix frontend`. Para reproduzir a medição SQL do elenco, use a consulta de `_squad` em `atlas/server_query_dashboard.py`, compare `EXPLAIN QUERY PLAN` com a revisão anterior e confira o resultado completo no mesmo snapshot. Para as projeções de análise, compare os campos consumidos pela tela com a resposta agregada no mesmo banco e período. As listas de movimentações da visão geral e do relatório usam o recorte do clube gerido.
+
+Em Chrome headless com APIs locais simuladas, a inicialização e o polling buscaram o resumo do relógio. Importações buscou o histórico completo. O teste do Elenco confirmou a prévia, a preservação do foco e do filtro ao chegar o financeiro, além da recuperação após uma falha simulada.

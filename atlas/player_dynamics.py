@@ -5,6 +5,7 @@ import json
 import math
 import sqlite3
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import date
 from typing import Any
 
@@ -974,18 +975,28 @@ class PlayerDynamicsService:
                 )
 
     def analyze(self, snapshot_id: int, player_id: int) -> dict[str, Any]:
+        return self.analyze_many(snapshot_id, (player_id,))[player_id]
+
+    def analyze_many(self, snapshot_id: int, player_ids: Iterable[int]) -> dict[int, dict[str, Any]]:
+        ids = tuple(dict.fromkeys(player_ids))
+        if not ids:
+            return {}
         self.ensure_snapshot(snapshot_id)
         with self.database.connect() as conn:
-            row = conn.execute(
+            rows = conn.execute(
                 "SELECT ds.*,p.display_name,p.primary_position,p.team_ea_id,p.team_name,t.league_ea_id,t.league_name "
                 "FROM player_dynamic_states ds JOIN player_states p ON p.snapshot_id=ds.snapshot_id AND p.ea_player_id=ds.player_ea_id "
                 "LEFT JOIN team_states t ON t.snapshot_id=p.snapshot_id AND t.ea_team_id=p.team_ea_id "
-                "WHERE ds.snapshot_id=? AND ds.player_ea_id=?",
-                (snapshot_id, player_id),
-            ).fetchone()
-            if not row:
-                raise ValueError("Dynamic performance value could not be calculated.")
-            item = dict(row)
+                "WHERE ds.snapshot_id=? AND ds.player_ea_id IN (SELECT value FROM json_each(?))",
+                (snapshot_id, json.dumps(ids)),
+            ).fetchall()
+        if len(rows) != len(ids):
+            raise ValueError("Dynamic performance value could not be calculated.")
+        return {int(row["player_ea_id"]): self._analysis_payload(row) for row in rows}
+
+    @staticmethod
+    def _analysis_payload(row: sqlite3.Row) -> dict[str, Any]:
+        item = dict(row)
         stats = json.loads(item.pop("stats_json") or "{}")
         breakdown = json.loads(item.pop("breakdown_json") or "{}")
         model_version = item.pop("model_version")

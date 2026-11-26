@@ -18,7 +18,9 @@ def latest_snapshot(conn: sqlite3.Connection, career_id: int) -> sqlite3.Row | N
         (career_id,),
     ).fetchone()
 
-def career_clock(conn: sqlite3.Connection, career_id: int) -> dict[str, Any]:
+def career_clock(
+    conn: sqlite3.Connection, career_id: int, *, snapshot: sqlite3.Row | None = None,
+) -> dict[str, Any]:
     """Return the canonical live FC career clock for a career.
 
     Full snapshots remain the authoritative data state for attributes, fixtures and
@@ -26,11 +28,13 @@ def career_clock(conn: sqlite3.Connection, career_id: int) -> dict[str, Any]:
     career date (and matching season/team metadata) between full snapshots. An old
     pulse can never move the clock backwards behind the latest full snapshot.
     """
-    snapshot = latest_snapshot(conn, career_id)
+    if snapshot is None:
+        snapshot = latest_snapshot(conn, career_id)
     if not snapshot:
         raise ValueError("The career clock requires at least one complete snapshot.")
     pulse = conn.execute(
-        "SELECT * FROM transfer_pulses WHERE career_id=? ORDER BY career_date_sort DESC,id DESC LIMIT 1",
+        "SELECT id,career_date,season_index,managed_team_ea_id FROM transfer_pulses "
+        "WHERE career_id=? ORDER BY career_date_sort DESC,id DESC LIMIT 1",
         (career_id,),
     ).fetchone()
     snapshot_date = str(snapshot["career_date"] or "")[:10]
@@ -67,7 +71,7 @@ def effective_career_date(conn: sqlite3.Connection, snapshot: sqlite3.Row | dict
     latest = latest_snapshot(conn, career_id)
     if not latest or int(latest["id"]) != snapshot_id:
         return snapshot_date
-    return str(career_clock(conn, career_id)["careerDate"])
+    return str(career_clock(conn, career_id, snapshot=latest)["careerDate"])
 
 def parse_raw(raw: Any) -> dict[str, Any]:
     if not raw:

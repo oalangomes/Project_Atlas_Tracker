@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import sqlite3
+from collections.abc import Iterable
 from datetime import date
 from typing import Any
 
@@ -241,188 +242,228 @@ class PlayerFinanceService:
         return _clamp(0.78 + domestic * 0.020 + international * 0.025 + max(0, overall - 65) * 0.003, 0.80, 1.18)
 
     def analyze(self, snapshot_id: int, player_id: int) -> dict[str, Any]:
-        dynamic = self.player_dynamics.analyze(snapshot_id, player_id)
+        return self.analyze_many(snapshot_id, (player_id,))[player_id]
+
+    def analyze_many(self, snapshot_id: int, player_ids: Iterable[int]) -> dict[int, dict[str, Any]]:
+        ids = tuple(dict.fromkeys(player_ids))
+        if not ids:
+            return {}
+        dynamics = self.player_dynamics.analyze_many(snapshot_id, ids)
         with self.database.connect() as conn:
             snapshot = conn.execute("SELECT * FROM snapshots WHERE id=?", (snapshot_id,)).fetchone()
             if not snapshot:
                 raise ValueError("Snapshot not found.")
-            player = conn.execute(
-                "SELECT * FROM player_states WHERE snapshot_id=? AND ea_player_id=?", (snapshot_id, player_id)
-            ).fetchone()
-            if not player:
-                raise ValueError("Player not found in the selected snapshot.")
-            roster = conn.execute(
-                "SELECT * FROM roster_states WHERE snapshot_id=? AND player_ea_id=?", (snapshot_id, player_id)
-            ).fetchone()
-            contract = conn.execute(
-                "SELECT * FROM contract_states WHERE snapshot_id=? AND player_ea_id=?", (snapshot_id, player_id)
-            ).fetchone()
-            team = conn.execute(
-                "SELECT * FROM team_states WHERE snapshot_id=? AND ea_team_id=?", (snapshot_id, player["team_ea_id"])
-            ).fetchone() if player["team_ea_id"] is not None else None
-            legacy = self.financial.calculate_player(conn, snapshot, player, roster=roster, contract=contract)
-            raw = parse_raw(player["raw_json"])
+            bindings = (snapshot_id, json.dumps(ids))
+            players = {row["ea_player_id"]: row for row in conn.execute(
+                "SELECT * FROM player_states WHERE snapshot_id=? AND ea_player_id IN (SELECT value FROM json_each(?))",
+                bindings,
+            )}
+            contracts = {row["player_ea_id"]: row for row in conn.execute(
+                "SELECT * FROM contract_states WHERE snapshot_id=? AND player_ea_id IN (SELECT value FROM json_each(?))",
+                bindings,
+            )}
+            rosters: dict[int, sqlite3.Row] = {}
+            for row in conn.execute(
+                "SELECT * FROM roster_states WHERE snapshot_id=? AND player_ea_id IN (SELECT value FROM json_each(?)) "
+                "ORDER BY team_ea_id", bindings,
+            ):
+                # Keep the first roster row in the existing primary-key order.
+                rosters.setdefault(row["player_ea_id"], row)
             evaluation_date = effective_career_date(conn, snapshot)
-            age = age_on_date(raw.get("birthdate_raw"), evaluation_date)
-            overall = as_int(player["overall"]) or 0
-            potential = as_int(player["potential"]) or overall
-            dynamic_overall = float(dynamic.get("dynamicOverallExact") or overall)
-            contract_years = self._contract_years(player["contract_valid_until"], evaluation_date)
-            stats = dynamic.get("stats") or {}
+            clubs: dict[int | None, tuple[sqlite3.Row | None, dict[str, Any], float | None]] = {}
+            result = {}
+            for player_id in ids:
+                player = players.get(player_id)
+                if player is None:
+                    raise ValueError("Player not found in the selected snapshot.")
+                team_id = as_int(player["team_ea_id"])
+                if team_id not in clubs:
+                    team = None
+                    squad_average = None
+                    if team_id is not None:
+                        team = conn.execute(
+                            "SELECT * FROM team_states WHERE snapshot_id=? AND ea_team_id=?",
+                            (snapshot_id, team_id),
+                        ).fetchone()
+                        squad_average = live_squad_strength(conn, snapshot_id, team_id)["average"]
+                    clubs[team_id] = (team, self._league_market_context(team, snapshot, evaluation_date), squad_average)
+                team, league_context, squad_average = clubs[team_id]
+                contract = contracts.get(player_id)
+                legacy = self.financial.calculate_player(
+                    conn, snapshot, player, roster=rosters.get(player_id), contract=contract, team_state=team,
+                )
+                result[player_id] = self._analyze_player(
+                    conn, snapshot, player, contract, dynamics[player_id], legacy,
+                    evaluation_date, team, league_context, squad_average,
+                )
+        return result
 
-            league_context = self._league_market_context(team, snapshot, evaluation_date)
-            league_factor = float(league_context["factor"])
-            team_strength = live_squad_strength(conn, snapshot_id, int(player["team_ea_id"])) if player["team_ea_id"] is not None else {"average": None}
-            club_factor = self._club_market_factor(team, team_strength["average"])
-            age_factor = self._age_market_factor(age, dynamic_overall)
-            position_factor = self._position_market_factor(player["primary_position"])
-            gap = max(0.0, potential - overall)
-            development_weight = 0.045 if age is not None and age <= 20 else 0.035 if age is not None and age <= 23 else 0.018 if age is not None and age <= 26 else 0.006
-            potential_factor = _clamp(1 + gap * development_weight, 1.0, 1.78)
-            reputation = _raw_number(raw, ("international_reputation", "internationalreputation", "reputation"))
-            reputation_factor = _clamp(0.96 + (float(reputation or 1) - 1) * 0.040, 0.96, 1.12)
-            if contract_years < 0.5:
-                contract_factor = 0.58
-            elif contract_years < 1.25:
-                contract_factor = 0.78
-            elif contract_years < 2.25:
-                contract_factor = 0.96
-            elif contract_years < 3.5:
-                contract_factor = 1.04
-            else:
-                contract_factor = 1.08
-            team_gender = as_int(team["gender"]) if team is not None else None
-            is_women = self.financial._is_women(raw, parse_raw(team["raw_json"]) if team is not None else {})
-            market_scale = 0.045 if is_women else 1.0
+    def _analyze_player(
+        self, conn: sqlite3.Connection, snapshot: sqlite3.Row, player: sqlite3.Row,
+        contract: sqlite3.Row | None, dynamic: dict[str, Any], legacy: dict[str, Any],
+        evaluation_date: str, team: sqlite3.Row | None, league_context: dict[str, Any],
+        squad_average: float | None,
+    ) -> dict[str, Any]:
+        snapshot_id = int(snapshot["id"])
+        player_id = int(player["ea_player_id"])
+        raw = parse_raw(player["raw_json"])
+        age = age_on_date(raw.get("birthdate_raw"), evaluation_date)
+        overall = as_int(player["overall"]) or 0
+        potential = as_int(player["potential"]) or overall
+        dynamic_overall = float(dynamic.get("dynamicOverallExact") or overall)
+        contract_years = self._contract_years(player["contract_valid_until"], evaluation_date)
+        stats = dynamic.get("stats") or {}
 
-            # Temporary form must matter without turning three hot months into a
-            # permanent world-record premium. Its share therefore falls toward the
-            # elite end; this is the one and only performance input to market value.
-            dynamic_delta = float(dynamic.get("delta") or 0)
-            dynamic_market_weight = _clamp(.72 - max(0.0, overall - 78.0) * .022, .32, .72)
-            market_rating = _clamp(overall + dynamic_delta * dynamic_market_weight, 35.0, 99.0)
-            quality_core = _interpolate_anchor(market_rating, MARKET_VALUE_ANCHORS)
-            elite_context_damping = _clamp(1.0 - max(0.0, market_rating - 82.0) * .045, .35, 1.0)
-            applied_factors = {
-                "age": 1.0 + (age_factor - 1.0) * elite_context_damping,
-                "potential": 1.0 + (potential_factor - 1.0) * elite_context_damping,
-                "position": 1.0 + (position_factor - 1.0) * elite_context_damping,
-                "league": 1.0 + (league_factor - 1.0) * elite_context_damping,
-                "club": 1.0 + (club_factor - 1.0) * elite_context_damping,
-                "reputation": 1.0 + (reputation_factor - 1.0) * elite_context_damping,
-                "contract": 1.0 + (contract_factor - 1.0) * elite_context_damping,
-            }
-            atlas_value = _round_major(
-                quality_core * math.prod(applied_factors.values()) * market_scale
-            )
-            coverage_missing = sum(1 for value in (age, player["team_ea_id"], team, stats.get("average_rating")) if value is None)
-            performance_source = dynamic.get("performanceSource")
-            source_uncertainty = 0.06 if performance_source == "simulated" else 0.03 if performance_source == "hybrid" else 0.0
-            uncertainty = _clamp(0.10 + coverage_missing * 0.035 + source_uncertainty, 0.10, 0.30)
-            low = _round_major(atlas_value * (1 - uncertainty))
-            high = _round_major(atlas_value * (1 + uncertainty))
+        league_factor = float(league_context["factor"])
+        club_factor = self._club_market_factor(team, squad_average)
+        age_factor = self._age_market_factor(age, dynamic_overall)
+        position_factor = self._position_market_factor(player["primary_position"])
+        gap = max(0.0, potential - overall)
+        development_weight = 0.045 if age is not None and age <= 20 else 0.035 if age is not None and age <= 23 else 0.018 if age is not None and age <= 26 else 0.006
+        potential_factor = _clamp(1 + gap * development_weight, 1.0, 1.78)
+        reputation = _raw_number(raw, ("international_reputation", "internationalreputation", "reputation"))
+        reputation_factor = _clamp(0.96 + (float(reputation or 1) - 1) * 0.040, 0.96, 1.12)
+        if contract_years < 0.5:
+            contract_factor = 0.58
+        elif contract_years < 1.25:
+            contract_factor = 0.78
+        elif contract_years < 2.25:
+            contract_factor = 0.96
+        elif contract_years < 3.5:
+            contract_factor = 1.04
+        else:
+            contract_factor = 1.08
+        team_gender = as_int(team["gender"]) if team is not None else None
+        is_women = self.financial._is_women(raw, parse_raw(team["raw_json"]) if team is not None else {})
+        market_scale = 0.045 if is_women else 1.0
 
-            avg_squad = float(team_strength["average"] if team_strength["average"] is not None else overall)
-            usage = int(stats.get("appearances") or 0) / max(1, int((dynamic.get("breakdown") or {}).get("teamMatches") or 1))
-            importance = _clamp(1 + (dynamic_overall - avg_squad) * 0.027 + min(0.10, usage * 0.10), 0.93, 1.28)
-            seller_ask = _round_major(high * importance)
-            seller_floor = _round_major(low * _clamp(0.96 + (contract_years - 1) * 0.025, 0.78, 1.06))
+        # Temporary form must matter without turning three hot months into a
+        # permanent world-record premium. Its share therefore falls toward the
+        # elite end; this is the one and only performance input to market value.
+        dynamic_delta = float(dynamic.get("delta") or 0)
+        dynamic_market_weight = _clamp(.72 - max(0.0, overall - 78.0) * .022, .32, .72)
+        market_rating = _clamp(overall + dynamic_delta * dynamic_market_weight, 35.0, 99.0)
+        quality_core = _interpolate_anchor(market_rating, MARKET_VALUE_ANCHORS)
+        elite_context_damping = _clamp(1.0 - max(0.0, market_rating - 82.0) * .045, .35, 1.0)
+        applied_factors = {
+            "age": 1.0 + (age_factor - 1.0) * elite_context_damping,
+            "potential": 1.0 + (potential_factor - 1.0) * elite_context_damping,
+            "position": 1.0 + (position_factor - 1.0) * elite_context_damping,
+            "league": 1.0 + (league_factor - 1.0) * elite_context_damping,
+            "club": 1.0 + (club_factor - 1.0) * elite_context_damping,
+            "reputation": 1.0 + (reputation_factor - 1.0) * elite_context_damping,
+            "contract": 1.0 + (contract_factor - 1.0) * elite_context_damping,
+        }
+        atlas_value = _round_major(
+            quality_core * math.prod(applied_factors.values()) * market_scale
+        )
+        coverage_missing = sum(1 for value in (age, player["team_ea_id"], team, stats.get("average_rating")) if value is None)
+        performance_source = dynamic.get("performanceSource")
+        source_uncertainty = 0.06 if performance_source == "simulated" else 0.03 if performance_source == "hybrid" else 0.0
+        uncertainty = _clamp(0.10 + coverage_missing * 0.035 + source_uncertainty, 0.10, 0.30)
+        low = _round_major(atlas_value * (1 - uncertainty))
+        high = _round_major(atlas_value * (1 + uncertainty))
 
-            managed_team_id = as_int(snapshot["managed_team_ea_id"])
-            # A snapshot contract wage is the strongest salary evidence regardless
-            # of club ownership. Historically PlayerFinance only exposed observed
-            # wages for the managed club, which made foreign-player negotiations
-            # lose a perfectly usable snapshot salary. When no contract wage is
-            # present, the existing atlas-player-finance-v4 market-wage model below
-            # remains the single fallback; no second salary model is introduced.
-            observed_current_wage = as_int(contract["wage"]) if contract is not None else None
-            current_wage = observed_current_wage
-            # Wages have their own curve. Temporary form affects salary expectations
-            # much more slowly than transfer value, so only 35% of the Dynamic-OVR
-            # change is used for a hypothetical new contract.
-            wage_overall = _clamp(overall + float(dynamic.get("delta") or 0) * .35, 35.0, 99.0)
-            wage_base = _interpolate_anchor(wage_overall, WEEKLY_WAGE_ANCHORS)
-            wage_age = 0.80 if age is not None and age <= 20 else 0.90 if age is not None and age <= 23 else 1.0 if age is None or age <= 30 else 0.95
-            wage_reputation = _clamp(0.94 + (float(reputation or 1) - 1) * .065, .94, 1.20)
-            wage_position = 1.05 if str(player["primary_position"] or "").upper() in {"ST", "CF", "LW", "RW", "CAM", "ZOM"} else 1.0
-            market_wage = _round_wage(
-                wage_base * wage_age * _clamp(league_factor, .78, 1.14)
-                * _clamp(club_factor, .84, 1.14) * wage_reputation * wage_position
-            )
-            current_anchor = int(current_wage) if current_wage is not None else market_wage
-            demand_center = max(market_wage, int(current_anchor * (1.07 if contract_years <= 1.25 else 1.0)))
-            demand_low = _round_wage(demand_center * 0.95)
-            demand_high = _round_wage(demand_center * (1.15 if dynamic_overall >= avg_squad + 3 else 1.09))
+        avg_squad = float(squad_average if squad_average is not None else overall)
+        usage = int(stats.get("appearances") or 0) / max(1, int((dynamic.get("breakdown") or {}).get("teamMatches") or 1))
+        importance = _clamp(1 + (dynamic_overall - avg_squad) * 0.027 + min(0.10, usage * 0.10), 0.93, 1.28)
+        seller_ask = _round_major(high * importance)
+        seller_floor = _round_major(low * _clamp(0.96 + (contract_years - 1) * 0.025, 0.78, 1.06))
 
-            override = self._override(conn, int(snapshot["career_id"]), snapshot_id, player_id)
-            if override:
-                if override.get("market_value_minor") is not None:
-                    atlas_value = int(override["market_value_minor"]) // 100
-                    low = _round_major(atlas_value * (1 - uncertainty))
-                    high = _round_major(atlas_value * (1 + uncertainty))
-                    seller_ask = _round_major(high * importance)
-                    seller_floor = _round_major(low * _clamp(0.96 + (contract_years - 1) * 0.025, 0.78, 1.06))
-                if override.get("market_wage_weekly_minor") is not None:
-                    market_wage = int(override["market_wage_weekly_minor"]) // 100
-                    demand_low = _round_wage(market_wage * 0.95)
-                    demand_high = _round_wage(market_wage * 1.15)
+        # A snapshot contract wage is the strongest salary evidence regardless
+        # of club ownership. Historically PlayerFinance only exposed observed
+        # wages for the managed club, which made foreign-player negotiations
+        # lose a perfectly usable snapshot salary. When no contract wage is
+        # present, the existing atlas-player-finance-v4 market-wage model below
+        # remains the single fallback; no second salary model is introduced.
+        observed_current_wage = as_int(contract["wage"]) if contract is not None else None
+        current_wage = observed_current_wage
+        # Wages have their own curve. Temporary form affects salary expectations
+        # much more slowly than transfer value, so only 35% of the Dynamic-OVR
+        # change is used for a hypothetical new contract.
+        wage_overall = _clamp(overall + float(dynamic.get("delta") or 0) * .35, 35.0, 99.0)
+        wage_base = _interpolate_anchor(wage_overall, WEEKLY_WAGE_ANCHORS)
+        wage_age = 0.80 if age is not None and age <= 20 else 0.90 if age is not None and age <= 23 else 1.0 if age is None or age <= 30 else 0.95
+        wage_reputation = _clamp(0.94 + (float(reputation or 1) - 1) * .065, .94, 1.20)
+        wage_position = 1.05 if str(player["primary_position"] or "").upper() in {"ST", "CF", "LW", "RW", "CAM", "ZOM"} else 1.0
+        market_wage = _round_wage(
+            wage_base * wage_age * _clamp(league_factor, .78, 1.14)
+            * _clamp(club_factor, .84, 1.14) * wage_reputation * wage_position
+        )
+        current_anchor = int(current_wage) if current_wage is not None else market_wage
+        demand_center = max(market_wage, int(current_anchor * (1.07 if contract_years <= 1.25 else 1.0)))
+        demand_low = _round_wage(demand_center * 0.95)
+        demand_high = _round_wage(demand_center * (1.15 if dynamic_overall >= avg_squad + 3 else 1.09))
 
-            factors = [
-                self._factor("Leistungsniveau", 1.0, f"Basis-OVR {overall}; Dynamic OVR {dynamic_overall:.1f} ({dynamic_delta:+.1f}) has a one-time, dampened effect as market rating {market_rating:.1f}."),
-                self._factor("Liga-Markt", applied_factors["league"], f"{league_context['leagueName'] or 'Liga unknown'} · Profil {league_context['profileKey']} · quality {league_context['quality']}."),
-                self._factor("Club context", applied_factors["club"], "Prestige, international standing and squad strength affect demand and visibility."),
-                self._factor("Potenzial", applied_factors["potential"], f"POT gap to unchanged base OVR: {gap:.1f}."),
-                self._factor("Alter & Wiederverkauf", applied_factors["age"], f"Alter {age if age is not None else 'unknown'}."),
-                self._factor("Positioneller Markt", applied_factors["position"], "Position-specific scarcity and real-world price levels."),
-                self._factor("Contract term", applied_factors["contract"], f"Approximately {contract_years:.1f} contract years."),
-                self._factor("Reputation", applied_factors["reputation"], "Internationale Reputation, soweit im Snapshot vorhanden."),
-            ]
+        override = self._override(conn, int(snapshot["career_id"]), snapshot_id, player_id)
+        if override:
+            if override.get("market_value_minor") is not None:
+                atlas_value = int(override["market_value_minor"]) // 100
+                low = _round_major(atlas_value * (1 - uncertainty))
+                high = _round_major(atlas_value * (1 + uncertainty))
+                seller_ask = _round_major(high * importance)
+                seller_floor = _round_major(low * _clamp(0.96 + (contract_years - 1) * 0.025, 0.78, 1.06))
+            if override.get("market_wage_weekly_minor") is not None:
+                market_wage = int(override["market_wage_weekly_minor"]) // 100
+                demand_low = _round_wage(market_wage * 0.95)
+                demand_high = _round_wage(market_wage * 1.15)
 
-            return {
-                "modelId": MODEL_ID,
-                "mode": QUALITY,
-                "player": {"eaPlayerId": player_id, "displayName": player["display_name"], "position": player["primary_position"], "overall": overall, "potential": potential, "age": age},
-                "dynamic": dynamic,
-                "legacy": {
-                    "marketValue": legacy.get("market_value", {}).get("value"),
-                    "weeklyWage": legacy.get("weekly_wage", {}).get("value"),
-                    "marketLabel": "EA-Kontrollwert",
-                    "wageLabel": legacy.get("weekly_wage", {}).get("label"),
-                },
-                "market": {
-                    "value": atlas_value, "rangeLow": low, "rangeHigh": high,
-                    "sellerFloor": seller_floor, "sellerAsk": seller_ask,
-                    "uncertaintyPct": round(uncertainty * 100, 1),
-                    "overridden": bool(override and override.get("market_value_minor") is not None),
-                    "primary": True,
-                },
-                "wage": {
-                    "current": current_wage, "currentObserved": current_wage,
-                    "display": current_wage if current_wage is not None else market_wage,
-                    "displayLabel": "Snapshot-Wochengehalt" if current_wage is not None else "Atlas-Wochengehalt",
-                    "operativeSource": "snapshot_contract" if current_wage is not None else "atlas_player_finance_v4",
-                    "annualDisplay": (current_wage if current_wage is not None else market_wage) * 52,
-                    "market": market_wage, "annualMarket": market_wage * 52,
-                    "demandLow": demand_low, "demandHigh": demand_high,
-                    "overridden": bool(override and override.get("market_wage_weekly_minor") is not None),
-                },
-                "factors": factors,
-                "stats": stats,
-                "context": {
-                    "contractYears": round(contract_years, 2), "squadAverageOverall": round(avg_squad, 2),
-                    "importanceFactor": round(importance, 3), "positionGroup": position_group(player["primary_position"]),
-                    "teamMatches": (dynamic.get("breakdown") or {}).get("teamMatches"),
-                    "leagueMarket": league_context, "clubMarketFactor": round(club_factor, 3),
-                    "eliteContextDamping": round(elite_context_damping, 3),
-                    "dynamicMarketWeight": round(dynamic_market_weight, 3),
-                    "marketRating": round(market_rating, 2),
-                    "gender": team_gender, "marketScale": market_scale,
-                },
-                "override": override,
-                "notes": [
-                    "Atlas market value is the primary independent valuation and does not imitate the EA formula.",
-                    "In-game OVR and POT remain unchanged; the seasonal Atlas performance value is separate.",
-                    "Simulated performance data is clearly labelled and is not claimed as match history.",
-                    "A club asking price is not a neutral market value.",
-                ],
-            }
+        factors = [
+            self._factor("Leistungsniveau", 1.0, f"Basis-OVR {overall}; Dynamic OVR {dynamic_overall:.1f} ({dynamic_delta:+.1f}) has a one-time, dampened effect as market rating {market_rating:.1f}."),
+            self._factor("Liga-Markt", applied_factors["league"], f"{league_context['leagueName'] or 'Liga unknown'} · Profil {league_context['profileKey']} · quality {league_context['quality']}."),
+            self._factor("Club context", applied_factors["club"], "Prestige, international standing and squad strength affect demand and visibility."),
+            self._factor("Potenzial", applied_factors["potential"], f"POT gap to unchanged base OVR: {gap:.1f}."),
+            self._factor("Alter & Wiederverkauf", applied_factors["age"], f"Alter {age if age is not None else 'unknown'}."),
+            self._factor("Positioneller Markt", applied_factors["position"], "Position-specific scarcity and real-world price levels."),
+            self._factor("Contract term", applied_factors["contract"], f"Approximately {contract_years:.1f} contract years."),
+            self._factor("Reputation", applied_factors["reputation"], "Internationale Reputation, soweit im Snapshot vorhanden."),
+        ]
+
+        return {
+            "modelId": MODEL_ID,
+            "mode": QUALITY,
+            "player": {"eaPlayerId": player_id, "displayName": player["display_name"], "position": player["primary_position"], "overall": overall, "potential": potential, "age": age},
+            "dynamic": dynamic,
+            "legacy": {
+                "marketValue": legacy.get("market_value", {}).get("value"),
+                "weeklyWage": legacy.get("weekly_wage", {}).get("value"),
+                "marketLabel": "EA-Kontrollwert",
+                "wageLabel": legacy.get("weekly_wage", {}).get("label"),
+            },
+            "market": {
+                "value": atlas_value, "rangeLow": low, "rangeHigh": high,
+                "sellerFloor": seller_floor, "sellerAsk": seller_ask,
+                "uncertaintyPct": round(uncertainty * 100, 1),
+                "overridden": bool(override and override.get("market_value_minor") is not None),
+                "primary": True,
+            },
+            "wage": {
+                "current": current_wage, "currentObserved": current_wage,
+                "display": current_wage if current_wage is not None else market_wage,
+                "displayLabel": "Snapshot-Wochengehalt" if current_wage is not None else "Atlas-Wochengehalt",
+                "operativeSource": "snapshot_contract" if current_wage is not None else "atlas_player_finance_v4",
+                "annualDisplay": (current_wage if current_wage is not None else market_wage) * 52,
+                "market": market_wage, "annualMarket": market_wage * 52,
+                "demandLow": demand_low, "demandHigh": demand_high,
+                "overridden": bool(override and override.get("market_wage_weekly_minor") is not None),
+            },
+            "factors": factors,
+            "stats": stats,
+            "context": {
+                "contractYears": round(contract_years, 2), "squadAverageOverall": round(avg_squad, 2),
+                "importanceFactor": round(importance, 3), "positionGroup": position_group(player["primary_position"]),
+                "teamMatches": (dynamic.get("breakdown") or {}).get("teamMatches"),
+                "leagueMarket": league_context.copy(), "clubMarketFactor": round(club_factor, 3),
+                "eliteContextDamping": round(elite_context_damping, 3),
+                "dynamicMarketWeight": round(dynamic_market_weight, 3),
+                "marketRating": round(market_rating, 2),
+                "gender": team_gender, "marketScale": market_scale,
+            },
+            "override": override,
+            "notes": [
+                "Atlas market value is the primary independent valuation and does not imitate the EA formula.",
+                "In-game OVR and POT remain unchanged; the seasonal Atlas performance value is separate.",
+                "Simulated performance data is clearly labelled and is not claimed as match history.",
+                "A club asking price is not a neutral market value.",
+            ],
+        }

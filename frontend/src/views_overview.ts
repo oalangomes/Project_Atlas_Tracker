@@ -9,13 +9,44 @@ async function renderOverview() {
       <aside class="dashboard-side"><section class="card"><header class="card-header"><h2>Top players</h2><button class="entity-link" data-route="squad">Squad</button></header><div class="card-body list">${d.topPlayers.map((p: any) => `<div class="list-row">${playerPortrait(p.media, p.display_name, "list-portrait")}<div class="list-main">${playerLink(p.ea_player_id, p.display_name)}<small>${pos(p.primary_position)} · #${num(p.jersey_number)}</small></div>${overallBadge(p.overall)}</div>`).join("")}</div></section><section class="card"><header class="card-header"><h2>Top scorers</h2></header><div class="card-body list">${d.leaders.map((p: any) => `<div class="list-row"><div class="list-main">${playerLink(p.player_ea_id, p.display_name)}<small>${num(p.appearances)} apps · ${ratingValue(p.average_rating, true)} avg.</small></div><div class="list-value"><strong>${num(p.goals)} G</strong><small>${num(p.assists)} A</small></div></div>`).join("") || '<span class="muted">No season statistics.</span>'}</div></section><section class="card"><header class="card-header"><h2>Snapshot timeline</h2><button class="entity-link" data-route="snapshots">Open</button></header><div class="card-body timeline">${d.timeline.slice(-6).reverse().map((s: any) => `<div class="timeline-item ${Number(s.id) === Number(state.snapshotId) ? "current" : ""}"><h3>${dateText(s.career_date)}</h3><p>${esc(s.season_label || "Season unknown")}${s.career_season_number ? ` · Career season ${num(s.career_season_number)}` : ""} · Sequence ${num(s.import_sequence)}</p></div>`).join("")}</div></section></aside></div></div>`;
 }
 
+type SquadFinanceState = "ready" | "loading" | "failed";
+let squadRenderToken = 0;
+
 async function renderSquad() {
-    const d = await api(`/api/snapshots/${state.snapshotId}/squad`);
+    const snapshotId = state.snapshotId;
+    const token = ++squadRenderToken;
+    const isCurrent = () => token === squadRenderToken && state.route === "squad" && state.snapshotId === snapshotId;
+    const path = `/api/snapshots/${snapshotId}/squad`;
+    const full = api(path).then(data => ({data, error: null}), error => ({data: null, error}));
+    let timer = 0;
+    const preview = new Promise<JsonRecord | null>(resolve => {
+        timer = window.setTimeout(() => {
+            if (isCurrent()) api(`${path}?view=roster`).then(resolve, () => resolve(null));
+            else resolve(null);
+        }, 300);
+    });
+    const first = await Promise.race([
+        full.then(result => ({kind: "full", result} as const)),
+        preview.then(data => ({kind: "preview", data} as const)),
+    ]);
+    window.clearTimeout(timer);
+    if (!isCurrent()) return;
+    if (first.kind === "preview" && first.data) {
+        const roster = first.data;
+        const update = mountSquad(roster, "loading");
+        void full.then(result => {
+            if (isCurrent()) update(result.data ?? roster, result.data ? "ready" : "failed");
+        });
+        return;
+    }
+    const result = first.kind === "full" ? first.result : await full;
+    if (!isCurrent()) return;
+    if (!result.data) throw result.error;
+    mountSquad(result.data, "ready");
+}
+
+function mountSquad(d: JsonRecord, financeState: SquadFinanceState) {
     const positions = [...new Set(d.players.map((p: any) => pos(p.primary_position)))].sort((a: any, b: any) => positionOrder(a) - positionOrder(b));
-    let rows = d.players.filter((p: any) =>
-        (state.squadPosition === "all" || pos(p.primary_position) === state.squadPosition)
-        && (!state.squadQuery || p.display_name.toLowerCase().includes(state.squadQuery.toLowerCase()))
-    );
     const sorters: Record<string, (a: any, b: any) => number> = {
         number: (a: any, b: any) => (a.jersey_number || 999) - (b.jersey_number || 999),
         position: (a: any, b: any) => positionOrder(a.primary_position, a.raw?.primary_position_id || a.primary_position_id) - positionOrder(b.primary_position, b.raw?.primary_position_id || b.primary_position_id) || (b.overall || 0) - (a.overall || 0) || a.display_name.localeCompare(b.display_name, "en"),
@@ -24,13 +55,38 @@ async function renderSquad() {
         age: (a: any, b: any) => (a.age ?? 999) - (b.age ?? 999) || a.display_name.localeCompare(b.display_name, "en"),
         name: (a: any, b: any) => a.display_name.localeCompare(b.display_name, "en"),
     };
-    rows.sort(sorters[state.squadSort] || sorters.position);
-    content.innerHTML = `<div class="content-inner wide">${pageHead("Squad", `${num(rows.length)} of ${num(d.players.length)} players · ${esc(d.team?.team_name || "")}`, `<button class="button" data-route="contracts">Contracts</button><button class="button" data-route="loans">Loans</button><button class="button primary" data-route="youth">FC26 youth</button>`)}
+    content.innerHTML = `<div class="content-inner wide">${pageHead("Squad", "", `<button class="button" data-route="contracts">Contracts</button><button class="button" data-route="loans">Loans</button><button class="button primary" data-route="youth">FC26 youth</button>`)}
       <div class="filter-row"><input class="filter-input" id="squadQuery" value="${esc(state.squadQuery)}" placeholder="Search players…"><select class="filter-select" id="squadPosition"><option value="all">All positions</option>${positions.map((p: any) => `<option ${p === state.squadPosition ? "selected" : ""}>${esc(p)}</option>`).join("")}</select><select class="filter-select" id="squadSort"><option value="number" ${state.squadSort === "number" ? "selected" : ""}>By shirt number</option><option value="position" ${state.squadSort === "position" ? "selected" : ""}>By position</option><option value="overall" ${state.squadSort === "overall" ? "selected" : ""}>By OVR</option><option value="potential" ${state.squadSort === "potential" ? "selected" : ""}>By POT</option><option value="age" ${state.squadSort === "age" ? "selected" : ""}>By age</option><option value="name" ${state.squadSort === "name" ? "selected" : ""}>By name</option></select></div>
-      <section class="card">${table([{ label: "#", cls: "center" }, { label: "Player" }, { label: "Age", cls: "center" }, { label: "Pos.", cls: "center" }, { label: "OVR", cls: "center" }, { label: "POT", cls: "center" }, { label: "Est. value", cls: "num" }, { label: "Apps", cls: "num" }, { label: "G", cls: "num" }, { label: "A", cls: "num" }, { label: "Avg", cls: "num" }, { label: "Est. wage", cls: "num" }, { label: "Contract", cls: "center" }, { label: "Status" }], rows.map((p: any) => `<tr><td class="center"><b>${p.jersey_number ? num(p.jersey_number) : "–"}</b></td><td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${playerLink(p.ea_player_id, p.display_name)}<small>${p.is_captain?"Captain · ":""}EA ID ${num(p.ea_player_id)}</small></div></div></td><td class="center" data-sort="${p.age ?? 999}">${p.age == null ? "–" : num(p.age)}</td><td class="center" data-sort="${positionOrder(p.primary_position, p.raw?.primary_position_id || p.primary_position_id)}">${positionBadge(p.primary_position)}</td><td class="center">${overallBadge(p.overall)}</td><td class="center">${overallBadge(p.potential)}</td><td class="num" title="${financialHint(p.financial, "market")}">${money(p.market_value)}</td><td class="num">${num(p.appearances)}</td><td class="num">${num(p.goals)}</td><td class="num">${num(p.assists)}</td><td class="num">${ratingValue(p.average_rating, true)}</td><td class="num" title="${financialHint(p.financial, "wage")}">${money(p.weekly_wage)}</td><td class="center">${esc(p.contract_valid_until || "–")}</td><td>${p.injury ? statusBadge("Injured", "bad") : p.is_on_loan ? statusBadge("On loan") : statusBadge("Available", "good")}${p.is_captain?` ${statusBadge("Captain","blue")}`:""}</td></tr>`))}</section>
+      <div data-squad-finance-status class="data-note" aria-live="polite" hidden></div>
+      <section class="card" data-squad-results></section>
     </div>`;
+    const subtitle = $<HTMLElement>(".page-head-copy p", content);
+    const status = $<HTMLElement>("[data-squad-finance-status]", content);
+    const results = $<HTMLElement>("[data-squad-results]", content);
+    const draw = () => {
+        const rows = d.players.filter((p: any) =>
+            (state.squadPosition === "all" || pos(p.primary_position) === state.squadPosition)
+            && (!state.squadQuery || p.display_name.toLowerCase().includes(state.squadQuery.toLowerCase()))
+        );
+        rows.sort(sorters[state.squadSort] || sorters.position);
+        subtitle.textContent = `${num(rows.length)} of ${num(d.players.length)} players · ${d.team?.team_name || ""}`;
+        status.hidden = financeState === "ready";
+        status.innerHTML = financeState === "loading" ? "Calculating market values and wages…" :
+            financeState === "failed" ? 'Market values and wages could not be loaded. <button class="button" data-squad-retry>Try again</button>' : "";
+        const retry = status.querySelector<HTMLButtonElement>("[data-squad-retry]");
+        if (retry) retry.onclick = () => navigate("squad", state.routeData, false);
+        results.innerHTML = table([{ label: "#", cls: "center" }, { label: "Player" }, { label: "Age", cls: "center" }, { label: "Pos.", cls: "center" }, { label: "OVR", cls: "center" }, { label: "POT", cls: "center" }, { label: "Est. value", cls: "num" }, { label: "Apps", cls: "num" }, { label: "G", cls: "num" }, { label: "A", cls: "num" }, { label: "Avg", cls: "num" }, { label: "Est. wage", cls: "num" }, { label: "Contract", cls: "center" }, { label: "Status" }], rows.map((p: any) => `<tr><td class="center"><b>${p.jersey_number ? num(p.jersey_number) : "–"}</b></td><td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${playerLink(p.ea_player_id, p.display_name)}<small>${p.is_captain?"Captain · ":""}EA ID ${num(p.ea_player_id)}</small></div></div></td><td class="center" data-sort="${p.age ?? 999}">${p.age == null ? "–" : num(p.age)}</td><td class="center" data-sort="${positionOrder(p.primary_position, p.raw?.primary_position_id || p.primary_position_id)}">${positionBadge(p.primary_position)}</td><td class="center">${overallBadge(p.overall)}</td><td class="center">${overallBadge(p.potential)}</td><td class="num" title="${financialHint(p.financial, "market")}">${money(p.market_value)}</td><td class="num">${num(p.appearances)}</td><td class="num">${num(p.goals)}</td><td class="num">${num(p.assists)}</td><td class="num">${ratingValue(p.average_rating, true)}</td><td class="num" title="${financialHint(p.financial, "wage")}">${money(p.weekly_wage)}</td><td class="center">${esc(p.contract_valid_until || "–")}</td><td>${p.injury ? statusBadge("Injured", "bad") : p.is_on_loan ? statusBadge("On loan") : statusBadge("Available", "good")}${p.is_captain?` ${statusBadge("Captain","blue")}`:""}</td></tr>`));
+        applyIcons(content);
+        bindContent();
+    };
     const q = $<HTMLInputElement>("#squadQuery", content), pp = $<HTMLSelectElement>("#squadPosition", content), ss = $<HTMLSelectElement>("#squadSort", content);
-    q.oninput = () => { state.squadQuery = q.value; render(); };
-    pp.onchange = () => { state.squadPosition = pp.value; render(); };
-    ss.onchange = () => { state.squadSort = ss.value; render(); };
+    q.oninput = () => { state.squadQuery = q.value; draw(); };
+    pp.onchange = () => { state.squadPosition = pp.value; draw(); };
+    ss.onchange = () => { state.squadSort = ss.value; draw(); };
+    draw();
+    return (next: JsonRecord, nextFinanceState: SquadFinanceState) => {
+        d = next;
+        financeState = nextFinanceState;
+        draw();
+    };
 }

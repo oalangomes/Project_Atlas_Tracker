@@ -353,7 +353,7 @@ async function api<T = JsonRecord>(path: string, options?: RequestInit): Promise
     // These views can change under the same snapshot ID. Share only an in-flight read.
     const sharePending = !options && (
         /^\/api\/careers\/\d+\/(?:analysis(?:\/rotation)?|commission\/report-cache)\?/.test(path)
-        || /^\/api\/snapshots\/\d+\/squad$/.test(path)
+        || /^\/api\/snapshots\/\d+\/squad(?:\?view=roster)?$/.test(path)
     );
     const pending = sharePending ? pendingApiReads.get(path) : undefined;
     if (pending) return pending;

@@ -184,21 +184,31 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         match = re.fullmatch(r"/api/careers/(\d+)/clock", path)
         if match:
             career_id = int(match.group(1))
+            view = (query.get("view") or ["full"])[0]
+            if view not in {"full", "summary"}:
+                raise ValueError("Unsupported career clock view.")
             with self.state.database.connect() as conn:
-                if not conn.execute("SELECT 1 FROM careers WHERE id=?", (career_id,)).fetchone():
-                    raise ValueError("Career not found.")
                 latest = latest_snapshot(conn, career_id)
                 if not latest:
-                    self._json({"careerDate": None, "source": None, "snapshotDate": None, "pulseDate": None, "stalenessDays": 0, "recentPulses": []})
-                    return
-                clock = career_clock(conn, career_id)
-                pulse_count = int(conn.execute("SELECT COUNT(*) FROM transfer_pulses WHERE career_id=?", (career_id,)).fetchone()[0])
-                pulses = rows_to_dicts(conn.execute(
-                    "SELECT id,public_id,career_date,season_index,managed_team_ea_id,player_count,loan_count,generated_at_utc,imported_at "
-                    "FROM transfer_pulses WHERE career_id=? ORDER BY career_date_sort DESC,id DESC LIMIT 20",
-                    (career_id,),
-                ).fetchall())
-            self._json({**clock, "pulseCount": pulse_count, "recentPulses": pulses})
+                    if not conn.execute("SELECT 1 FROM careers WHERE id=?", (career_id,)).fetchone():
+                        raise ValueError("Career not found.")
+                    clock = {"careerDate": None, "source": None, "snapshotDate": None, "pulseDate": None, "stalenessDays": 0}
+                    if view == "full":
+                        clock["recentPulses"] = []
+                else:
+                    clock = career_clock(conn, career_id, snapshot=latest)
+                    if view == "full":
+                        clock["pulseCount"] = int(conn.execute(
+                            "SELECT COUNT(*) FROM transfer_pulses WHERE career_id=?", (career_id,),
+                        ).fetchone()[0])
+                        clock["recentPulses"] = rows_to_dicts(conn.execute(
+                            "SELECT id,public_id,career_date,season_index,managed_team_ea_id,player_count,loan_count,generated_at_utc,imported_at "
+                            "FROM transfer_pulses WHERE career_id=? ORDER BY career_date_sort DESC,id DESC LIMIT 20",
+                            (career_id,),
+                        ).fetchall())
+            # The summary consists of dates and IDs. Applying presentation filters
+            # here would load world rosters on each poll when hiding women's football.
+            self._json(clock, apply_presentation=view == "full")
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/snapshots", path)
@@ -389,7 +399,10 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             return
         match = re.fullmatch(r"/api/snapshots/(\d+)/squad", path)
         if match:
-            self._json(self._squad(int(match.group(1))))
+            view = (query.get("view") or ["full"])[0]
+            if view not in {"full", "roster"}:
+                raise ValueError("Unsupported squad view.")
+            self._json(self._squad(int(match.group(1)), include_finance=view == "full"))
             return
         match = re.fullmatch(r"/api/snapshots/(\d+)/matches", path)
         if match:
@@ -988,7 +1001,7 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0") or 0)
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
-    def _json(self, payload: Any, status: int | HTTPStatus = 200) -> None:
+    def _presentation_payload(self, payload: Any) -> Any:
         career_id = None
         career_match = re.search(r"/api/careers/(\d+)", self.path)
         if career_match:
@@ -1007,7 +1020,11 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             query = parse_qs(urlparse(self.path).query)
             snapshot_id = as_int((query.get("snapshot_id") or query.get("snapshotId") or [None])[0])
         payload = self.state.club_names.apply_payload(payload, career_id)
-        payload = self.state.settings.apply_payload(payload, career_id=career_id, snapshot_id=snapshot_id)
+        return self.state.settings.apply_payload(payload, career_id=career_id, snapshot_id=snapshot_id)
+
+    def _json(self, payload: Any, status: int | HTTPStatus = 200, *, apply_presentation: bool = True) -> None:
+        if apply_presentation:
+            payload = self._presentation_payload(payload)
         data = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
         self.send_response(int(status))
         self.send_header("Content-Type", "application/json; charset=utf-8")

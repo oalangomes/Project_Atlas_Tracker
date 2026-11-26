@@ -775,7 +775,6 @@ class EntityQueryMixin:
         }
 
     def _club(self, snapshot_id: int, team_id: int) -> dict[str, Any]:
-        self.state.player_dynamics.ensure_snapshot(snapshot_id)
         with self.state.database.connect() as conn:
             snap = self._snapshot(conn, snapshot_id)
             team = conn.execute(
@@ -798,6 +797,11 @@ class EntityQueryMixin:
                    ORDER BY p.overall DESC,p.display_name""",
                 (snapshot_id, team_id),
             ).fetchall()
+            finance_by_player = self.state.player_finance.analyze_many(
+                snapshot_id, (int(row["ea_player_id"]) for row in squad),
+            )
+            if not squad:
+                self.state.player_dynamics.world.ensure_snapshot(snapshot_id)
             matches = self._fixture_rows(conn, snapshot_id, team_id=team_id)
             leaders = conn.execute(
                 """WITH canonical_stats AS (
@@ -886,9 +890,10 @@ class EntityQueryMixin:
                 roster_context = {"form": item.get("form"), "raw_json": item.pop("roster_raw_json", None)}
                 contract_context = {"wage": item.get("wage"), "raw_json": item.pop("contract_raw_json", None)}
                 player_financial = self.state.financial.calculate_player(
-                    conn, snap, player_context, roster=roster_context, contract=contract_context
+                    conn, snap, player_context, roster=roster_context, contract=contract_context,
+                    team_state=team if item["team_ea_id"] == team_id else None,
                 )
-                atlas_finance = self.state.player_finance.analyze(snapshot_id, int(item["ea_player_id"]))
+                atlas_finance = finance_by_player[int(item["ea_player_id"])]
                 player_financial["market_value"] = {
                     "value": atlas_finance["market"].get("value"),
                     "available": True,

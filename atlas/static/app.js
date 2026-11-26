@@ -334,7 +334,7 @@ async function api(path, options) {
     if (cached && Date.now() - cached.time < 300000)
         return cached.value;
     const sharePending = !options && (/^\/api\/careers\/\d+\/(?:analysis(?:\/rotation)?|commission\/report-cache)\?/.test(path)
-        || /^\/api\/snapshots\/\d+\/squad$/.test(path));
+        || /^\/api\/snapshots\/\d+\/squad(?:\?view=roster)?$/.test(path));
     const pending = sharePending ? pendingApiReads.get(path) : undefined;
     if (pending)
         return pending;
@@ -413,7 +413,7 @@ async function loadSnapshots(preserve = false) {
     const old = state.snapshotId;
     const [snapshots, clock] = await Promise.all([
         api(`/api/careers/${state.careerId}/snapshots`),
-        api(`/api/careers/${state.careerId}/clock`),
+        api(`/api/careers/${state.careerId}/clock?view=summary`),
     ]);
     state.snapshots = snapshots;
     state.careerClock = clock;
@@ -498,8 +498,8 @@ function goHistory(delta) {
 }
 function setActiveNav() { const map = { player: "squad", club: "overview", match: "match-center", competition: "competitions", "world-competition": "competitions" }; const active = map[state.route] || state.route; $$('#mainNav [data-route]').forEach((n) => n.classList.toggle("active", n.dataset.route === active)); }
 function renderBreadcrumbs() { const labels = { overview: tr("crumbOverview"), "match-center": tr("crumbMatches"), schedule: tr("navSchedule"), results: tr("navResults"), match: tr("crumbMatch"), competitions: tr("navCompetitions"), competition: tr("navCompetitions"), "world-competition": tr("navCompetitions"), squad: tr("crumbSquad"), player: tr("crumbPlayer"), club: tr("crumbOverview"), contracts: tr("navContracts"), loans: tr("navLoans"), transfers: tr("navTransfers"), youth: tr("navYouth"), compare: tr("navCompare"), chronology: tr("navChronology"), "manual-data": tr("navManual"), analysis: tr("crumbAnalysis"), commission: tr("crumbCommission"), records: tr("navRecords"), "season-report": tr("navSeasonReport"), snapshots: tr("navSnapshots"), imports: tr("navImports"), media: tr("navMedia"), setup: tr("crumbSetup") }; const club = currentSnapshot()?.managed_team_name || currentCareer()?.initial_team_name || "Career"; $("#breadcrumbs").innerHTML = `<button data-crumb="overview">${esc(club)}</button><span>›</span><b>${labels[state.route] || esc(state.route)}</b>`; $$('[data-crumb]').forEach((b) => b.onclick = () => navigate(b.dataset.crumb || "overview")); }
-async function refreshCareerBootstrap(preserveSnapshot = true) {
-    state.status = await api("/api/status");
+async function refreshCareerBootstrap(preserveSnapshot = true, status) {
+    state.status = status ?? await api("/api/status");
     state.careers = await api("/api/careers");
     const currentStillExists = state.careers.some((career) => Number(career.id) === Number(state.careerId));
     if (!currentStillExists)
@@ -566,11 +566,47 @@ async function renderOverview() {
       <section class="card"><header class="card-header"><h2>Competitions</h2><button class="entity-link" data-route="competitions">Open all</button></header><div class="card-body grid competition-grid">${d.competitions.length ? d.competitions.map((c) => `<button class="competition-card card" data-competition="${c.competition_object_id}"><div class="competition-top">${identityLogo(c.identity, c.competition_name, "competition-logo-card")}<div><h3>${esc(c.competition_name)}</h3><p>${num(c.played)} played · ${num(c.upcoming)} remaining</p></div></div></button>`).join("") : '<span class="muted">No competitions available.</span>'}</div></section></div>
       <aside class="dashboard-side"><section class="card"><header class="card-header"><h2>Top players</h2><button class="entity-link" data-route="squad">Squad</button></header><div class="card-body list">${d.topPlayers.map((p) => `<div class="list-row">${playerPortrait(p.media, p.display_name, "list-portrait")}<div class="list-main">${playerLink(p.ea_player_id, p.display_name)}<small>${pos(p.primary_position)} · #${num(p.jersey_number)}</small></div>${overallBadge(p.overall)}</div>`).join("")}</div></section><section class="card"><header class="card-header"><h2>Top scorers</h2></header><div class="card-body list">${d.leaders.map((p) => `<div class="list-row"><div class="list-main">${playerLink(p.player_ea_id, p.display_name)}<small>${num(p.appearances)} apps · ${ratingValue(p.average_rating, true)} avg.</small></div><div class="list-value"><strong>${num(p.goals)} G</strong><small>${num(p.assists)} A</small></div></div>`).join("") || '<span class="muted">No season statistics.</span>'}</div></section><section class="card"><header class="card-header"><h2>Snapshot timeline</h2><button class="entity-link" data-route="snapshots">Open</button></header><div class="card-body timeline">${d.timeline.slice(-6).reverse().map((s) => `<div class="timeline-item ${Number(s.id) === Number(state.snapshotId) ? "current" : ""}"><h3>${dateText(s.career_date)}</h3><p>${esc(s.season_label || "Season unknown")}${s.career_season_number ? ` · Career season ${num(s.career_season_number)}` : ""} · Sequence ${num(s.import_sequence)}</p></div>`).join("")}</div></section></aside></div></div>`;
 }
+let squadRenderToken = 0;
 async function renderSquad() {
-    const d = await api(`/api/snapshots/${state.snapshotId}/squad`);
+    const snapshotId = state.snapshotId;
+    const token = ++squadRenderToken;
+    const isCurrent = () => token === squadRenderToken && state.route === "squad" && state.snapshotId === snapshotId;
+    const path = `/api/snapshots/${snapshotId}/squad`;
+    const full = api(path).then(data => ({ data, error: null }), error => ({ data: null, error }));
+    let timer = 0;
+    const preview = new Promise(resolve => {
+        timer = window.setTimeout(() => {
+            if (isCurrent())
+                api(`${path}?view=roster`).then(resolve, () => resolve(null));
+            else
+                resolve(null);
+        }, 300);
+    });
+    const first = await Promise.race([
+        full.then(result => ({ kind: "full", result })),
+        preview.then(data => ({ kind: "preview", data })),
+    ]);
+    window.clearTimeout(timer);
+    if (!isCurrent())
+        return;
+    if (first.kind === "preview" && first.data) {
+        const roster = first.data;
+        const update = mountSquad(roster, "loading");
+        void full.then(result => {
+            if (isCurrent())
+                update(result.data ?? roster, result.data ? "ready" : "failed");
+        });
+        return;
+    }
+    const result = first.kind === "full" ? first.result : await full;
+    if (!isCurrent())
+        return;
+    if (!result.data)
+        throw result.error;
+    mountSquad(result.data, "ready");
+}
+function mountSquad(d, financeState) {
     const positions = [...new Set(d.players.map((p) => pos(p.primary_position)))].sort((a, b) => positionOrder(a) - positionOrder(b));
-    let rows = d.players.filter((p) => (state.squadPosition === "all" || pos(p.primary_position) === state.squadPosition)
-        && (!state.squadQuery || p.display_name.toLowerCase().includes(state.squadQuery.toLowerCase())));
     const sorters = {
         number: (a, b) => (a.jersey_number || 999) - (b.jersey_number || 999),
         position: (a, b) => positionOrder(a.primary_position, a.raw?.primary_position_id || a.primary_position_id) - positionOrder(b.primary_position, b.raw?.primary_position_id || b.primary_position_id) || (b.overall || 0) - (a.overall || 0) || a.display_name.localeCompare(b.display_name, "en"),
@@ -579,15 +615,39 @@ async function renderSquad() {
         age: (a, b) => (a.age ?? 999) - (b.age ?? 999) || a.display_name.localeCompare(b.display_name, "en"),
         name: (a, b) => a.display_name.localeCompare(b.display_name, "en"),
     };
-    rows.sort(sorters[state.squadSort] || sorters.position);
-    content.innerHTML = `<div class="content-inner wide">${pageHead("Squad", `${num(rows.length)} of ${num(d.players.length)} players · ${esc(d.team?.team_name || "")}`, `<button class="button" data-route="contracts">Contracts</button><button class="button" data-route="loans">Loans</button><button class="button primary" data-route="youth">FC26 youth</button>`)}
+    content.innerHTML = `<div class="content-inner wide">${pageHead("Squad", "", `<button class="button" data-route="contracts">Contracts</button><button class="button" data-route="loans">Loans</button><button class="button primary" data-route="youth">FC26 youth</button>`)}
       <div class="filter-row"><input class="filter-input" id="squadQuery" value="${esc(state.squadQuery)}" placeholder="Search players…"><select class="filter-select" id="squadPosition"><option value="all">All positions</option>${positions.map((p) => `<option ${p === state.squadPosition ? "selected" : ""}>${esc(p)}</option>`).join("")}</select><select class="filter-select" id="squadSort"><option value="number" ${state.squadSort === "number" ? "selected" : ""}>By shirt number</option><option value="position" ${state.squadSort === "position" ? "selected" : ""}>By position</option><option value="overall" ${state.squadSort === "overall" ? "selected" : ""}>By OVR</option><option value="potential" ${state.squadSort === "potential" ? "selected" : ""}>By POT</option><option value="age" ${state.squadSort === "age" ? "selected" : ""}>By age</option><option value="name" ${state.squadSort === "name" ? "selected" : ""}>By name</option></select></div>
-      <section class="card">${table([{ label: "#", cls: "center" }, { label: "Player" }, { label: "Age", cls: "center" }, { label: "Pos.", cls: "center" }, { label: "OVR", cls: "center" }, { label: "POT", cls: "center" }, { label: "Est. value", cls: "num" }, { label: "Apps", cls: "num" }, { label: "G", cls: "num" }, { label: "A", cls: "num" }, { label: "Avg", cls: "num" }, { label: "Est. wage", cls: "num" }, { label: "Contract", cls: "center" }, { label: "Status" }], rows.map((p) => `<tr><td class="center"><b>${p.jersey_number ? num(p.jersey_number) : "–"}</b></td><td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${playerLink(p.ea_player_id, p.display_name)}<small>${p.is_captain ? "Captain · " : ""}EA ID ${num(p.ea_player_id)}</small></div></div></td><td class="center" data-sort="${p.age ?? 999}">${p.age == null ? "–" : num(p.age)}</td><td class="center" data-sort="${positionOrder(p.primary_position, p.raw?.primary_position_id || p.primary_position_id)}">${positionBadge(p.primary_position)}</td><td class="center">${overallBadge(p.overall)}</td><td class="center">${overallBadge(p.potential)}</td><td class="num" title="${financialHint(p.financial, "market")}">${money(p.market_value)}</td><td class="num">${num(p.appearances)}</td><td class="num">${num(p.goals)}</td><td class="num">${num(p.assists)}</td><td class="num">${ratingValue(p.average_rating, true)}</td><td class="num" title="${financialHint(p.financial, "wage")}">${money(p.weekly_wage)}</td><td class="center">${esc(p.contract_valid_until || "–")}</td><td>${p.injury ? statusBadge("Injured", "bad") : p.is_on_loan ? statusBadge("On loan") : statusBadge("Available", "good")}${p.is_captain ? ` ${statusBadge("Captain", "blue")}` : ""}</td></tr>`))}</section>
+      <div data-squad-finance-status class="data-note" aria-live="polite" hidden></div>
+      <section class="card" data-squad-results></section>
     </div>`;
+    const subtitle = $(".page-head-copy p", content);
+    const status = $("[data-squad-finance-status]", content);
+    const results = $("[data-squad-results]", content);
+    const draw = () => {
+        const rows = d.players.filter((p) => (state.squadPosition === "all" || pos(p.primary_position) === state.squadPosition)
+            && (!state.squadQuery || p.display_name.toLowerCase().includes(state.squadQuery.toLowerCase())));
+        rows.sort(sorters[state.squadSort] || sorters.position);
+        subtitle.textContent = `${num(rows.length)} of ${num(d.players.length)} players · ${d.team?.team_name || ""}`;
+        status.hidden = financeState === "ready";
+        status.innerHTML = financeState === "loading" ? "Calculating market values and wages…" :
+            financeState === "failed" ? 'Market values and wages could not be loaded. <button class="button" data-squad-retry>Try again</button>' : "";
+        const retry = status.querySelector("[data-squad-retry]");
+        if (retry)
+            retry.onclick = () => navigate("squad", state.routeData, false);
+        results.innerHTML = table([{ label: "#", cls: "center" }, { label: "Player" }, { label: "Age", cls: "center" }, { label: "Pos.", cls: "center" }, { label: "OVR", cls: "center" }, { label: "POT", cls: "center" }, { label: "Est. value", cls: "num" }, { label: "Apps", cls: "num" }, { label: "G", cls: "num" }, { label: "A", cls: "num" }, { label: "Avg", cls: "num" }, { label: "Est. wage", cls: "num" }, { label: "Contract", cls: "center" }, { label: "Status" }], rows.map((p) => `<tr><td class="center"><b>${p.jersey_number ? num(p.jersey_number) : "–"}</b></td><td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${playerLink(p.ea_player_id, p.display_name)}<small>${p.is_captain ? "Captain · " : ""}EA ID ${num(p.ea_player_id)}</small></div></div></td><td class="center" data-sort="${p.age ?? 999}">${p.age == null ? "–" : num(p.age)}</td><td class="center" data-sort="${positionOrder(p.primary_position, p.raw?.primary_position_id || p.primary_position_id)}">${positionBadge(p.primary_position)}</td><td class="center">${overallBadge(p.overall)}</td><td class="center">${overallBadge(p.potential)}</td><td class="num" title="${financialHint(p.financial, "market")}">${money(p.market_value)}</td><td class="num">${num(p.appearances)}</td><td class="num">${num(p.goals)}</td><td class="num">${num(p.assists)}</td><td class="num">${ratingValue(p.average_rating, true)}</td><td class="num" title="${financialHint(p.financial, "wage")}">${money(p.weekly_wage)}</td><td class="center">${esc(p.contract_valid_until || "–")}</td><td>${p.injury ? statusBadge("Injured", "bad") : p.is_on_loan ? statusBadge("On loan") : statusBadge("Available", "good")}${p.is_captain ? ` ${statusBadge("Captain", "blue")}` : ""}</td></tr>`));
+        applyIcons(content);
+        bindContent();
+    };
     const q = $("#squadQuery", content), pp = $("#squadPosition", content), ss = $("#squadSort", content);
-    q.oninput = () => { state.squadQuery = q.value; render(); };
-    pp.onchange = () => { state.squadPosition = pp.value; render(); };
-    ss.onchange = () => { state.squadSort = ss.value; render(); };
+    q.oninput = () => { state.squadQuery = q.value; draw(); };
+    pp.onchange = () => { state.squadPosition = pp.value; draw(); };
+    ss.onchange = () => { state.squadSort = ss.value; draw(); };
+    draw();
+    return (next, nextFinanceState) => {
+        d = next;
+        financeState = nextFinanceState;
+        draw();
+    };
 }
 function leaguePositionChart(points) {
     if (!points?.length)
@@ -3428,19 +3488,26 @@ async function pollStatus() {
     statusPollInProgress = true;
     try {
         const previousStatus = state.status;
+        const previousCareerId = state.careerId;
         const oldCareerDate = String(state.careerClock?.careerDate || "");
         const nextStatus = await api("/api/status");
-        if (state.careerId)
-            state.careerClock = await api(`/api/careers/${state.careerId}/clock`);
         const snapshotChanged = Number(nextStatus.snapshotCount || 0) !== Number(previousStatus?.snapshotCount || 0);
-        const clockChanged = String(state.careerClock?.careerDate || "") !== oldCareerDate;
         const statsChanged = matchStatsChanged(previousStatus?.matchStats, nextStatus.matchStats);
-        state.status = nextStatus;
         if (snapshotChanged || statsChanged)
             clearApiCache();
+        let clockChanged = false;
         if (snapshotChanged)
-            await refreshCareerBootstrap(false);
+            await refreshCareerBootstrap(false, nextStatus);
         else {
+            const careerId = state.careerId;
+            if (careerId) {
+                const clock = await api(`/api/careers/${careerId}/clock?view=summary`);
+                if (state.careerId === careerId) {
+                    state.careerClock = clock;
+                    clockChanged = careerId === previousCareerId && String(clock.careerDate || "") !== oldCareerDate;
+                }
+            }
+            state.status = nextStatus;
             if (clockChanged)
                 fillSelectors();
             updateSystemUi();

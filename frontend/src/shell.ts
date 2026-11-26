@@ -46,7 +46,7 @@ async function loadSnapshots(preserve: any = false) {
     const old = state.snapshotId;
     const [snapshots, clock] = await Promise.all([
         api<SnapshotSummary[]>(`/api/careers/${state.careerId}/snapshots`),
-        api<CareerClock>(`/api/careers/${state.careerId}/clock`),
+        api<CareerClock>(`/api/careers/${state.careerId}/clock?view=summary`),
     ]);
     state.snapshots = snapshots;
     state.careerClock = clock;
@@ -130,8 +130,8 @@ function goHistory(delta: any) {
 }
 function setActiveNav() { const map: Record<string, string> = { player: "squad", club: "overview", match: "match-center", competition: "competitions", "world-competition": "competitions" }; const active = map[state.route] || state.route; $$('#mainNav [data-route]').forEach((n: any) => n.classList.toggle("active", n.dataset.route === active)); }
 function renderBreadcrumbs() { const labels: Record<string, string> = { overview:tr("crumbOverview"), "match-center":tr("crumbMatches"), schedule:tr("navSchedule"), results:tr("navResults"), match:tr("crumbMatch"), competitions:tr("navCompetitions"), competition:tr("navCompetitions"), "world-competition":tr("navCompetitions"), squad:tr("crumbSquad"), player:tr("crumbPlayer"), club:tr("crumbOverview"), contracts:tr("navContracts"), loans:tr("navLoans"), transfers:tr("navTransfers"), youth:tr("navYouth"), compare:tr("navCompare"), chronology:tr("navChronology"), "manual-data":tr("navManual"), analysis:tr("crumbAnalysis"), commission:tr("crumbCommission"), records:tr("navRecords"), "season-report":tr("navSeasonReport"), snapshots:tr("navSnapshots"), imports:tr("navImports"), media:tr("navMedia"), setup:tr("crumbSetup") }; const club = currentSnapshot()?.managed_team_name || currentCareer()?.initial_team_name || "Career"; $("#breadcrumbs").innerHTML = `<button data-crumb="overview">${esc(club)}</button><span>›</span><b>${labels[state.route] || esc(state.route)}</b>`; $$('[data-crumb]').forEach((b: any) => b.onclick = () => navigate(b.dataset.crumb || "overview")); }
-async function refreshCareerBootstrap(preserveSnapshot = true) {
-    state.status = await api<StatusResponse>("/api/status");
+async function refreshCareerBootstrap(preserveSnapshot = true, status?: StatusResponse) {
+    state.status = status ?? await api<StatusResponse>("/api/status");
     state.careers = await api<CareerSummary[]>("/api/careers");
     const currentStillExists = state.careers.some((career: any) => Number(career.id) === Number(state.careerId));
     if (!currentStillExists)

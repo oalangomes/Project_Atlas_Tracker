@@ -172,7 +172,7 @@ class DashboardQueryMixin:
             "warnings": json.loads(snap["warnings_json"] or "[]"),
         }
 
-    def _squad(self, snapshot_id: int) -> dict[str, Any]:
+    def _squad(self, snapshot_id: int, *, include_finance: bool = True) -> dict[str, Any]:
         with self.state.database.connect() as conn:
             snap = self._snapshot(conn, snapshot_id)
             rows = conn.execute(
@@ -210,21 +210,30 @@ class DashboardQueryMixin:
             ).fetchone()
             captain_player_id = None
             season_numbers = self._career_season_numbers(conn, int(snap["career_id"]))
-            financial_items: list[dict[str, Any]] = []
+            finance_by_player = self.state.player_finance.analyze_many(
+                snapshot_id, (int(row["ea_player_id"]) for row in rows),
+            ) if include_finance else {}
+            players: list[dict[str, Any]] = []
             for row in rows:
                 item = dict(row)
                 item["is_captain"] = int(item["ea_player_id"]) == captain_player_id
                 player_raw_json = item.pop("player_raw_json", None)
                 player_raw = parse_raw(player_raw_json)
                 item.update(player_age_data(player_raw.get("birthdate_raw"), snap["career_date"]))
+                roster_raw_json = item.pop("roster_raw_json", None)
+                contract_raw_json = item.pop("contract_raw_json", None)
+                if not include_finance:
+                    players.append(item)
+                    continue
                 player_context = dict(item)
                 player_context["raw_json"] = player_raw_json
-                roster_context = {"form": item.get("form"), "raw_json": item.pop("roster_raw_json", None)}
-                contract_context = {"wage": item.get("wage"), "raw_json": item.pop("contract_raw_json", None)}
+                roster_context = {"form": item.get("form"), "raw_json": roster_raw_json}
+                contract_context = {"wage": item.get("wage"), "raw_json": contract_raw_json}
                 financial = self.state.financial.calculate_player(
-                    conn, snap, player_context, roster=roster_context, contract=contract_context
+                    conn, snap, player_context, roster=roster_context, contract=contract_context,
+                    team_state=team if item["team_ea_id"] == snap["managed_team_ea_id"] else None,
                 )
-                atlas_finance = self.state.player_finance.analyze(snapshot_id, int(item["ea_player_id"]))
+                atlas_finance = finance_by_player[int(item["ea_player_id"])]
                 financial["market_value"] = {
                     "value": atlas_finance["market"].get("value"),
                     "available": True,
@@ -238,7 +247,7 @@ class DashboardQueryMixin:
                 item["market_value"] = atlas_finance["market"].get("value")
                 item["weekly_wage"] = financial["weekly_wage"].get("value")
                 item["wage_label"] = financial["weekly_wage"].get("label")
-                financial_items.append(item)
+                players.append(item)
         season_start = self._season_start(snap)
         snapshot_item = dict(snap)
         snapshot_item["season_start_year"] = season_start
@@ -248,5 +257,5 @@ class DashboardQueryMixin:
             "snapshot": snapshot_item,
             "team": clean_raw(team),
             "teamIdentity": self.state.media.team_identity(int(snap["managed_team_ea_id"]), season_start=season_start),
-            "players": self._enrich_players(financial_items),
+            "players": self._enrich_players(players),
         }

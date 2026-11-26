@@ -417,19 +417,26 @@ async function pollStatus() {
     statusPollInProgress = true;
     try {
         const previousStatus = state.status;
+        const previousCareerId = state.careerId;
         const oldCareerDate = String(state.careerClock?.careerDate || "");
         const nextStatus = await api<StatusResponse>("/api/status");
-        if (state.careerId)
-            state.careerClock = await api<CareerClock>(`/api/careers/${state.careerId}/clock`);
         const snapshotChanged = Number(nextStatus.snapshotCount || 0) !== Number(previousStatus?.snapshotCount || 0);
-        const clockChanged = String(state.careerClock?.careerDate || "") !== oldCareerDate;
         const statsChanged = matchStatsChanged(previousStatus?.matchStats, nextStatus.matchStats);
-        state.status = nextStatus;
         if (snapshotChanged || statsChanged)
             clearApiCache();
+        let clockChanged = false;
         if (snapshotChanged)
-            await refreshCareerBootstrap(false);
+            await refreshCareerBootstrap(false, nextStatus);
         else {
+            const careerId = state.careerId;
+            if (careerId) {
+                const clock = await api<CareerClock>(`/api/careers/${careerId}/clock?view=summary`);
+                if (state.careerId === careerId) {
+                    state.careerClock = clock;
+                    clockChanged = careerId === previousCareerId && String(clock.careerDate || "") !== oldCareerDate;
+                }
+            }
+            state.status = nextStatus;
             if (clockChanged)
                 fillSelectors();
             updateSystemUi();
