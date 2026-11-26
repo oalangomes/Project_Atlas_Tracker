@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping
 
+from .fc26_save_possession import snapshot_save_possession
 from .positions import trusted_actual_position
 
 
@@ -41,7 +42,8 @@ def fixture_evidence(snapshot: Mapping[str, Any], fixture_id: int,
                      detailed: Mapping[str, Any] | None = None,
                      performances: list[dict[str, Any]] | None = None,
                      candidate: Mapping[str, Any] | None = None,
-                     event_date: str | None = None) -> dict[str, Any]:
+                     event_date: str | None = None,
+                     save_possession: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Describe the selected fixture; candidate may be partial or unlinked."""
     available = bool(detailed and detailed.get("available"))
     export_status = (detailed or {}).get("status") or (candidate or {}).get("export_status")
@@ -81,6 +83,20 @@ def fixture_evidence(snapshot: Mapping[str, Any], fixture_id: int,
             })
         teams.append({"teamIndex": team.get("teamIndex"), "teamEaId": team.get("teamEaId"),
                       "indicators": indicators})
+    if save_possession:
+        save_source = {key: save_possession[key] for key in ("kind", "sourceSnapshotId", "mxifSha256")}
+        teams_by_id = {team["teamEaId"]: team for team in teams}
+        for side in ("home", "away"):
+            team_id = save_possession[f"{side}TeamEaId"]
+            team = teams_by_id.get(team_id)
+            if team is None:
+                team = {"teamIndex": None, "teamEaId": team_id, "indicators": []}
+                teams.append(team)
+            team["indicators"].append({
+                "key": "possession_pct", "label": "Ball possession", "unit": "%",
+                "value": save_possession[f"{side}Pct"], "state": "available", "origin": "direct",
+                "reason": None, "formula": None, "inputs": [], "source": save_source,
+            })
     positions = []
     for player in performances or []:
         raw_observed = player.get("observedPosition") or player.get("actual_position")
@@ -158,6 +174,7 @@ def snapshot_fixture_evidence(conn: Any, snapshot: Mapping[str, Any]) -> list[di
             item["teams"].append({"teamIndex": row["team_index"], "teamEaId": row["team_ea_id"],
                                   "stats": stats if isinstance(stats, dict) else {}})
     result = []
+    save_possession = snapshot_save_possession(conn, snapshot)
     for item in by_fixture.values():
         candidate = item.pop("candidate")
         teams = item.pop("teams")
@@ -173,6 +190,7 @@ def snapshot_fixture_evidence(conn: Any, snapshot: Mapping[str, Any]) -> list[di
         else:
             detailed = None
         item["evidence"] = fixture_evidence(snapshot, item["fixtureId"], detailed, candidate=candidate,
-                                            event_date=item["date"])
+                                            event_date=item["date"],
+                                            save_possession=save_possession.get(item["fixtureId"]))
         result.append(item)
     return result

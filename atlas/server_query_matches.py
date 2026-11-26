@@ -12,6 +12,7 @@ from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
 from .match_lineups import match_lineup_phases, save_match_formation_estimates
 from .goalkeeper_metrics import fixture_goalkeepers
+from .fc26_save_possession import snapshot_save_possession
 from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
 from .positions import trusted_actual_position
 from .server_utils import (
@@ -135,6 +136,7 @@ class MatchQueryMixin:
             ).fetchone()
             if not row:
                 raise ValueError("Match not found in the selected snapshot.")
+            save_possession = snapshot_save_possession(conn, dict(snap), fixture_id).get(fixture_id)
             performances = conn.execute(
                 """SELECT pmp.*,ps.overall,ps.potential,ps.primary_position,rs.jersey_number,
                           ps.team_ea_id,ps.team_name
@@ -311,8 +313,10 @@ class MatchQueryMixin:
                 "sourceLabel": "Aus aufeinanderfolgenden Snapshots rekonstruiert" if reconstructed else "Cannot be reconstructed reliably",
             },
             "detailedStats": detailed or {"available": False, "modelId": "atlas-fc26-match-stats-v1"},
+            "savePossession": save_possession,
             "lineupPhases": lineup_phases,
             "evidence": fixture_evidence(dict(snap), fixture_id, detailed, performance_items,
                                          dict(candidate_row) if candidate_row else None,
-                                         event_date=row["date"] if "date" in row.keys() else None),
+                                         event_date=row["date"] if "date" in row.keys() else None,
+                                         save_possession=save_possession),
         }

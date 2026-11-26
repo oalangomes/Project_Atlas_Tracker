@@ -14,6 +14,7 @@ Para este ciclo, este conjunto é a referência de planejamento. O [roadmap ante
 
 | Etapa | Prioridade | Documento | Pacotes | Resultado esperado |
 | --- | --- | --- | --- | --- |
+| Experiência do treinador | Produto | [Auditoria de UX e análise funcional de 26/11/2026](../auditoria-ux-funcional-2026-11-26.md) | Proposta | Inventário atual, verificação na carreira e prioridades para navegação e relatórios |
 | Regras comuns | Todas | [Governança e validação](governanca-e-validacao.md) | Transversal | Critérios, evidências, rollback e sequência de PRs |
 | Reuso Hub | Todas | [Matriz Hub → Atlas](matriz-reaproveitamento-hub-atlas.md) | H01–H35 | Origem, fórmula, estado, destino e decisão |
 | Impedimentos | Todas | [Backlog](backlog-metricas-hub.md) | BL-01–BL-13 | Bloqueio, custo, benefício e condição de desbloqueio |

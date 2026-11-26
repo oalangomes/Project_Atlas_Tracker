@@ -670,8 +670,14 @@ class MatchStatsImporter:
                    FROM match_stat_exports WHERE superseded_by_export_id IS NULL
                    ORDER BY id"""
             ).fetchall()
-        # A relink can change the displayed evidence without changing the counts or import time.
-        revision = hashlib.sha256(json.dumps([tuple(row) for row in rows]).encode("utf-8")).hexdigest()
+            save_possession = conn.execute(
+                "SELECT fixture_id,snapshot_id,mxif_sha256 FROM fc26_save_possession ORDER BY fixture_id"
+            ).fetchall()
+        # Relinks and save-backed possession can change match details without a new MatchStats export.
+        revision = hashlib.sha256(json.dumps({
+            "matchstats": [tuple(row) for row in rows],
+            "savePossession": [tuple(row) for row in save_possession],
+        }).encode("utf-8")).hexdigest()
         linked = sum(row["fixture_id"] is not None for row in rows)
         return {
             "model": "atlas-fc26-match-stats-v2",

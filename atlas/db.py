@@ -260,6 +260,17 @@ CREATE TABLE IF NOT EXISTS fixture_observations (
 );
 CREATE INDEX IF NOT EXISTS idx_fixture_obs_date ON fixture_observations(snapshot_id, date, time);
 
+CREATE TABLE IF NOT EXISTS fc26_save_possession (
+    fixture_id INTEGER PRIMARY KEY REFERENCES fixtures(id) ON DELETE CASCADE,
+    snapshot_id INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+    mxif_sha256 TEXT NOT NULL,
+    home_pct INTEGER NOT NULL CHECK(home_pct BETWEEN 0 AND 100),
+    away_pct INTEGER NOT NULL CHECK(away_pct BETWEEN 0 AND 100),
+    CHECK(home_pct + away_pct = 100),
+    FOREIGN KEY(snapshot_id, fixture_id) REFERENCES fixture_observations(snapshot_id, fixture_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_save_possession_snapshot ON fc26_save_possession(snapshot_id);
+
 CREATE TABLE IF NOT EXISTS player_match_performances (
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
     artificial_key TEXT NOT NULL,

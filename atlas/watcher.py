@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import logging
 import threading
 import time
-from pathlib import Path
 from typing import Callable
 
+from .fc26_save_possession import SavePossessionImporter
 from .importer import ImportResult, SnapshotImporter
 from .paths import read_snapshot_root
+
+LOGGER = logging.getLogger(__name__)
 
 
 class HotFolderWatcher:
@@ -14,6 +17,7 @@ class HotFolderWatcher:
 
     def __init__(self, importer: SnapshotImporter, interval: float = 3.0, on_results: Callable[[list[ImportResult]], None] | None = None, match_stats_importer=None, on_match_stats: Callable[[list[dict[str, int]]], None] | None = None):
         self.importer = importer
+        self.save_possession = SavePossessionImporter(importer.database)
         self.interval = max(1.0, interval)
         self.on_results = on_results
         self.match_stats_importer = match_stats_importer
@@ -42,21 +46,16 @@ class HotFolderWatcher:
 
     def scan_once(self) -> list[ImportResult]:
         root = read_snapshot_root()
-        if root is None:
-            self.last_results = []
-            if self.match_stats_importer is not None:
-                try:
-                    self.match_stats_importer.scan_once()
-                    linked = list(getattr(self.match_stats_importer, "last_linked_matches", []) or [])
-                    if linked and self.on_match_stats:
-                        self.on_match_stats(linked)
-                except Exception:
-                    pass
-            self.last_scan_at = time.time()
-            return []
-        for name in ("incoming", "ready", "imported", "failed"):
-            (root / name).mkdir(parents=True, exist_ok=True)
-        self.last_results = self.importer.import_ready_root(root)
+        self.last_results = []
+        if root is not None:
+            for name in ("incoming", "ready", "imported", "failed"):
+                (root / name).mkdir(parents=True, exist_ok=True)
+            self.last_results = self.importer.import_ready_root(root)
+        try:
+            self.save_possession.scan_once()
+        except Exception:
+            # A save read or write failure must not block MatchStats or notifications.
+            LOGGER.exception("FC26 save possession scan failed")
         if self.match_stats_importer is not None:
             try:
                 self.match_stats_importer.scan_once()
