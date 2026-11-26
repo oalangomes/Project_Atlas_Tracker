@@ -863,6 +863,15 @@ def get_commission(conn: Any, career_id: int, snapshot_id: int) -> dict[str, Any
                      for row in match_rows if row["is_completed"] != 1],
     }
     payload["team_identity"] = analyze_team_identity(conn, career_id, snapshot_id)
+    from .defense_context import build_defense_context, defense_context
+    fixture_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(fixtures)").fetchall()}
+    team_detail_columns = {str(row[1]) for row in conn.execute("PRAGMA table_info(match_team_detailed_stats)").fetchall()}
+    if {"home_team_ea_id", "away_team_ea_id"}.issubset(fixture_columns) and "export_id" in team_detail_columns:
+        payload["defenseContext"] = defense_context(
+            conn, career_id, [int(snapshot["season_index"])], int(snapshot["managed_team_ea_id"] or -1),
+            as_of_import_sequence=int(snapshot["import_sequence"]))
+    else:
+        payload["defenseContext"] = build_defense_context([])
     return payload
 
 
