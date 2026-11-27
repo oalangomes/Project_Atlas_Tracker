@@ -157,10 +157,11 @@ data duplicada e os dois IDs de equipe.
 
 O [watcher do Atlas](../../atlas/watcher.py) lê automaticamente os arquivos
 `CmMgr*` de `%LOCALAPPDATA%/EA SPORTS FC 26/settings` durante a varredura
-normal e no `--scan`. O [leitor](../../atlas/fc26_save_possession.py) trabalha
-com os bytes de um arquivo estável e verifica o layout, as duas datas do `mxif`,
-o placar de `mham`, os IDs dos clubes e pelo menos 11 jogadores com minutos
-registrados no snapshot Atlas. Requer uma única partida candidata na base.
+normal e no `--scan`. O [leitor](../../atlas/fc26_save_match.py) recebe os bytes
+de um arquivo estável e confere o layout, as duas datas do `mxif` e os IDs e o
+placar da partida mais recente no `mham`. O [importador](../../atlas/fc26_save_possession.py)
+vincula uma única partida candidata na base com pelo menos 11 jogadores com
+minutos registrados no snapshot Atlas.
 Saves simultâneos com percentuais conflitantes para a mesma partida ficam sem
 importação. Leituras repetidas não substituem uma evidência já registrada.
 
@@ -171,3 +172,273 @@ aparece desde o snapshot que identificou a partida e nos posteriores da mesma
 temporada. O estado de cobertura do MatchStats continua descrevendo aquele
 export. O `mxif` fornece o último jogo de cada save ainda disponível. Confira o
 comparativo depois de salvar a carreira e importar o snapshot do jogo.
+
+### Cobertura do extrator Sheffield e substituição do Live Editor
+
+A conferência de Plymouth–Stevenage (fixture Atlas `1707`, export `53`) usou
+dados binários do `CmMgr` e o MatchStats da mesma partida como controle. Com
+a quantidade de slots do `mxif` lida do cabeçalho, os 30 participantes do
+MatchStats foram encontrados no save. xG, chutes, chutes no alvo, passes,
+passes certos, desarmes, passes-chave e faltas coincidiram para os 30 jogadores.
+Essa partida não estabelece equivalência entre o xG do save e o NPK-xG em
+jogos com pênaltis. O save também detalhou as enfiadas completas do Plymouth
+em 32 por baixo e 3 por cima, além de 4 passes que romperam linhas, 4 pela
+ponta e 6 tentativas de tabela.
+
+O extrator do Hub gerou 66 tabelas em cada save. A execução completa terminou
+no Sheffield e parou no `mflp` do Plymouth. O bloco Plymouth declara 30
+registros, enquanto o Sheffield atual da amostra declara 36. O leitor original
+assume 33. No primeiro par consecutivo do Sheffield, respeitar a contagem do
+cabeçalho recuperou 11 titularidades e 16 aparições, diante de 9 e 14 com o
+leitor fixo. No segundo par, o delta de titularidade não identificou titulares
+mesmo com a contagem ajustada. A integração precisa validar os estados e os
+deltas por partida, com `mham` comprovando a sequência.
+
+Os próximos campos de alto valor são a decomposição dos passes e o estado de
+participação do `mflp`. As tabelas de tática gravada, histórico do técnico,
+lesão, pré-contrato e academia podem alimentar outras áreas após normalização
+dos campos. Para substituir o snapshot Lua, falta materializar e reconciliar
+os contratos do Atlas, em particular calendário global e estatísticas de
+temporada por competição. Para substituir MatchStats, falta uma leitura
+persistida validada de xA, pré-assistências, passes sob pressão, perdas de
+posse, cartões e outros contadores avançados. A primeira migração pode usar o
+save como fonte principal dos campos com paridade e conservar MatchStats como
+fonte complementar. [Extrator do Hub](https://github.com/oalangomes/ea-fc-sheffield-hub/blob/master/scripts/fc26_save_extract.py) · [Contrato Atlas](../../schemas/FC26_CareerTracker_Snapshot_Contract_v1.2.0.json).
+
+### Passes detalhados do save no Match Center
+
+O [leitor de partidas do Atlas](../../atlas/fc26_save_match.py) reaproveita os
+mapeamentos `mxif` e `mham` do Hub na revisão
+`325481c596e05cca5cee15049012a216af16618d` sob a
+[Unlicense](../../atlas/fc26_save_match.UNLICENSE). A revisão emitida em novos
+registros é `atlas-fc26-match-v1`.
+
+A quantidade de registros declarada nos dois blocos determina onde ficam os
+jogadores, a identidade da partida e o limite de cada bloco. Os marcadores
+seguintes confirmam os limites calculados. O leitor aceita outras contagens
+quando os bytes seguem a estrutura conhecida, incluindo a divisão igual dos
+slots de jogadores entre mandante e visitante. Os offsets de cada campo e os
+tamanhos dos registros pertencem à versão do formato. Uma estrutura diferente
+ou com evidência inconsistente fica indisponível. A seleção do jogo usa a
+data, os clubes, o placar e os participantes lidos de cada carreira.
+
+| Campo da API | Comparativo da partida |
+| --- | --- |
+| `through_passes_attempted`, `lobbed_through_passes_attempted` | Tentativas de enfiada rasteira e pelo alto |
+| `through_passes_completed` | Enfiadas rasteiras completas |
+| `lobbed_through_passes_completed` | Enfiadas pelo alto completas |
+| `line_breaking_passes` | Passes que rompem linhas |
+| `wing_passes` | Passes pela ponta |
+| `one_two_attempted` | Tentativas de tabela |
+| `one_two_completed`, `one_two_success_pct` | Tabelas completas e taxa de acerto |
+| `lobbed_passes_attempted`, `lobbed_passes_completed` | Passes pelo alto tentados e completos |
+| `set_piece_passes_attempted`, `set_piece_passes_completed` | Passes de bola parada tentados e completos |
+
+Para enfiadas rasteiras e pelo alto, passes pelo alto e passes de bola parada,
+o comparativo exibe a taxa `100 × completos ÷ tentados`, com uma casa decimal.
+A API e a área **Cobertura e proveniência** registram a taxa como derivada,
+com os dois campos de origem. A API mantém a taxa ausente quando faltam
+tentativas, acertos ou um denominador positivo. Nas linhas exibidas do
+comparativo, a interface mostra 0% para o lado sem valor. Zero acertos em
+tentativas registradas produz 0% também na API.
+
+O detalhe da partida expõe `savePasses.home` e `savePasses.away` e mostra a
+decomposição de passes no comparativo normal de **Estatísticas da partida**.
+O comparativo funciona também com dados exclusivamente do save. A origem é
+identificada em **Cobertura e proveniência**. A API registra a revisão do leitor,
+o hash `mxif` e o snapshot do vínculo. Totais gerais, precisão, passes-chave
+e cruzamentos continuam no contrato já existente do MatchStats. Zero
+publicado indica um valor lido no save. Valores inválidos ou indisponíveis
+permanecem ausentes.
+
+O Atlas publica tabelas completas quando o valor é menor ou igual ao de
+tentativas e a porcentagem inteira gravada no save corresponde à divisão
+truncada de acertos por tentativas. A taxa da ficha usa uma casa decimal.
+Nos saves reais consultados, todas as tentativas observadas resultaram em
+acertos. A regressão de quatro acertos em seis tentativas usa dados sintéticos.
+
+Na primeira varredura da versão atualizada, `fc26_save_passes` recebe os
+campos ligados à posse. Uma posse já gravada ganha os passes quando o mesmo
+bloco `mxif` ainda estiver disponível. Saves que divergem nos passes da mesma
+partida ficam sem nova publicação desses campos. A releitura do mesmo bloco
+acrescenta campos novos às observações históricas e é idempotente. A cobertura
+depende dos saves disponíveis localmente, pois cada `mxif` fornece uma partida
+concluída.
+
+Em 27/11/2026, o leitor foi executado nos saves reais de Plymouth e Sheffield.
+Em base isolada, o endpoint e o navegador exibiram os passes de Plymouth–
+Huddersfield com o save real e sem MatchStats. Da esquerda para a direita,
+o comparativo mostrou 30–30 nas enfiadas rasteiras, 3–3 pelo alto, 5–3 nos
+passes que rompem linhas, 11–4 nos passes pela ponta e 1–0 nas tentativas de
+tabela. O caso Plymouth–Stevenage é coberto por regressão sintética com os
+valores registrados na investigação anterior.
+
+#### Tipos de passe por jogador
+
+A ficha expansível de cada jogador nas **Atuações** exibe, em **Passes e
+criação**, enfiadas rasteiras e pelo alto completas, passes pelo alto
+completos, passes de bola parada completos e passes rasteiros completos.
+O contador de passes rasteiros segue o campo do save. O Atlas testa seu
+limite pelo total individual de passes completos e pela conciliação desse total
+com a equipe. A relação entre rasteiros e enfiadas segue sem validação de
+abrangência. Os dois campos são apresentados separadamente.
+O leitor fornece os campos por ID EA. Para os demais recortes, o Atlas valida
+cada métrica
+pela soma dos jogadores da equipe e só a associa a uma atuação confirmada
+com o mesmo lado da partida. Nos passes pelo alto e de bola parada completos,
+a publicação dos valores coletivos e individuais também exige que o total de
+passes completos dos jogadores coincida com o da equipe. A confirmação de
+atuação pode vir dos minutos registrados
+no snapshot do clube gerenciado ou dos participantes do MatchStats. Assim,
+os jogadores com atuação confirmada podem receber os campos mesmo quando
+o MatchStats estiver ausente. Uma posição no banco do save sozinha não gera
+uma atuação.
+
+O detalhe da partida retorna `performances[].savePasses` para atuações
+elegíveis. A fonte inclui revisão, hash `mxif` e snapshot do vínculo. O
+valor zero permanece distinguível de um campo indisponível. A tabela
+`fc26_save_player_passes` é preenchida na varredura normal, inclusive para
+partidas com passes coletivos já importados quando o bloco de origem ainda
+estiver disponível.
+
+#### Comparação opcional com o Live Editor
+
+`ATLAS_SAVE_PASSING_COMPARISON=1` no processo do Atlas ativa a coleta de
+campos que já têm equivalente no MatchStats. A opção começa desativada.
+Ela pode ser habilitada em uma sessão PowerShell com
+`$env:ATLAS_SAVE_PASSING_COMPARISON = '1'` antes de iniciar o Atlas. Para voltar
+ao padrão, retire a variável dessa sessão e reinicie o Atlas.
+
+A leitura inclui passes tentados e completos, passes-chave, cruzamentos,
+passes interceptados, passes para impedimento e enfiadas completas agregadas.
+As taxas usam o mesmo cálculo de acertos sobre tentativas do MatchStats.
+Os cruzamentos por jogador e os cruzamentos completos por equipe exigem
+conciliação com os registros individuais. Interceptações de passe e passes
+para impedimento por equipe são a soma dos jogadores quando os totais de passe
+da equipe conciliam. Campo sem evidência suficiente fica ausente.
+
+A conclusão de uma varredura com a opção ligada pode acrescentar evidência à
+tabela `fc26_save_passing_comparison` enquanto o bloco de origem estiver
+disponível. `GET /api/snapshots/{snapshotId}/matches/{fixtureId}` expõe
+`savePassingComparison` com os valores `careerFile` e `liveEditor` lado a lado.
+A ficha mostra esses mesmos valores em **Cobertura e proveniência → Comparação
+de fontes dos passes**, com as duas equipes e a lista expansível de jogadores.
+A comparação individual exige o mesmo ID e o mesmo clube no MatchStats
+vinculado. Com a opção desligada, o comparativo fica fora da API e a coleta
+para. O MatchStats segue como fonte das métricas normais da aplicação.
+
+Em uma instância isolada, Wycombe–Plymouth (fixture `357224`, export `55`)
+forneceu as dez métricas pelos dois lados, todas com os mesmos valores, e 28
+jogadores com vínculo individual. A conferência cobriu a API antes de ativar,
+com a opção ativa e depois de desativar. O resultado coletivo vale para essa
+partida e serve de referência para novas comparações.
+
+#### Comparação opcional de finalizações e defesa
+
+`ATLAS_SAVE_SHOOTING_DEFENDING_COMPARISON=1` no processo do Atlas ativa a
+coleta adicional. Ela começa desligada e pode ser usada independentemente
+da comparação de passes. A ficha mostra os valores em **Cobertura e
+proveniência → Comparação de finalizações e defesa** quando houver evidência.
+A API de detalhe expõe `saveShootingDefendingComparison` com os campos
+`careerFile` e `liveEditor` por equipe e por jogador vinculado ao mesmo lado.
+
+| Recorte | Campos |
+| --- | --- |
+| Equipe | Finalizações, finalizações no alvo, bloqueios defensivos, cortes, duelos aéreos ganhos e defesas do goleiro |
+| Jogador | Finalizações, finalizações no alvo, finalizações para fora, finalizações bloqueadas, bloqueios defensivos, cortes e duelos aéreos disputados e ganhos |
+
+Finalizações bloqueadas por jogador são calculadas com `total − no alvo −
+para fora`, quando os três contadores do `mxif` são coerentes. Um campo
+indisponível permanece ausente para a origem correspondente. A coleta
+acrescenta um grupo ao JSON da linha de auditoria já existente, na tabela
+`fc26_save_passing_comparison`, sem exigir outra tabela. A adição exige
+o mesmo bloco `mxif` que validou a partida e preserva o conteúdo de passes
+já gravado. O comparativo é de auditoria. Os indicadores normais e o xG
+continuam nos contratos preexistentes.
+
+Na validação isolada de Wycombe–Plymouth (fixture `357224`, export `55`), os
+seis valores de cada equipe e os oito valores de cada um dos 28 jogadores
+vinculados coincidiram. Na ficha, o Plymouth mostrou 17 finalizações nas
+duas fontes. Owen Oseni mostrou duas finalizações, ambas no alvo, nas duas
+fontes. O resultado descreve apenas essa partida.
+
+#### Preenchimento opcional de finalizações e defesa pelo arquivo da carreira
+
+`ATLAS_SAVE_SHOOTING_DEFENDING_FALLBACK=1` no processo do Atlas ativa esse
+preenchimento na ficha de partidas sem MatchStats elegível. A opção começa
+desligada e independe dos comparativos de auditoria. Ela reutiliza a mesma
+linha de evidência do `mxif`, inclusive quando a varredura ainda precisa
+importar os campos. Um MatchStats elegível segue como fonte principal e
+preenche a ficha por inteiro assim que chega.
+
+O preenchimento inclui finalizações, finalizações no alvo, bloqueios
+defensivos, cortes e duelos aéreos ganhos. Para cada lado e métrica, o total
+registrado pela equipe deve coincidir com a soma dos jogadores do save.
+Finalizações no alvo exigem também a conciliação das finalizações totais.
+As linhas individuais exigem atuação, minutos e lado confirmados no snapshot
+do clube gerenciado. A API de detalhe expõe `saveShootingDefendingFallback`
+para os times e `performances[].saveShootingDefending` para os jogadores
+elegíveis, com a origem do dado. O cálculo de xG, a cobertura histórica e
+os agregados de temporada conservam o contrato atual.
+
+Na conferência binária, os cinco campos conciliaram nos 14 lados de sete
+saves distintos. Só Wycombe–Plymouth também tinha MatchStats vinculado.
+Defesas do goleiro permaneceram na auditoria, pois a comparação entre defesas,
+chutes no alvo e gols foi inconclusiva em quatro lados da amostra.
+
+Em uma instância isolada de Wycombe–Plymouth, o navegador mostrou 2 a 17
+finalizações por equipe e `2/2` na linha de Owen Oseni, com a origem do
+arquivo da carreira. Após importar o MatchStats real na base de teste, a
+API voltou a usar o export vinculado e recolheu o preenchimento opcional.
+
+#### Participação do clube gerenciado
+
+O [leitor de participação](../../atlas/fc26_save_participation.py) usa a
+contagem declarada no `mflp` e confirma o limite do bloco pelo marcador
+`mglp`. O bloco registra a equipe gerenciada, a condição de titular ou
+reserva utilizado, a posição, os minutos internos e o minuto interno de
+entrada. O Atlas verifica o lado no `mxif`, os 11 titulares e a coincidência
+do conjunto completo de IDs e minutos com a observação do jogo no snapshot.
+Quando houver posição confirmada do último jogo no snapshot, o leitor também
+exige que as duas posições coincidam. Um código desconhecido ou um vínculo
+inconsistente mantém essa evidência indisponível.
+
+As atuações elegíveis trazem `performances[].saveParticipation` com a origem
+`fc26_save_mflp`, os hashes dos blocos e o snapshot do vínculo. Na ficha, a
+seção **Participação na partida** mostra o papel e os minutos internos do
+atleta. Um pareamento de substituição exige um único jogador de entrada e
+um único de saída na mesma posição registrada e no mesmo minuto interno.
+O vínculo é uma derivação dos registros e a tela identifica o seu método.
+Contadores de carreira, como titularidades acumuladas e assistências, ainda
+dependem de uma sequência comprovada de dois saves.
+
+Em Wycombe–Plymouth, o arquivo real e o snapshot vinculado conciliam os 16
+jogadores do Plymouth, com 11 titulares e cinco reservas utilizados. Os cinco
+pareamentos por posição e minuto aparecem na API. O navegador exibiu a taxa
+de bola parada de 0% a 50%, a atuação de Owen Oseni e a comparação das fontes.
+
+#### Feed da carreira na Linha do tempo
+
+O [leitor do feed](../../atlas/fc26_save_feed.py) adapta o mapeamento do Hub
+em `af13616bf3f4e0d98cb17f95cf21edcc46420e69`. A leitura registra as chaves
+de notícias e publicações no `mcos` e de conversas no `mvlp`. A
+**Linha do tempo → Feed da carreira** mostra as categorias, a contagem de
+ocorrências e os códigos do jogo. As ocorrências são chaves, incluindo
+partes de mensagens e opções de resposta.
+
+Uma partida vinculada identifica a carreira do arquivo. A varredura escolhe
+o arquivo elegível mais recente pela última partida e pela modificação do
+arquivo. O registro se torna visível a partir do snapshot mais recente da
+carreira no momento em que o Atlas o observa. O snapshot indica o recorte
+de leitura. Os códigos ficam fora dos eventos datados da Linha do tempo.
+O Atlas guarda uma linha por snapshot em `fc26_save_career_feed` e expõe o
+registro mais recente elegível em `saveCareerFeed` no endpoint da cronologia.
+
+A verificação em uma instância isolada usou dois saves reais e vínculos
+montados a partir dos registros de partida. O navegador exibiu cinco passes
+rasteiros completos para Bradley Ibrahim contra o Bradford City, três tabelas
+completas e 100% de acerto para o Sheffield United contra o Crystal Palace e
+135 chaves no feed do Plymouth (9 de notícias, 25 de publicações e 101 de
+conversas). Uma taxa de 66,7% com quatro acertos em seis tentativas foi
+verificada por teste automatizado. Os saves da amostra tinham 100% de acerto
+sempre que havia tentativas de tabela.

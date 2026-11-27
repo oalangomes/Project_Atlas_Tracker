@@ -19,6 +19,7 @@ Para este ciclo, este conjunto é a referência de planejamento. O [roadmap ante
 | Reuso Hub | Todas | [Matriz Hub → Atlas](matriz-reaproveitamento-hub-atlas.md) | H01–H35 | Origem, fórmula, estado, destino e decisão |
 | Impedimentos | Todas | [Backlog](backlog-metricas-hub.md) | BL-01–BL-13 | Bloqueio, custo, benefício e condição de desbloqueio |
 | Execução vigente | Todas | [Plano de integração](plano-execucao-integracao-hub.md) | P01–P12 | Fases, PRs, testes e rastreabilidade |
+| Dados do save | P1 | [Enriquecimento com o extrator do Sheffield Hub](plano-execucao-integracao-hub.md#enriquecimento-do-atlas-com-dados-persistidos-no-save) | Proposta | Passes, participação, gestão e paridade do snapshot |
 | Entrega 0 | P0 | [Estabilização, segurança e contratos](entrega-0-estabilizacao-seguranca-contratos.md) | AT-001–AT-004 | Proteger segredos, história e execução |
 | Entrega 1 | P1 | [Qualidade e rastreabilidade dos dados](entrega-1-qualidade-rastreabilidade.md) | AT-005–AT-007 | Contrato comum de evidências e métricas |
 | Entrega 2 | P1 | [Contexto tático e Diário do Treinador](entrega-2-contexto-tatico-diario.md) | AT-008–AT-011 | Contexto qualitativo persistente e atribuído |

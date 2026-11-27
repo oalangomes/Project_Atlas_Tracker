@@ -85,3 +85,74 @@ A origem, fórmula e classificação A–G estão na [matriz](matriz-reaproveita
 5. **Risco de interpretação:** relatórios separam fato, estimativa, hipótese e observação do treinador. AT-021 usa revisão independente; AT-023 registra chamadas cloud controladas, limite, privacidade e custo observado. Não inferir resultado de benchmark AT-020.
 
 Aceite global requer matriz H01–H35 resolvida por AT/PR/teste, BL fechado ou explicitamente pendente, novos indicadores consumidos nos menus existentes, testes de contrato e integração, e revisão esportiva do semestre com casos negativos. Os PRs funcionais terão seus próprios aceites; esta revisão documental não os antecipa.
+
+## Enriquecimento do Atlas com dados persistidos no save
+
+**Proposta de 26/11/2026.** Reaproveitar o extrator binário do Sheffield Hub
+para publicar campos do `CmMgr` nas telas atuais do Atlas. A posse já importada
+é a referência de integração. O primeiro resultado será um comparativo de
+passes por equipe que funciona mesmo em partidas sem MatchStats. A validação
+dos campos usa os bytes do save, pares de saves e invariantes verificáveis.
+Dados de imagem, OCR e transcrição ficam fora do escopo. [Evidência atual no Atlas](p03-contrato-evidencias.md#posse-persistida-no-save-da-carreira).
+
+**Entrega 1 implementada em 27/11/2026.** [Contrato e operação dos passes no Match Center](p03-contrato-evidencias.md#passes-detalhados-do-save-no-match-center).
+
+### Reuso entre os projetos
+
+- O **Sheffield Hub** mantém o código-fonte do decodificador e os testes do
+  formato. Isolar o núcleo de leitura de `mxif`, `mham` e `mflp`, com entradas
+  em bytes e saída independente de clube. Reaproveitar a leitura das tabelas
+  e a identidade de carreira do Hub nas etapas que precisarem delas. Fixar
+  a revisão de origem e registrar a versão na evidência. O ponto de partida
+  verificado é `325481c596e05cca5cee15049012a216af16618d`. [Extrator do Hub](https://github.com/oalangomes/ea-fc-sheffield-hub/blob/325481c596e05cca5cee15049012a216af16618d/scripts/fc26_save_extract.py).
+- O **Atlas** usa um leitor próprio de `mxif` e `mham` adaptado dos
+  mapeamentos do Hub. O leitor recebe bytes, deriva os limites dos blocos
+  das contagens declaradas e funciona offline em qualquer carreira com o
+  formato compatível. O Atlas mantém o vínculo com a partida, o SQLite, as
+  consultas e a apresentação. A posse e os passes passam pelo mesmo leitor.
+  [Leitor de partidas](../../atlas/fc26_save_match.py) · [Watcher](../../atlas/watcher.py) · [Importação atual de posse](../../atlas/fc26_save_possession.py) · [Contrato de evidências](../../atlas/metric_evidence.py).
+
+### Ordem de entrega e critérios de aceite
+
+| Ordem | Entrega | Aceite |
+| --- | --- | --- |
+| 1 | **Leitor compartilhado e passes no Match Center.** Compatibilizar `mxif` de 36 e 40 slots, usar `mham` para validar o placar e publicar posse, enfiadas completas por baixo e pelo alto, passes que rompem linhas, passes pela ponta e tentativas de tabela. | Sheffield e Plymouth decodificam com a mesma versão. No Plymouth–Stevenage, aparecem 46% a 54% de posse, 32 enfiadas por baixo e 3 pelo alto do Plymouth, 4 passes que rompem linhas e 6 tentativas de tabela. A API e o comparativo mostram a fonte e funcionam quando só há dados do save. |
+| 2 | **Participação e rotação com `mflp`.** Ler a quantidade de registros declarada no cabeçalho. Entregar titulares, reservas utilizados, posição registrada e minutos internos quando comprovados. Parear substituições quando a evidência identifica quem entrou e quem saiu. | Cobrir as variantes conhecidas de 30, 33 e 36 registros com evidência de layout. Reproduzir o par Sheffield com 11 titulares e 16 participantes. Em casos com delta de titularidade inconclusivo, publicar somente os campos confirmados. Verificar reset de contador, salto de jogos, substituição simultânea ambígua e troca de posição. |
+| 3 | **Tática gravada e gestão.** Começar pelas escalações e mentalidades salvas, histórico do técnico e lesões com data e duração. Priorizar pré-contratos e histórico agregado da academia após confirmar IDs, unidades e os estados de cada registro. | Vincular cada linha ao clube ou jogador correto no snapshot selecionado e testar carreiras diferentes e mudança de temporada. Mostrar a tática como configuração gravada. Publicar dados de lesão, mercado e academia apenas com campo e significado verificados. |
+| 4 | **Snapshot do save como alternativa ao Lua.** Normalizar as tabelas persistidas no contrato atual do Atlas e rodar as duas ingestões em paralelo para medir cobertura. | Reconciliar identidade, elenco, contratos, empréstimos, academia, notas, calendário global e estatísticas de temporada por competição. Registrar diferenças por campo, valor e cobertura. Habilitar o snapshot sem Lua após aceite dos campos obrigatórios em carreiras, temporadas e competições representativas. [Contrato atual](../../schemas/FC26_CareerTracker_Snapshot_Contract_v1.2.0.json). |
+
+### Regras de vínculo e publicação
+
+- Ler o save em modo somente leitura a partir de uma cópia estável e
+  reaproveitar a decodificação enquanto o arquivo estiver igual. Resolver a
+  carreira e uma partida única com data, clubes, placar e participantes.
+  Registrar a versão do leitor, o hash do save ou bloco, a origem do campo
+  e o corte de snapshot. Layout desconhecido ou vínculo ambíguo ficam
+  registrados como indisponíveis e preservam os dados já importados.
+- Publicar dados diretos e deltas com origem, unidade e recorte no mesmo
+  contrato usado pela API, pelo Match Center e pelos relatórios. Um zero
+  confirmado entra na cobertura. Campo ausente fica indisponível. Quando
+  duas fontes trazem o mesmo dado, contar a partida uma vez. Registrar
+  divergências para revisão e preservar as versões de origem. Manter o xG
+  do save identificado pela fonte até concluir o caso com pênalti.
+- Deltas de gols, assistências, titularidades e aparições exigem dois saves
+  da mesma carreira com sequência de um jogo comprovada pelo `mham`.
+  Mudanças de elenco, contadores reiniciados e intervalos com múltiplos
+  jogos precisam de testes próprios. O `mxif` sustenta apenas o último
+  jogo concluído de cada save disponível. [Regra de sequência do Hub](https://github.com/oalangomes/ea-fc-sheffield-hub/blob/325481c596e05cca5cee15049012a216af16618d/docs/fc26-professional-match-assembler.md#one-match-sequence-proof).
+
+### Liberação
+
+Validar primeiro em base isolada, com saves locais de Plymouth e Sheffield.
+Por partida e por campo, registrar a entrada, o valor esperado, o valor
+obtido e o motivo de ausências. Cobrir repetição de save, partidas com gols
+contra ou pênaltis, lado visitante, importação fora de ordem, versões
+incompatíveis e ausência de MatchStats. Verificar que o histórico preexistente
+e os resultados de consultas por snapshot permanecem íntegros e medir a
+varredura com os arquivos inalterados. Liberar passes e participação em
+cortes independentes.
+
+O MatchStats segue como complemento para xA, pré-assistências, passes sob
+pressão, perdas de posse e cartões enquanto esses campos não tiverem leitura
+persistida validada. A decisão de retirar o Live Editor por completo fica
+para depois da avaliação da paridade do snapshot e da cobertura avançada.
