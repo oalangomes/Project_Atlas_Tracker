@@ -8,6 +8,7 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from .fc26_save_feed import snapshot_save_career_feed
 from .media_utils import competition_name_key, season_start_from_date
 from .server_utils import (
     age_on_date, aggregate_standings, annotate_knockout_progress, as_int, clean_raw,
@@ -160,6 +161,7 @@ class HistoryQueryMixin:
             ).fetchone() if snapshot_id is not None else latest_snapshot(conn, career_id)
             if not selected:
                 raise ValueError("No snapshot is available for this career.")
+            save_career_feed = snapshot_save_career_feed(conn, selected)
             snapshots = conn.execute(
                 "SELECT * FROM snapshots WHERE career_id=? AND import_sequence<=? ORDER BY import_sequence",
                 (career_id, selected["import_sequence"]),
@@ -404,6 +406,7 @@ class HistoryQueryMixin:
             "career": dict(career),
             "snapshot": dict(selected),
             "events": events,
+            **({"saveCareerFeed": save_career_feed} if save_career_feed else {}),
             "summary": {
                 "event_count": len(events),
                 "exact": sum(1 for event in events if event["precision"] == "exact"),

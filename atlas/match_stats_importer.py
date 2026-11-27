@@ -16,6 +16,10 @@ from typing import Any, Iterable
 from .db import Database
 from .paths import read_snapshot_root, database_path as active_workspace_database_path
 from .career_identity import CareerIdentityGuard
+from .fc26_save_comparison import (
+    save_passing_comparison_enabled, save_shooting_defending_comparison_enabled,
+    save_shooting_defending_fallback_enabled,
+)
 
 PARTICIPANTS_FILE = "16_match_participants_wide.csv"
 TEAMS_FILE = "18_match_teams_wide.csv"
@@ -671,12 +675,24 @@ class MatchStatsImporter:
                    ORDER BY id"""
             ).fetchall()
             save_possession = conn.execute(
-                "SELECT fixture_id,snapshot_id,mxif_sha256 FROM fc26_save_possession ORDER BY fixture_id"
+                """SELECT p.fixture_id,p.snapshot_id,p.mxif_sha256,t.reader_revision,i.reader_revision,
+                          length(json(t.stats_json)),length(json(i.stats_json)),m.mflp_sha256,c.reader_revision,length(json(c.stats_json))
+                   FROM fc26_save_possession p LEFT JOIN fc26_save_passes t ON t.fixture_id=p.fixture_id
+                   LEFT JOIN fc26_save_player_passes i ON i.fixture_id=p.fixture_id
+                   LEFT JOIN fc26_save_participation m ON m.fixture_id=p.fixture_id
+                   LEFT JOIN fc26_save_passing_comparison c ON c.fixture_id=p.fixture_id AND ?=1
+                   ORDER BY p.fixture_id""",
+                (int(save_passing_comparison_enabled() or save_shooting_defending_comparison_enabled()
+                     or save_shooting_defending_fallback_enabled()),),
             ).fetchall()
-        # Relinks and save-backed possession can change match details without a new MatchStats export.
+            career_feeds = conn.execute(
+                "SELECT snapshot_id,feed_sha256 FROM fc26_save_career_feed ORDER BY snapshot_id"
+            ).fetchall()
+        # Relinks and save-backed evidence can change match details without a new MatchStats export.
         revision = hashlib.sha256(json.dumps({
             "matchstats": [tuple(row) for row in rows],
             "savePossession": [tuple(row) for row in save_possession],
+            "saveCareerFeed": [tuple(row) for row in career_feeds],
         }).encode("utf-8")).hexdigest()
         linked = sum(row["fixture_id"] is not None for row in rows)
         return {

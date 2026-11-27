@@ -313,7 +313,12 @@ function matchEvidenceMarkup(evidence) {
     const states = { complete: "Complete", partial: "Partial", unlinked: "Unlinked", absent: "Absent" };
     const source = evidence.source || {};
     const decimalIndicators = new Set(["npk_expected_goals", "expected_goals_derived", "expected_assists"]);
-    const rows = (evidence.teams || []).flatMap((team) => (team.indicators || []).map((indicator) => `<tr><td>${team.teamIndex === 0 ? "Home" : "Away"}</td><td>${esc(indicator.label)}</td><td class="num">${indicator.value == null ? "–" : num(indicator.value, decimalIndicators.has(indicator.key) ? 3 : 0)}</td><td>${esc(indicator.unit)}</td><td>${indicator.state === "available" ? statusBadge(indicator.origin === "derived" ? "Derived" : "FC26", indicator.origin === "derived" ? "blue" : "good") : statusBadge("Absent", "warn")}</td><td><small>${esc(indicator.reason || indicator.formula || "")}</small></td></tr>`));
+    const careerFileLabel = { "pt-BR": "Arquivo da carreira", "es-ES": "Archivo de la carrera", "en-GB": "Career file" }[atlasLanguage()];
+    const rows = (evidence.teams || []).flatMap((team) => (team.indicators || []).map((indicator) => {
+        const originLabel = indicator.origin === "derived" ? "Derived"
+            : indicator.source?.kind === "fc26_save_mxif" ? careerFileLabel : "FC26";
+        return `<tr><td>${team.teamIndex === 0 ? "Home" : "Away"}</td><td>${esc(indicator.label)}</td><td class="num">${indicator.value == null ? "–" : num(indicator.value, decimalIndicators.has(indicator.key) ? 3 : 0)}</td><td>${esc(indicator.unit)}</td><td>${indicator.state === "available" ? statusBadge(originLabel, indicator.origin === "derived" ? "blue" : "good") : statusBadge("Absent", "warn")}</td><td><small>${esc(indicator.reason || indicator.formula || "")}</small></td></tr>`;
+    }));
     const positions = evidence.positions || [];
     const observed = positions.filter((position) => position.state === "observed").length;
     return `<div class="data-note">MatchStats: ${statusBadge(states[evidence.state] || evidence.state, evidence.state === "complete" ? "good" : "warn")} · career ${num(evidence.careerId)} · snapshot ${num(evidence.snapshotId)} · fixture ${num(evidence.fixtureId)} · contract ${esc(evidence.version)} · source snapshot ${source.sourceSnapshotId == null ? "–" : num(source.sourceSnapshotId)} · export ${source.exportId == null ? "–" : num(source.exportId)}${evidence.reason ? ` · ${esc(evidence.reason)}` : ""}</div>${rows.length ? table([{ label: "Side" }, { label: "Indicator" }, { label: "Value", cls: "num" }, { label: "Unit" }, { label: "Origin" }, { label: "Method / absence" }], rows) : ""}${positions.length ? `<p class="data-note">Observed match positions: ${num(observed)} / ${num(positions.length)}. Natural position is kept separate; ${num(positions.filter((position) => position.backfilledFromEarlierSnapshot).length)} positions came from an earlier eligible snapshot.</p>` : ""}`;
@@ -1183,13 +1188,16 @@ const detailedStatLabels = {
 };
 const detailedStatGroups = [
     { label: "Attack & chances", keys: ["goals_derived", "assists", "npk_expected_goals", "expected_assists", "shots", "shots_on_target", "shots_off_target_derived", "shots_blocked", "key_passes", "fk_goals", "pk_goals", "offsides", "corners_won"] },
-    { label: "Passing & creation", keys: ["passes", "passes_completed", "pass_accuracy_pct_derived", "passes_under_pressure", "passes_completed_under_pressure", "crosses_attempted", "crosses_delivered", "cross_success_pct_derived"] },
     { label: "Dribbling & possession", keys: ["dribbles", "dribbles_completed", "dribble_success_pct_derived", "skillmove_beats", "nutmegs", "possession_won", "possession_lost", "beaten_by_opponent", "beat_with_pass"] },
     { label: "Defending", keys: ["tackles", "stand_tackles", "stand_tackles_won", "stand_tackle_success_pct_derived", "slide_tackles", "slide_tackles_won", "slide_tackle_success_pct_derived", "interceptions", "blocks", "clearances"] },
     { label: "Duels", keys: ["offense_duels_attempted", "offense_duels_won", "offense_duel_success_pct_derived", "defense_duels_attempted", "defense_duels_won", "defense_duel_success_pct_derived", "aerial_duels_attempted", "aerial_duels_won", "aerial_duel_success_pct_derived"] },
     { label: "Discipline", keys: ["fouls_committed", "fouls_won", "yellow_card_events", "red_dismissals", "penalties_committed", "penalties_won"] },
     { label: "Goalkeeping", keys: ["saves", "shots_against", "saving_shots_on_target", "save_success_pct_derived", "penalty_saves", "shootout_saves", "punches", "dives_at_feet", "saving_crosses", "goals_conceded"] }
 ];
+const detailedPassingKeys = ["passes", "passes_completed", "pass_accuracy_pct_derived", "passes_under_pressure",
+    "passes_completed_under_pressure", "crosses_attempted", "crosses_delivered", "cross_success_pct_derived"];
+const extraPlayerPassingKeys = ["through_passes_completed", "lobbed_through_passes_completed",
+    "ground_passes_completed", "lobbed_passes_completed", "set_piece_passes_completed"];
 function detailedStatText(key, value) {
     if (value == null || value === "")
         return "–";
@@ -1199,9 +1207,41 @@ function detailedStatText(key, value) {
         return num(value, 2);
     return num(value, Number(value) % 1 ? 2 : 0);
 }
-function detailedPlayerDrawer(p, analysis = "", goalkeeperContext = "") {
+function savedParticipationMarkup(participation, playerNames) {
+    if (!participation)
+        return "";
+    const lexicon = {
+        "pt-BR": { title: "Participação na partida", position: "Posição registrada", minutes: "Minutos internos", entry: "Minuto interno de entrada", paired: "Saída pareada por posição e minuto",
+            roles: { starter_finished: "Titular, terminou a partida", starter_substituted: "Titular, saiu durante a partida", substitute_entered: "Reserva utilizado" } },
+        "en-GB": { title: "Match participation", position: "Recorded position", minutes: "Internal minutes", entry: "Internal entry minute", paired: "Outgoing player matched by position and minute",
+            roles: { starter_finished: "Starter, finished the match", starter_substituted: "Starter, substituted off", substitute_entered: "Substitute, played" } },
+        "es-ES": { title: "Participación en el partido", position: "Posición registrada", minutes: "Minutos internos", entry: "Minuto interno de entrada", paired: "Salida emparejada por posición y minuto",
+            roles: { starter_finished: "Titular, terminó el partido", starter_substituted: "Titular, fue sustituido", substitute_entered: "Suplente utilizado" } },
+    };
+    const language = atlasLanguage();
+    const labels = language === "en-GB" || language === "es-ES" ? lexicon[language] : lexicon["pt-BR"];
+    const role = labels.roles[participation.role];
+    if (!role)
+        return "";
+    const rows = [[labels.minutes, num(participation.minutesPlayedInternal)]];
+    if (participation.position)
+        rows.unshift([labels.position, pos(participation.position)]);
+    if (participation.entryMinuteInternal != null)
+        rows.push([labels.entry, num(participation.entryMinuteInternal)]);
+    const replaced = playerNames.get(participation.replacedPlayerEaId);
+    if (replaced)
+        rows.push([labels.paired, replaced]);
+    return `<section class="detailed-stat-group" aria-label="${esc(labels.title)}"><h4>${esc(labels.title)}</h4><p>${esc(role)}</p>${rows.map(([label, value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")}</section>`;
+}
+function detailedPlayerDrawer(p, analysis = "", goalkeeperContext = "", playerNames = new Map()) {
     const s = p.detailedStats || {};
-    if (!Object.keys(s).length && !analysis && !goalkeeperContext)
+    const hasDetailed = Object.keys(s).length > 0;
+    const savedStats = p.saveShootingDefending;
+    const extraPassing = p.savePasses || {};
+    const passingLabels = matchPassingLabels();
+    const extraPassingKeys = extraPlayerPassingKeys.filter(key => extraPassing[key] != null || s[key] != null);
+    const participation = savedParticipationMarkup(p.saveParticipation, playerNames);
+    if (!hasDetailed && !extraPassingKeys.length && !analysis && !goalkeeperContext && !participation && !savedStats)
         return "";
     const context = [
         ["xG+xA /90", s.xg_plus_xa_per90 == null ? "–" : num(s.xg_plus_xa_per90, 2)],
@@ -1210,13 +1250,108 @@ function detailedPlayerDrawer(p, analysis = "", goalkeeperContext = "") {
         ["Duels", s.combined_duel_success_pct == null ? "–" : `${num(s.combined_duel_success_pct, 1)} %`],
         ["Possession balance", Number(s.possession_balance) >= 0 ? `+${num(s.possession_balance)}` : num(s.possession_balance)]
     ];
-    return `<details class="match-player-details"><summary>${goalkeeperContext ? "Análise do goleiro e métricas" : "Match profile & all metrics"}</summary>${analysis}${goalkeeperContext}${goalkeeperContext ? "" : `<div class="match-context-strip">${context.map((x) => `<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join("")}</div>`}<div class="detailed-stat-groups">${detailedStatGroups.map((g) => { const items = g.keys.filter((k) => s[k] != null); return items.length ? `<div class="detailed-stat-group"><h4>${esc(g.label)}</h4>${items.map((k) => `<div><span>${esc(detailedStatLabels[k] || k)}</span><strong>${detailedStatText(k, s[k])}</strong></div>`).join("")}</div>` : ""; }).join("")}</div></details>`;
+    const summary = goalkeeperContext ? "Análise do goleiro e métricas" : extraPassingKeys.length && !hasDetailed && !analysis && !participation && !savedStats
+        ? passingLabels.group : "Match profile & all metrics";
+    const labels = { ...detailedStatLabels, ...passingLabels.metrics };
+    const groups = [...detailedStatGroups];
+    groups.splice(1, 0, { label: passingLabels.group, keys: [...detailedPassingKeys, ...extraPassingKeys] });
+    const stats = { ...savedStats, ...s };
+    for (const key of extraPassingKeys)
+        stats[key] = s[key] ?? extraPassing[key];
+    return `<details class="match-player-details"><summary>${esc(summary)}</summary>${analysis}${goalkeeperContext}${hasDetailed && !goalkeeperContext ? `<div class="match-context-strip">${context.map((x) => `<div><span>${esc(x[0])}</span><strong>${esc(x[1])}</strong></div>`).join("")}</div>` : ""}<div class="detailed-stat-groups">${participation}${groups.map(g => { const items = g.keys.filter((k) => stats[k] != null); return items.length ? `<div class="detailed-stat-group"><h4>${esc(g.label)}</h4>${items.map((k) => `<div><span>${esc(labels[k] || k)}</span><strong>${detailedStatText(k, stats[k])}</strong></div>`).join("")}</div>` : ""; }).join("")}</div></details>`;
 }
 function matchComparisonRow(label, left, right, format = (v) => num(v)) {
-    const hasLeft = left != null && Number.isFinite(Number(left)), hasRight = right != null && Number.isFinite(Number(right));
-    const lv = hasLeft ? Number(left) : 0, rv = hasRight ? Number(right) : 0, max = Math.max(lv, rv, 0.0001);
-    const bars = hasLeft && hasRight ? `<div class="match-stat-bars"><i class="home" style="width:${Math.max(2, lv / max * 100)}%"></i><i class="away" style="width:${Math.max(2, rv / max * 100)}%"></i></div>` : `<small class="match-stat-unavailable">Comparison unavailable for one or both teams</small>`;
-    return `<div class="match-stat-row"><strong class="left">${left == null ? "–" : format(left)}</strong><div class="match-stat-label"><span>${esc(label)}</span>${bars}</div><strong>${right == null ? "–" : format(right)}</strong></div>`;
+    const home = Number(left), away = Number(right);
+    const homeValue = Number.isFinite(home) ? home : 0, awayValue = Number.isFinite(away) ? away : 0;
+    const max = Math.max(homeValue, awayValue, 0.0001);
+    const barWidth = (value) => value > 0 ? Math.max(2, value / max * 100) : 0;
+    const bars = `<div class="match-stat-bars"><i class="home" style="width:${barWidth(homeValue)}%"></i><i class="away" style="width:${barWidth(awayValue)}%"></i></div>`;
+    return `<div class="match-stat-row"><strong class="left">${format(homeValue)}</strong><div class="match-stat-label"><span>${esc(label)}</span>${bars}</div><strong>${format(awayValue)}</strong></div>`;
+}
+function matchPassingLabels() {
+    const language = atlasLanguage();
+    return language === "es-ES" ? { group: "Pases y creación", metrics: {
+            through_passes_attempted: "Intentos de pase filtrado raso",
+            through_passes_completed: "Pases filtrados rasos completados",
+            through_passes_accuracy_pct: "Precisión de pase filtrado raso",
+            lobbed_through_passes_attempted: "Intentos de pase filtrado elevado",
+            lobbed_through_passes_completed: "Pases filtrados elevados completados",
+            lobbed_through_passes_accuracy_pct: "Precisión de pase filtrado elevado",
+            line_breaking_passes: "Pases que rompen líneas", wing_passes: "Pases por banda",
+            one_two_attempted: "Paredes intentadas", one_two_completed: "Paredes completadas",
+            one_two_success_pct: "Precisión de paredes", ground_passes_completed: "Pases rasos completados",
+            lobbed_passes_attempted: "Pases elevados intentados", lobbed_passes_completed: "Pases elevados completados",
+            lobbed_passes_accuracy_pct: "Precisión de pases elevados",
+            set_piece_passes_attempted: "Pases a balón parado intentados", set_piece_passes_completed: "Pases a balón parado completados",
+            set_piece_passes_accuracy_pct: "Precisión de pases a balón parado",
+        } } : language === "en-GB" ? { group: "Passing & creation", metrics: {
+            through_passes_attempted: "Ground through pass attempts",
+            through_passes_completed: "Completed ground through passes",
+            through_passes_accuracy_pct: "Ground through pass accuracy",
+            lobbed_through_passes_attempted: "Lobbed through pass attempts",
+            lobbed_through_passes_completed: "Completed lobbed through passes",
+            lobbed_through_passes_accuracy_pct: "Lobbed through pass accuracy",
+            line_breaking_passes: "Line-breaking passes", wing_passes: "Wide passes",
+            one_two_attempted: "One-two attempts", one_two_completed: "Completed one-twos",
+            one_two_success_pct: "One-two success rate", ground_passes_completed: "Completed ground passes",
+            lobbed_passes_attempted: "Lobbed pass attempts", lobbed_passes_completed: "Completed lobbed passes",
+            lobbed_passes_accuracy_pct: "Lobbed pass accuracy",
+            set_piece_passes_attempted: "Set-piece pass attempts", set_piece_passes_completed: "Completed set-piece passes",
+            set_piece_passes_accuracy_pct: "Set-piece pass accuracy",
+        } } : { group: "Passes e criação", metrics: {
+            through_passes_attempted: "Enfiadas rasteiras tentadas",
+            through_passes_completed: "Enfiadas rasteiras completas",
+            through_passes_accuracy_pct: "Acerto nas enfiadas rasteiras",
+            lobbed_through_passes_attempted: "Enfiadas pelo alto tentadas",
+            lobbed_through_passes_completed: "Enfiadas pelo alto completas",
+            lobbed_through_passes_accuracy_pct: "Acerto nas enfiadas pelo alto",
+            line_breaking_passes: "Passes que rompem linhas", wing_passes: "Passes pela ponta",
+            one_two_attempted: "Tentativas de tabela", one_two_completed: "Tabelas completas",
+            one_two_success_pct: "Acerto nas tabelas", ground_passes_completed: "Passes rasteiros completos",
+            lobbed_passes_attempted: "Passes pelo alto tentados", lobbed_passes_completed: "Passes pelo alto completos",
+            lobbed_passes_accuracy_pct: "Acerto nos passes pelo alto",
+            set_piece_passes_attempted: "Passes de bola parada tentados", set_piece_passes_completed: "Passes de bola parada completos",
+            set_piece_passes_accuracy_pct: "Acerto nos passes de bola parada",
+        } };
+}
+function matchSourceAudit(comparison, match, performances, kind) {
+    if (!comparison)
+        return "";
+    const lexicon = {
+        "pt-BR": { metric: "Métrica", file: "Arquivo da carreira", players: "Comparação por jogador",
+            passing: { title: "Comparação de fontes dos passes", labels: ["Passes tentados", "Passes completos", "Precisão de passe", "Passes interceptados", "Passes que geraram impedimento", "Passes-chave", "Cruzamentos tentados", "Cruzamentos completos", "Precisão dos cruzamentos", "Total de enfiadas completas"] },
+            shootingDefending: { title: "Comparação de finalizações e defesa", labels: ["Finalizações", "Finalizações no alvo", "Finalizações para fora", "Finalizações bloqueadas", "Bloqueios defensivos", "Cortes", "Duelos aéreos disputados", "Duelos aéreos ganhos", "Defesas do goleiro"] } },
+        "es-ES": { metric: "Métrica", file: "Archivo de la carrera", players: "Comparación por jugador",
+            passing: { title: "Comparación de fuentes de pases", labels: ["Pases intentados", "Pases completados", "Precisión de pase", "Pases interceptados", "Pases que provocaron fuera de juego", "Pases clave", "Centros intentados", "Centros completados", "Precisión de centros", "Total de pases filtrados completados"] },
+            shootingDefending: { title: "Comparación de remates y defensa", labels: ["Remates", "Remates a puerta", "Remates fuera", "Remates bloqueados", "Bloqueos defensivos", "Despejes", "Duelos aéreos disputados", "Duelos aéreos ganados", "Paradas"] } },
+        "en-GB": { metric: "Metric", file: "Career file", players: "Player comparison",
+            passing: { title: "Passing source comparison", labels: ["Pass attempts", "Completed passes", "Pass accuracy", "Passes intercepted", "Offside passes", "Key passes", "Cross attempts", "Completed crosses", "Cross accuracy", "Total completed through passes"] },
+            shootingDefending: { title: "Shooting and defending comparison", labels: ["Shots", "Shots on target", "Shots off target", "Blocked shots", "Defensive blocks", "Clearances", "Aerial duels contested", "Aerial duels won", "Goalkeeper saves"] } },
+    };
+    const language = atlasLanguage();
+    const words = language === "en-GB" || language === "es-ES" ? lexicon[language] : lexicon["pt-BR"];
+    const { title, labels } = words[kind];
+    const keys = kind === "passing"
+        ? ["passes", "passes_completed", "pass_accuracy_pct_derived", "passes_intercepted", "offside_passes", "key_passes",
+            "crosses_attempted", "crosses_delivered", "cross_success_pct_derived", "tracker_completed_through_passes_including_lobbed"]
+        : ["shots", "shots_on_target", "shots_off_target_derived", "shots_blocked", "blocks", "clearances",
+            "aerial_duels_attempted", "aerial_duels_won", "saves"];
+    const values = (stats) => {
+        const rows = keys.flatMap((key, index) => {
+            const pair = stats?.[key];
+            return pair ? [`<tr><th scope="row">${esc(labels[index])}</th><td class="num">${detailedStatText(key, pair.careerFile)}</td><td class="num">${detailedStatText(key, pair.liveEditor)}</td></tr>`] : [];
+        });
+        return rows.length ? table([{ label: words.metric, sortable: false }, { label: words.file, cls: "num", sortable: false }, { label: "Live Editor", cls: "num", sortable: false }], rows) : "";
+    };
+    const teams = [[match.home_team_name, comparison.home], [match.away_team_name, comparison.away]].map(([name, stats]) => {
+        const metrics = values(stats);
+        return metrics ? `<div><h4>${esc(name)}</h4>${metrics}</div>` : "";
+    }).join("");
+    const playerRows = performances.map(p => {
+        const metrics = values(comparison.players?.[p.player_ea_id]?.stats);
+        return metrics ? `<details class="match-player-details"><summary>${esc(p.display_name || String(p.player_ea_id))}</summary>${metrics}</details>` : "";
+    }).join("");
+    return `<section aria-label="${esc(title)}"><h3 class="card-title">${esc(title)}</h3>${teams ? `<div class="grid two-col">${teams}</div>` : ""}${playerRows ? `<details class="match-p0-fold"><summary>${esc(words.players)}</summary>${playerRows}</details>` : ""}</section>`;
 }
 function goalkeeperPlayerContext(side, keeper, interpretationLimit) {
     const reasons = { multiple_goalkeepers: "Mais de um goleiro atuou; os dados coletivos não podem ser atribuídos individualmente.", uncertain_minutes: "Minutos dos goleiros incompletos.", no_goalkeeper: "Goleiro não identificado.", missing_save_rate_input: "Faltam defesas, gols sofridos ou chutes no alvo.", team_saves_mismatch: "Defesas individuais diferem do total da equipe.", goal_concession_mismatch: "Gols sofridos pelo jogador e pela equipe diferem.", shots_on_target_mismatch: "Defesas mais gols sofridos não correspondem aos chutes no alvo.", no_shots_on_target: "O adversário não finalizou no alvo.", missing_goal_concession_pair: "Falta o número de gols sofridos pelo jogador ou pela equipe.", missing_total_opponent_xg: "xG total do adversário indisponível." };
@@ -1319,10 +1454,15 @@ async function renderMatch() {
     const stadium = d.stadium, detailed = d.detailedStats || {}, hasDetailed = !!detailed.available;
     const stadiumSection = stadium ? `<section class="card stadium-match-card"><header class="card-header"><div><h2>${esc(stadium.name || "Stadium")}</h2><p>${d.stadiumSource === "fixture" ? "Stadium exported for this match" : "Home stadium fallback — the actual venue may differ for neutral finals"}</p></div><div class="row-actions">${statusBadge(stadium.stadiumTypeLabel || "Unknown type", stadium.stadiumType === "authentic" ? "good" : stadium.stadiumType === "generic" ? "blue" : "")}${statusBadge(d.stadiumSource === "fixture" ? "Fixture data" : "Fallback", d.stadiumSource === "fixture" ? "good" : "")}</div></header><div class="stadium-gallery">${(stadium.variants || []).length ? (stadium.variants || []).map((variant, index) => `<figure class="stadium-variant ${index === 0 ? "primary" : ""}">${mediaImg(variant, stadium.name, "stadium-match-image", false)}<figcaption>Variant ${esc(variant.variant || index + 1)}</figcaption></figure>`).join("") : `<div class="card-body muted">A stadium is assigned, but no image has been imported yet.</div>`}</div></section>` : "";
     const teamById = new Map((detailed.teams || []).map((t) => [Number(t.teamEaId), t]));
-    const homeStats = (teamById.get(Number(m.home_team_ea_id)) || {}).stats || {}, awayStats = (teamById.get(Number(m.away_team_ea_id)) || {}).stats || {};
+    const savedTeamStats = d.saveShootingDefendingFallback;
+    const homeStats = teamById.get(Number(m.home_team_ea_id))?.stats || savedTeamStats?.home || {};
+    const awayStats = teamById.get(Number(m.away_team_ea_id))?.stats || savedTeamStats?.away || {};
+    const savedStatsLabels = atlasLanguage() === "en-GB" ? { file: "Career file", note: "Shooting and defending from the career file", blocks: "Defensive blocks", clearances: "Clearances" }
+        : atlasLanguage() === "es-ES" ? { file: "Archivo de la carrera", note: "Remates y defensa del archivo de la carrera", blocks: "Bloqueos defensivos", clearances: "Despejes" }
+            : { file: "Arquivo da carreira", note: "Finalizações e defesa do arquivo da carreira", blocks: "Bloqueios defensivos", clearances: "Cortes" };
     const savePossession = d.savePossession;
     const possessionLabel = atlasLanguage() === "pt-BR" ? "Posse de bola" : atlasLanguage() === "es-ES" ? "Posesión del balón" : "Ball possession";
-    const possessionSource = atlasLanguage() === "pt-BR" ? "Fonte da posse: save da carreira (FC 26)." : atlasLanguage() === "es-ES" ? "Fuente de posesión: partida guardada de la carrera (FC 26)." : "Possession source: FC 26 career save.";
+    const extraTeamPassing = d.savePasses;
     const statComparisons = [];
     statComparisons.push([possessionLabel, savePossession?.homePct, savePossession?.awayPct, (v) => `${num(v)}%`]);
     statComparisons.push(["Team-xG", homeStats.expected_goals_derived, awayStats.expected_goals_derived, (v) => num(v, 2)]);
@@ -1335,6 +1475,11 @@ async function renderMatch() {
     statComparisons.push(["Pass accuracy", homeStats.pass_accuracy_pct_derived, awayStats.pass_accuracy_pct_derived, (v) => `${num(v, 1)} %`]);
     statComparisons.push(["Passes under pressure", homeStats.pressure_pass_accuracy_pct, awayStats.pressure_pass_accuracy_pct, (v) => `${num(v, 1)} %`]);
     statComparisons.push(["Key passes", homeStats.key_passes, awayStats.key_passes, (v) => num(v)]);
+    if (extraTeamPassing) {
+        for (const [key, label] of Object.entries(matchPassingLabels().metrics)) {
+            statComparisons.push([label, extraTeamPassing.home[key], extraTeamPassing.away[key], (value) => detailedStatText(key, value)]);
+        }
+    }
     statComparisons.push(["Dribbles completed", homeStats.dribbles_completed, awayStats.dribbles_completed, (v) => num(v)]);
     statComparisons.push(["Possession won", homeStats.possession_won, awayStats.possession_won, (v) => num(v)]);
     statComparisons.push(["Possession lost", homeStats.possession_lost, awayStats.possession_lost, (v) => num(v)]);
@@ -1342,9 +1487,13 @@ async function renderMatch() {
     statComparisons.push(["Tackles", homeStats.tackles, awayStats.tackles, (v) => num(v)]);
     statComparisons.push(["Defensive duel success", homeStats.defense_duel_success_pct_derived, awayStats.defense_duel_success_pct_derived, (v) => `${num(v, 1)} %`]);
     statComparisons.push(["Aerial duels won", homeStats.aerial_duels_won, awayStats.aerial_duels_won, (v) => num(v)]);
+    if (savedTeamStats) {
+        statComparisons.push([savedStatsLabels.blocks, homeStats.blocks, awayStats.blocks, (v) => num(v)]);
+        statComparisons.push([savedStatsLabels.clearances, homeStats.clearances, awayStats.clearances, (v) => num(v)]);
+    }
     statComparisons.push(["Fouls", homeStats.fouls_committed, awayStats.fouls_committed, (v) => num(v)]);
     const comparisonRows = statComparisons.filter(([, left, right]) => left != null || right != null).map(([label, left, right, format]) => matchComparisonRow(label, left, right, format));
-    const comparison = hasDetailed || savePossession ? `<section class="card match-comparison-card"><header class="card-header"><div><h2>Match statistics</h2>${hasDetailed ? "<p>Direct FC26 match data · team xG augments the direct NPK-xG base only when penalty context is reliable</p>" : ""}</div></header><div class="match-comparison-head"><span>${esc(m.home_team_name)}</span><b>Comparison</b><span>${esc(m.away_team_name)}</span></div><div class="match-stat-comparison">${comparisonRows.join("") || '<p class="muted">No comparable team metrics were exported for this match.</p>'}</div><div class="data-note">${savePossession ? esc(possessionSource) : ""} ${esc(detailed.xgNote || "")} ${esc(detailed.eventTimingNote || "")}</div></section>` : "";
+    const comparison = hasDetailed || comparisonRows.length ? `<section class="card match-comparison-card"><header class="card-header"><div><h2>Match statistics</h2>${hasDetailed ? "<p>Direct FC26 match data · team xG augments the direct NPK-xG base only when penalty context is reliable</p>" : savedTeamStats ? `<p>${esc(savedStatsLabels.note)}</p>` : ""}</div></header><div class="match-comparison-head"><span>${esc(m.home_team_name)}</span><b>Comparison</b><span>${esc(m.away_team_name)}</span></div><div class="match-stat-comparison">${comparisonRows.join("") || '<p class="muted">No comparable team metrics were exported for this match.</p>'}</div><div class="data-note">${esc(detailed.xgNote || "")} ${esc(detailed.eventTimingNote || "")}</div></section>` : "";
     const eventNames = new Map(d.performances.map((p) => [Number(p.player_ea_id), p.display_name]));
     const teamByIndex = new Map((detailed.teams || []).map((t) => [Number(t.teamIndex), t]));
     const eventTeamName = (idx) => { const team = teamByIndex.get(Number(idx)), id = Number(team?.teamEaId); return id === Number(m.home_team_ea_id) ? m.home_team_name : id === Number(m.away_team_ea_id) ? m.away_team_name : `Team ${num(Number(idx) + 1)}`; };
@@ -1363,11 +1512,15 @@ async function renderMatch() {
     const performanceRow = (p) => {
         const s = p.detailedStats || p.reconstructedStats || {};
         const detailedRow = !!p.detailedStats;
+        const shots = detailedRow ? s : p.saveShootingDefending;
         const observedPosition = observedPositionOf(p);
+        const savedSourceBadges = [s.source ? statusBadge("Snapshot-Delta", "blue") : "",
+            p.saveShootingDefending ? statusBadge(savedStatsLabels.file, "blue") : ""].filter(Boolean).join(" ");
+        const sourceBadge = detailedRow ? statusBadge("FC26 Detail", "good") : savedSourceBadges || statusBadge(p.join_status || "Direct");
         return `<tr>
-        <td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id, p.display_name)}${detailedPlayerDrawer(p, m.is_completed && participants.has(Number(p.player_ea_id)) ? `<div data-match-player-analysis="${Number(p.player_ea_id)}" aria-live="polite"></div>` : "", goalkeeperContextFor(p))}</div></div></td>
+        <td><div class="player-line">${playerPortrait(p.media, p.display_name, "table-portrait")}<div class="player-line-copy">${playerLink(p.player_ea_id, p.display_name)}${detailedPlayerDrawer(p, m.is_completed && participants.has(Number(p.player_ea_id)) ? `<div data-match-player-analysis="${Number(p.player_ea_id)}" aria-live="polite"></div>` : "", goalkeeperContextFor(p), eventNames)}</div></div></td>
         <td class="center" data-sort="${positionOrder(observedPosition ?? p.primary_position, p.primary_position_id)}">${observedPosition ? `${positionBadge(observedPosition)}<small class="match-position-source">FC26 record</small>` : `${positionBadge(p.primary_position)}<small class="match-position-source">Registered · match N/D</small>`}</td><td class="num">${num(s.minutes_played ?? p.minutes_played)}</td><td class="num"><b>${s.game_rating != null ? num(s.game_rating, 1) : p.rating ? num(p.rating, 1) : "–"}</b></td>
-        <td class="num">${detailedRow ? `${num(s.goals_derived)}/${num(s.assists)}` : s.source ? `${num(s.goals)}/${num(s.assists)}` : "–"}</td><td class="num">${detailedRow ? num(s.npk_expected_goals, 2) : "–"}</td><td class="num">${detailedRow ? num(s.expected_assists, 2) : "–"}</td><td class="num">${detailedRow ? `${num(s.shots_on_target)}/${num(s.shots)}` : "–"}</td><td class="num">${detailedRow && s.pass_accuracy_pct_derived != null ? `${num(s.pass_accuracy_pct_derived, 1)} %` : "–"}</td><td class="num">${detailedRow ? num(s.key_passes) : "–"}</td><td class="num">${detailedRow ? num(s.possession_won) : "–"}</td><td class="num">${detailedRow ? num(s.possession_lost) : "–"}</td><td>${detailedRow ? statusBadge("FC26 Detail", "good") : s.source ? statusBadge("Snapshot-Delta", "blue") : statusBadge(p.join_status || "Direct")}</td></tr>`;
+        <td class="num">${detailedRow ? `${num(s.goals_derived)}/${num(s.assists)}` : s.source ? `${num(s.goals)}/${num(s.assists)}` : "–"}</td><td class="num">${detailedRow ? num(s.npk_expected_goals, 2) : "–"}</td><td class="num">${detailedRow ? num(s.expected_assists, 2) : "–"}</td><td class="num">${detailedRow || shots?.shots != null || shots?.shots_on_target != null ? `${num(shots.shots_on_target)}/${num(shots.shots)}` : "–"}</td><td class="num">${detailedRow && s.pass_accuracy_pct_derived != null ? `${num(s.pass_accuracy_pct_derived, 1)} %` : "–"}</td><td class="num">${detailedRow ? num(s.key_passes) : "–"}</td><td class="num">${detailedRow ? num(s.possession_won) : "–"}</td><td class="num">${detailedRow ? num(s.possession_lost) : "–"}</td><td>${sourceBadge}</td></tr>`;
     };
     const performanceHeaders = [{ label: "Player" }, { label: "Pos.", cls: "center" }, { label: "Min.", cls: "num" }, { label: "Rating", cls: "num" }, { label: "G/A", cls: "num" }, { label: "NPK-xG", cls: "num" }, { label: "xA", cls: "num" }, { label: "SoT/Sh", cls: "num" }, { label: "Pass %", cls: "num" }, { label: "Key P.", cls: "num" }, { label: "Ball +", cls: "num" }, { label: "Ball -", cls: "num" }, { label: "Source" }];
     const homeTeamId = Number(m.home_team_ea_id), awayTeamId = Number(m.away_team_ea_id), managedTeamId = Number(d.snapshot?.managed_team_ea_id);
@@ -1424,7 +1577,7 @@ async function renderMatch() {
         { label: p0T.passing, home: homeStats.pass_accuracy_pct_derived, away: awayStats.pass_accuracy_pct_derived, precision: 1, suffix: "%" }
     ];
     const p0QuickStats = hasDetailed ? `<section class="match-p0-metrics"><div class="match-p0-legend"><strong>${esc(m.home_team_name)}</strong><span>${esc(p0T.key)}</span><strong>${esc(m.away_team_name)}</strong></div><div class="match-p0-metric-grid">${p0Metrics.map(item => `<article class="match-p0-metric"><span>${esc(item.label)}</span><div class="match-p0-values"><b>${num(item.home, item.precision)}${item.home == null ? "" : item.suffix}</b><i aria-hidden="true">/</i><b>${num(item.away, item.precision)}${item.away == null ? "" : item.suffix}</b></div></article>`).join("")}</div></section>`
-        : `<section class="card pad match-p0-unavailable">${esc(p0T.noStats)}</section>`;
+        : savedTeamStats ? "" : `<section class="card pad match-p0-unavailable">${esc(p0T.noStats)}</section>`;
     const p0Facts = Array.isArray(savedReport.fact_catalog) ? savedReport.fact_catalog : [];
     const p0HistoryFact = p0Facts.find((item) => item.id === "pre_match_team_context");
     const p0History = reportCache.state === "ready" ? (p0HistoryFact?.value || null) : null;
@@ -1456,7 +1609,7 @@ async function renderMatch() {
       <section class="card fixture-hero"><div class="fixture-meta"><span class="inline-identity">${identityLogo(d.competitionIdentity, m.competition_name, "inline-logo")}${competitionLink(m.competition_object_id, m.competition_name)}</span> · ${m.is_completed ? "COMPLETED" : "SCHEDULED"}</div><div class="fixture-scoreboard"><div class="fixture-club">${identityLogo(d.homeIdentity, m.home_team_name, "fixture-club-logo")}<h2>${clubLink(m.home_team_ea_id, m.home_team_name)}</h2></div><div class="fixture-score">${m.is_completed ? `${num(m.home_score)} : ${num(m.away_score)}` : "VS"}<small>${m.home_penalties != null || m.away_penalties != null ? `Penalty shoot-out ${num(m.home_penalties)}:${num(m.away_penalties)}` : esc(m.managed_team_result || "")}</small></div><div class="fixture-club">${identityLogo(d.awayIdentity, m.away_team_name, "fixture-club-logo")}<h2>${clubLink(m.away_team_ea_id, m.away_team_name)}</h2></div></div></section>
       ${p0Navigation}${p0QuickStats}<div class="match-p0-main"><div class="match-p0-primary" id="p0-match-comparison">${comparison || `<section class="card pad">${esc(p0T.noStats)}</section>`}${p0ContextPanel}</div><aside class="match-p0-secondary"><div id="p0-match-commission">${matchReportSection}</div>${p0HighlightsPanel}</aside></div>${matchDiaryPanel(d)}${events}
       <section id="p0-match-players" class="card match-performance-section"><header class="card-header"><div><h2>Player performances</h2><p>${hasDetailed ? "Direct FC26 match data for exported participants" : "Detailed MatchStats unavailable; ratings and conservative snapshot reconstruction are shown when recorded"}</p></div></header>${d.performances.length ? performanceBody : `<div class="card-body muted">No player performances were exported for this match.</div>`}</section>
-      ${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings", d.capabilities?.matchRatings ? "Available" : "Partial", "ratings and minutes")}${metric("Detailed FC26 data", hasDetailed ? "Available" : "Not available", hasDetailed ? `${num(detailed.players?.length || 0)} participants` : "snapshot data fallback", hasDetailed ? "green" : "amber")}${metric("Events", hasDetailed ? num(detailed.events?.length || 0) : "–", hasDetailed ? "not chronological · no confirmed minutes" : "no detailed source")}${metric("Link confidence", hasDetailed ? `${num(detailed.linkageConfidence * 100, 0)} %` : "–", "import linkage metadata")}${metric("xG model", hasDetailed ? (homeStats.expected_goals_derived != null || awayStats.expected_goals_derived != null ? "Team-xG + NPK-xG" : "NPK-xG") : "–", hasDetailed ? (homeStats.expected_goals_derived != null || awayStats.expected_goals_derived != null ? "Team-xG = NPK-xG + 0.7 × penalty attempts" : "direct FC26 NPK value") : "")}</div><p class="data-note">${esc(detailed.xgNote || "")} ${esc(detailed.eventTimingNote || "")}</p>${matchEvidenceMarkup(d.evidence)}</section></details>
+      ${stadiumSection}<details class="match-p0-fold match-p0-provenance"><summary>${esc(p0T.coverage)}</summary><section class="card pad match-coverage-section"><h3 class="card-title">Data coverage</h3><div class="grid metrics compact">${metric("Match ratings", d.capabilities?.matchRatings ? "Available" : "Partial", "ratings and minutes")}${metric("Detailed FC26 data", hasDetailed ? "Available" : "Not available", hasDetailed ? `${num(detailed.players?.length || 0)} participants` : "snapshot data fallback", hasDetailed ? "green" : "amber")}${metric("Events", hasDetailed ? num(detailed.events?.length || 0) : "–", hasDetailed ? "not chronological · no confirmed minutes" : "no detailed source")}${metric("Link confidence", hasDetailed ? `${num(detailed.linkageConfidence * 100, 0)} %` : "–", "import linkage metadata")}${metric("xG model", hasDetailed ? (homeStats.expected_goals_derived != null || awayStats.expected_goals_derived != null ? "Team-xG + NPK-xG" : "NPK-xG") : "–", hasDetailed ? (homeStats.expected_goals_derived != null || awayStats.expected_goals_derived != null ? "Team-xG = NPK-xG + 0.7 × penalty attempts" : "direct FC26 NPK value") : "")}</div><p class="data-note">${esc(detailed.xgNote || "")} ${esc(detailed.eventTimingNote || "")}</p>${matchSourceAudit(d.savePassingComparison, m, d.performances, "passing")}${matchSourceAudit(d.saveShootingDefendingComparison, m, d.performances, "shootingDefending")}${matchEvidenceMarkup(d.evidence)}</section></details>
     </div>`;
     bindMatchDiary(d);
     if (m.is_completed) {
@@ -2053,6 +2206,25 @@ function chronologyEntityLink(event) {
     return "";
 }
 function chronologyIcon(type) { const icons = { match: "⚽", contract: "✍", loan: "↔", transfer: "⇄", season: "S", competition_result: "★", youth: "◇", award: "★", squad: "+", development: "↗", snapshot: "●", milestone: "◆" }; return icons[String(type)] || "•"; }
+function careerFeedMarkup(feed) {
+    if (!feed?.records?.length)
+        return "";
+    const language = atlasLanguage();
+    const lexicon = {
+        "pt-BR": { title: "Feed da carreira", types: { news: "Notícias", social: "Publicações", chat: "Conversas" }, key: "Código do jogo", count: "Ocorrências", source: "Arquivo da carreira registrado no snapshot de" },
+        "en-GB": { title: "Career feed", types: { news: "News", social: "Posts", chat: "Conversations" }, key: "Game key", count: "Occurrences", source: "Career file recorded at the snapshot from" },
+        "es-ES": { title: "Actividad de la carrera", types: { news: "Noticias", social: "Publicaciones", chat: "Conversaciones" }, key: "Código del juego", count: "Ocurrencias", source: "Archivo de carrera registrado en la captura del" },
+    };
+    const words = language === "en-GB" || language === "es-ES" ? lexicon[language] : lexicon["pt-BR"];
+    const groups = Object.entries(words.types).flatMap(([category, label]) => {
+        const records = feed.records.filter((item) => item.category === category);
+        if (!records.length)
+            return [];
+        const rows = records.map((item) => `<tr><td class="mono">${esc(item.key)}</td><td class="num">${num(item.count)}</td></tr>`);
+        return [`<details class="match-p0-fold"><summary>${esc(label)} · ${num(feed.countsByCategory[category])} ${esc(words.count.toLowerCase())}</summary>${table([{ label: words.key }, { label: words.count, cls: "num" }], rows)}</details>`];
+    });
+    return `<section class="card pad" aria-label="${esc(words.title)}"><h2 class="card-title">${esc(words.title)}</h2><p class="data-note">${esc(words.source)} ${dateText(feed.source.observedCareerDate)}</p>${groups.join("")}</section>`;
+}
 async function renderChronology() {
     const d = await api(`/api/careers/${state.careerId}/chronology?snapshot_id=${state.snapshotId}`);
     const types = Object.keys(d.summary.by_type || {}).sort();
@@ -2065,7 +2237,7 @@ async function renderChronology() {
             groups.set(key, []);
         groups.get(key).push(event);
     });
-    content.innerHTML = `<div class="content-inner">${pageHead("Career timeline", "Combined from imported data and manually maintained historical seasons", `<button class="button" data-route="compare">Compare snapshots</button>`)}<div class="grid metrics">${metric("Events", num(d.summary.event_count), "up to the selected snapshot")}${metric("Exact dates", num(d.summary.exact), "source includes a date", "green")}${metric("Snapshot-based", num(d.summary.snapshot_based), "detected between snapshots", "blue")}${metric("Estimated", num(d.summary.estimated), "clearly labelled", "amber")}${metric("Manual", num(d.summary.manual), "added as historical data", "green")}</div><div class="filter-row"><input id="chronologyQuery" class="filter-input" value="${esc(state.chronologyQuery)}" placeholder="Search timeline…"><select id="chronologyType" class="filter-select"><option value="all">All events</option>${types.map((type) => `<option value="${esc(type)}" ${type === state.chronologyType ? "selected" : ""}>${esc(type)} (${num(d.summary.by_type[type])})</option>`).join("")}</select><span class="chip">${num(events.length)} visible</span></div>${events.length ? `<div class="career-chronology">${[...groups.entries()].map(([month, monthEvents]) => `<section class="chronology-month"><header><h2>${month === "no-date" ? "No date" : new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(new Date(`${month}-15T12:00:00`))}</h2><span>${num(monthEvents.length)} events</span></header><div class="chronology-line">${monthEvents.map((event) => `<article class="chronology-event type-${esc(event.type)} importance-${num(event.importance)}"><div class="chronology-marker">${chronologyIcon(event.type)}</div><div class="chronology-card card"><div class="chronology-meta"><time>${dateText(event.date)}</time>${statusBadge(event.type)}${event.precision === "estimated" ? statusBadge("estimated", "warn") : event.precision === "snapshot" ? statusBadge("Snapshot", "") : event.precision === "manual" ? statusBadge("manual", "good") : statusBadge("exact", "good")}</div><h3>${esc(event.title)}</h3><p>${esc(event.description)}</p><footer><span class="source-note">Source: ${esc(event.source)}</span>${chronologyEntityLink(event)}</footer></div></article>`).join("")}</div></section>`).join("")}</div>` : emptyState("No matching events", "Adjust the filters or search term.")}</div>`;
+    content.innerHTML = `<div class="content-inner">${pageHead("Career timeline", "Combined from imported data and manually maintained historical seasons", `<button class="button" data-route="compare">Compare snapshots</button>`)}<div class="grid metrics">${metric("Events", num(d.summary.event_count), "up to the selected snapshot")}${metric("Exact dates", num(d.summary.exact), "source includes a date", "green")}${metric("Snapshot-based", num(d.summary.snapshot_based), "detected between snapshots", "blue")}${metric("Estimated", num(d.summary.estimated), "clearly labelled", "amber")}${metric("Manual", num(d.summary.manual), "added as historical data", "green")}</div>${careerFeedMarkup(d.saveCareerFeed)}<div class="filter-row"><input id="chronologyQuery" class="filter-input" value="${esc(state.chronologyQuery)}" placeholder="Search timeline…"><select id="chronologyType" class="filter-select"><option value="all">All events</option>${types.map((type) => `<option value="${esc(type)}" ${type === state.chronologyType ? "selected" : ""}>${esc(type)} (${num(d.summary.by_type[type])})</option>`).join("")}</select><span class="chip">${num(events.length)} visible</span></div>${events.length ? `<div class="career-chronology">${[...groups.entries()].map(([month, monthEvents]) => `<section class="chronology-month"><header><h2>${month === "no-date" ? "No date" : new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric" }).format(new Date(`${month}-15T12:00:00`))}</h2><span>${num(monthEvents.length)} events</span></header><div class="chronology-line">${monthEvents.map((event) => `<article class="chronology-event type-${esc(event.type)} importance-${num(event.importance)}"><div class="chronology-marker">${chronologyIcon(event.type)}</div><div class="chronology-card card"><div class="chronology-meta"><time>${dateText(event.date)}</time>${statusBadge(event.type)}${event.precision === "estimated" ? statusBadge("estimated", "warn") : event.precision === "snapshot" ? statusBadge("Snapshot", "") : event.precision === "manual" ? statusBadge("manual", "good") : statusBadge("exact", "good")}</div><h3>${esc(event.title)}</h3><p>${esc(event.description)}</p><footer><span class="source-note">Source: ${esc(event.source)}</span>${chronologyEntityLink(event)}</footer></div></article>`).join("")}</div></section>`).join("")}</div>` : emptyState("No matching events", "Adjust the filters or search term.")}</div>`;
     const q = $("#chronologyQuery", content), type = $("#chronologyType", content);
     q.oninput = () => { state.chronologyQuery = q.value; renderChronology(); };
     type.onchange = () => { state.chronologyType = type.value; renderChronology(); };
@@ -3476,7 +3648,7 @@ async function handleAction(action) {
 }
 const matchStatsRoutes = new Set([
     "overview", "match-center", "schedule", "results", "match", "analysis", "commission",
-    "player", "snapshots", "imports",
+    "player", "snapshots", "imports", "chronology",
 ]);
 let statusPollInProgress = false;
 function matchStatsChanged(previous, next) {

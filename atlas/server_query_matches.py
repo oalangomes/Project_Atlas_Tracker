@@ -12,7 +12,9 @@ from .media_utils import competition_name_key, season_start_from_date
 from .match_stats import reconstruct_match_stats, detailed_match
 from .match_lineups import match_lineup_phases, save_match_formation_estimates
 from .goalkeeper_metrics import fixture_goalkeepers
-from .fc26_save_possession import snapshot_save_possession
+from .fc26_save_comparison import fixture_save_stat_sources
+from .fc26_save_participation import fixture_save_participation
+from .fc26_save_possession import fixture_save_player_passes, snapshot_save_passes, snapshot_save_possession
 from .metric_evidence import fixture_evidence, snapshot_fixture_evidence
 from .positions import trusted_actual_position
 from .server_utils import (
@@ -137,6 +139,9 @@ class MatchQueryMixin:
             if not row:
                 raise ValueError("Match not found in the selected snapshot.")
             save_possession = snapshot_save_possession(conn, dict(snap), fixture_id).get(fixture_id)
+            save_passes = snapshot_save_passes(conn, dict(snap), fixture_id).get(fixture_id)
+            player_save_passes = fixture_save_player_passes(conn, dict(snap), fixture_id)
+            participation = fixture_save_participation(conn, snap, fixture_id)
             performances = conn.execute(
                 """SELECT pmp.*,ps.overall,ps.potential,ps.primary_position,rs.jersey_number,
                           ps.team_ea_id,ps.team_name
@@ -165,6 +170,9 @@ class MatchQueryMixin:
             detailed = detailed_match(conn, fixture_id, career_id=int(snap["career_id"]),
                                       as_of_import_sequence=int(snap["import_sequence"]),
                                       season_index=int(snap["season_index"]))
+            save_stat_sources = fixture_save_stat_sources(conn, snap, fixture_id, detailed)
+            fallback = save_stat_sources.get("saveShootingDefendingFallback")
+            fallback_players = fallback.pop("players") if fallback else {}
             lineup_phases = match_lineup_phases(conn, detailed, fixture_id) if detailed else None
             candidate_row = conn.execute(
                 """SELECT e.* FROM match_stat_exports e JOIN snapshots source ON source.id=e.snapshot_id
@@ -263,6 +271,7 @@ class MatchQueryMixin:
             })
         performance_items = self._enrich_players(base_performances)
         home_team_id = as_int(row["home_team_ea_id"]); away_team_id = as_int(row["away_team_ea_id"])
+        managed_team_id = as_int(dict(snap).get("managed_team_ea_id"))
         for item in performance_items:
             player_id = as_int(item.get("player_ea_id")) or -1
             event = reconstructed.get(player_id)
@@ -277,6 +286,21 @@ class MatchQueryMixin:
             elif as_int(item.get("team_ea_id")) in {home_team_id, away_team_id}:
                 item["match_team_ea_id"] = as_int(item.get("team_ea_id"))
                 item["match_team_index"] = 0 if as_int(item.get("team_ea_id")) == home_team_id else 1
+            observed_team = item.get("match_team_ea_id") if detail else None
+            if not detail and item.get("join_status") == "joined_by_date" and (as_int(item.get("minutes_played")) or 0) > 0:
+                observed_team = managed_team_id
+            passing = player_save_passes.get(player_id)
+            player_state = participation["players"].get(str(player_id)) if participation and observed_team == participation["teamEaId"] else None
+            saved_stats = fallback_players.get(str(player_id))
+            if passing and observed_team == passing["teamEaId"]:
+                item["savePasses"] = passing
+            if player_state:
+                item["saveParticipation"] = {**player_state, "source": participation["source"]}
+            if saved_stats and observed_team == saved_stats["teamEaId"]:
+                item["saveShootingDefending"] = {**saved_stats["stats"], "source": fallback["source"]}
+            if not detail and ("savePasses" in item or player_state or "saveShootingDefending" in item):
+                item["match_team_ea_id"] = observed_team
+                item["match_team_index"] = 0 if observed_team == home_team_id else 1
         if detailed:
             observed_positions = {}
             for item in performance_items:
@@ -314,9 +338,12 @@ class MatchQueryMixin:
             },
             "detailedStats": detailed or {"available": False, "modelId": "atlas-fc26-match-stats-v1"},
             "savePossession": save_possession,
+            "savePasses": save_passes,
+            **save_stat_sources,
             "lineupPhases": lineup_phases,
             "evidence": fixture_evidence(dict(snap), fixture_id, detailed, performance_items,
                                          dict(candidate_row) if candidate_row else None,
                                          event_date=row["date"] if "date" in row.keys() else None,
-                                         save_possession=save_possession),
+                                         save_possession=save_possession, save_passes=save_passes,
+                                         save_shooting_defending=fallback),
         }

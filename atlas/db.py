@@ -271,6 +271,40 @@ CREATE TABLE IF NOT EXISTS fc26_save_possession (
 );
 CREATE INDEX IF NOT EXISTS idx_save_possession_snapshot ON fc26_save_possession(snapshot_id);
 
+CREATE TABLE IF NOT EXISTS fc26_save_passes (
+    fixture_id INTEGER PRIMARY KEY REFERENCES fc26_save_possession(fixture_id) ON DELETE CASCADE,
+    reader_revision TEXT NOT NULL,
+    stats_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fc26_save_player_passes (
+    fixture_id INTEGER PRIMARY KEY REFERENCES fc26_save_possession(fixture_id) ON DELETE CASCADE,
+    reader_revision TEXT NOT NULL,
+    stats_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fc26_save_passing_comparison (
+    fixture_id INTEGER PRIMARY KEY REFERENCES fc26_save_possession(fixture_id) ON DELETE CASCADE,
+    reader_revision TEXT NOT NULL,
+    stats_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fc26_save_participation (
+    fixture_id INTEGER PRIMARY KEY REFERENCES fc26_save_possession(fixture_id) ON DELETE CASCADE,
+    team_ea_id INTEGER NOT NULL,
+    mflp_sha256 TEXT NOT NULL,
+    players_json TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS fc26_save_career_feed (
+    snapshot_id INTEGER PRIMARY KEY REFERENCES snapshots(id) ON DELETE CASCADE,
+    source_fixture_id INTEGER NOT NULL REFERENCES fixtures(id) ON DELETE CASCADE,
+    last_match_day TEXT NOT NULL,
+    source_mtime_ns INTEGER NOT NULL,
+    feed_sha256 TEXT NOT NULL,
+    records_json TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS player_match_performances (
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
     artificial_key TEXT NOT NULL,

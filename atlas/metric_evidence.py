@@ -9,7 +9,8 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping
 
-from .fc26_save_possession import snapshot_save_possession
+from .fc26_save_comparison import SHOOTING_DEFENDING_FALLBACK_METRICS
+from .fc26_save_possession import PASS_METRICS, PASS_RATE_METRICS, snapshot_save_passes, snapshot_save_possession
 from .positions import trusted_actual_position
 
 
@@ -43,7 +44,9 @@ def fixture_evidence(snapshot: Mapping[str, Any], fixture_id: int,
                      performances: list[dict[str, Any]] | None = None,
                      candidate: Mapping[str, Any] | None = None,
                      event_date: str | None = None,
-                     save_possession: Mapping[str, Any] | None = None) -> dict[str, Any]:
+                     save_possession: Mapping[str, Any] | None = None,
+                     save_passes: Mapping[str, Any] | None = None,
+                     save_shooting_defending: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Describe the selected fixture; candidate may be partial or unlinked."""
     available = bool(detailed and detailed.get("available"))
     export_status = (detailed or {}).get("status") or (candidate or {}).get("export_status")
@@ -83,20 +86,41 @@ def fixture_evidence(snapshot: Mapping[str, Any], fixture_id: int,
             })
         teams.append({"teamIndex": team.get("teamIndex"), "teamEaId": team.get("teamEaId"),
                       "indicators": indicators})
-    if save_possession:
-        save_source = {key: save_possession[key] for key in ("kind", "sourceSnapshotId", "mxifSha256")}
+    save_match = save_possession or save_passes
+    if save_match:
+        save_source = {key: save_match[key] for key in ("kind", "sourceSnapshotId", "mxifSha256")}
+        passing_source = {**save_source, "readerRevision": save_passes["readerRevision"]} if save_passes else None
         teams_by_id = {team["teamEaId"]: team for team in teams}
-        for side in ("home", "away"):
-            team_id = save_possession[f"{side}TeamEaId"]
+        for index, side in enumerate(("home", "away")):
+            team_id = save_match[f"{side}TeamEaId"]
             team = teams_by_id.get(team_id)
             if team is None:
-                team = {"teamIndex": None, "teamEaId": team_id, "indicators": []}
+                team = {"teamIndex": index, "teamEaId": team_id, "indicators": []}
                 teams.append(team)
-            team["indicators"].append({
-                "key": "possession_pct", "label": "Ball possession", "unit": "%",
-                "value": save_possession[f"{side}Pct"], "state": "available", "origin": "direct",
-                "reason": None, "formula": None, "inputs": [], "source": save_source,
-            })
+            fields = []
+            if save_possession:
+                fields.append(("possession_pct", "Ball possession", "%", save_possession[f"{side}Pct"], save_source))
+            passing = (save_passes or {}).get(side, {})
+            fields.extend((key, label, "passes", passing[key], passing_source)
+                          for key, label in PASS_METRICS if key in passing)
+            if save_shooting_defending:
+                stats = save_shooting_defending[side]
+                fields.extend((key, label, unit, stats[key], save_shooting_defending["source"])
+                              for key, label, unit in SHOOTING_DEFENDING_FALLBACK_METRICS if key in stats)
+            for key, label, unit, value, field_source in fields:
+                team["indicators"].append({
+                    "key": key, "label": label, "unit": unit, "value": value,
+                    "state": "available", "origin": "direct", "reason": None,
+                    "formula": None, "inputs": [], "source": field_source,
+                })
+            for key, label, completed, attempted in PASS_RATE_METRICS:
+                if key in passing:
+                    team["indicators"].append({
+                        "key": key, "label": label, "unit": "%", "value": passing[key],
+                        "state": "available", "origin": "derived", "reason": None,
+                        "formula": "100 × completed ÷ attempted", "inputs": [completed, attempted],
+                        "source": passing_source,
+                    })
     positions = []
     for player in performances or []:
         raw_observed = player.get("observedPosition") or player.get("actual_position")
@@ -175,6 +199,7 @@ def snapshot_fixture_evidence(conn: Any, snapshot: Mapping[str, Any]) -> list[di
                                   "stats": stats if isinstance(stats, dict) else {}})
     result = []
     save_possession = snapshot_save_possession(conn, snapshot)
+    save_passes = snapshot_save_passes(conn, snapshot)
     for item in by_fixture.values():
         candidate = item.pop("candidate")
         teams = item.pop("teams")
@@ -191,6 +216,7 @@ def snapshot_fixture_evidence(conn: Any, snapshot: Mapping[str, Any]) -> list[di
             detailed = None
         item["evidence"] = fixture_evidence(snapshot, item["fixtureId"], detailed, candidate=candidate,
                                             event_date=item["date"],
-                                            save_possession=save_possession.get(item["fixtureId"]))
+                                            save_possession=save_possession.get(item["fixtureId"]),
+                                            save_passes=save_passes.get(item["fixtureId"]))
         result.append(item)
     return result
