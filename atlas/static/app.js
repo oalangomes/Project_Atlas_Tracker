@@ -14,7 +14,7 @@ const state = {
     compareFrom: null, compareTo: null,
     competitionTab: "results", chronologyType: "all", chronologyQuery: "", loanScope: "club", transferScope: "club",
     movementSeasonIndex: null, movementEditKind: null, movementEditId: null,
-    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "overview", seasonReportSemester: null, analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
+    analysisSeasonIndex: null, recordsSeasonIndex: null, seasonReportSeasonIndex: null, seasonReportTab: "temporal", analysisTab: "overview", clubTab: "overview", competitionListTab: "deeper",
     mediaType: "all", mediaStatus: "all", mediaSources: null,
     manualSeasonId: null, manualTab: "competitions", manualEditKind: null, manualEditId: null, manualDraftCompetitionId: null, manualQuickEntry: false,
     pendingLiveRender: false,
@@ -71,9 +71,9 @@ function applyIcons(root = document) {
     });
 }
 const ATLAS_TEXT = {
-    "pt-BR": { navOverview: "Visão geral", navChronology: "Linha do tempo", navManual: "Dados históricos", navMatches: "Central de partidas", navSchedule: "Calendário", navResults: "Resultados", navCompetitions: "Competições", navSquad: "Elenco", navContracts: "Contratos", navTransfers: "Transferências", navLoans: "Empréstimos", navYouth: "Base FC26", navCommission: "Comissão técnica", navAnalysis: "Análises", navRecords: "Recordes", navSeasonReport: "Relatório da temporada", navCompare: "Comparar snapshots", navSnapshots: "Snapshots", navImports: "Importações", navMedia: "Biblioteca de mídia", navSetup: "Configurações", crumbOverview: "Visão geral", crumbCommission: "Comissão técnica", crumbAnalysis: "Análises", crumbMatches: "Partidas", crumbMatch: "Partida", crumbSquad: "Elenco", crumbPlayer: "Perfil do jogador", crumbSetup: "Configurações", setupLanguage: "Idioma do Atlas", setupLanguageHelp: "Define o idioma da interface principal e das análises da Comissão Técnica.", saveLanguage: "Salvar idioma", languageSaved: "Idioma do Atlas atualizado.", commissionNote: "Nota da comissão", claimFact: "Fato observado", claimInference: "Inferência baseada em evidências", claimHypothesis: "Hipótese esportiva", claimLimit: "Limite da evidência", claimsFiltered: "Afirmações filtradas", interpretationNotScored: "Qualidade interpretativa não avaliada independentemente", reportOnDemand: "Análises sob demanda", generateReport: "Gerar análise", retroTitle: "Analisar histórico da carreira", retroHelp: "Gera relatórios da temporada selecionada em ordem cronológica. Atualiza partidas, jogadores e avaliações acumuladas; retoma após interrupções e sinaliza dados ausentes.", retroStart: "Gerar análises históricas", retroResume: "Retomar análises históricas", retroWorking: "Processando análises históricas", retroPaused: "Pausado: Ollama indisponível. O progresso foi salvo; clique em retomar.", retroFailed: "Concluído com falhas ou dados ausentes", retroDone: "Análises históricas concluídas", retroBackup: "Backup criado antes da geração" },
-    "en-GB": { navOverview: "Overview", navChronology: "Career timeline", navManual: "Historical data", navMatches: "Match Centre", navSchedule: "Schedule", navResults: "Results", navCompetitions: "Competitions", navSquad: "Squad", navContracts: "Contracts", navTransfers: "Transfer history", navLoans: "Loans", navYouth: "FC26 youth", navCommission: "Technical commission", navAnalysis: "Analysis", navRecords: "Records", navSeasonReport: "Season report", navCompare: "Snapshot comparison", navSnapshots: "Snapshots", navImports: "Imports", navMedia: "Media library", navSetup: "Settings", crumbOverview: "Overview", crumbCommission: "Technical commission", crumbAnalysis: "Analysis", crumbMatches: "Matches", crumbMatch: "Match", crumbSquad: "Squad", crumbPlayer: "Player profile", crumbSetup: "Settings", setupLanguage: "Atlas language", setupLanguageHelp: "Sets the main interface and Technical Commission analysis language.", saveLanguage: "Save language", languageSaved: "Atlas language updated.", commissionNote: "Commission note", claimFact: "Observed fact", claimInference: "Evidence-based inference", claimHypothesis: "Sports hypothesis", claimLimit: "Evidence limitation", claimsFiltered: "Claims filtered", interpretationNotScored: "Interpretation quality not independently scored", reportOnDemand: "On-demand analysis", generateReport: "Generate analysis", retroTitle: "Analyse career history", retroHelp: "Generate reports for the selected season in chronological order. Update match, player and accumulated assessments; resume after interruptions and flag missing data.", retroStart: "Generate historical reports", retroResume: "Resume historical reports", retroWorking: "Processing historical reports", retroPaused: "Paused: Ollama is unavailable. Progress is saved; select resume to continue.", retroFailed: "Completed with failures or missing data", retroDone: "Historical reports complete", retroBackup: "Backup created before generation" },
-    "es-ES": { navOverview: "Resumen", navChronology: "Cronología", navManual: "Datos históricos", navMatches: "Centro de partidos", navSchedule: "Calendário", navResults: "Resultados", navCompetitions: "Competiciones", navSquad: "Plantilla", navContracts: "Contratos", navTransfers: "Historial de traspasos", navLoans: "Cesiones", navYouth: "Cantera FC26", navCommission: "Comisión técnica", navAnalysis: "Análisis", navRecords: "Récords", navSeasonReport: "Informe de temporada", navCompare: "Comparar snapshots", navSnapshots: "Snapshots", navImports: "Importaciones", navMedia: "Biblioteca multimedia", navSetup: "Ajustes", crumbOverview: "Resumen", crumbCommission: "Comisión técnica", crumbAnalysis: "Análise", crumbMatches: "Partidos", crumbMatch: "Partido", crumbSquad: "Plantilla", crumbPlayer: "Perfil del jugador", crumbSetup: "Ajustes", setupLanguage: "Idioma de Atlas", setupLanguageHelp: "Define el idioma de la interfaz principal y de los análisis de la Comisión Técnica.", saveLanguage: "Guardar idioma", languageSaved: "Idioma de Atlas actualizado.", commissionNote: "Nota de la comisión", claimFact: "Hecho observado", claimInference: "Inferencia basada en evidencias", claimHypothesis: "Hipótesis deportiva", claimLimit: "Límite de la evidencia", claimsFiltered: "Afirmaciones filtradas", interpretationNotScored: "Calidad interpretativa no evaluada de forma independiente", reportOnDemand: "Análisis bajo demanda", generateReport: "Generar análisis", retroTitle: "Analizar el historial de la carrera", retroHelp: "Genera informes para la temporada seleccionada em ordem cronológica. Actualiza partidos, jugadores y valoraciones acumuladas; reanuda después de interrupciones y señala datos ausentes.", retroStart: "Generar informes históricos", retroResume: "Reanudar informes históricos", retroWorking: "Procesando informes históricos", retroPaused: "Pausado: Ollama no está disponible. El progreso está guardado; pulse reanudar.", retroFailed: "Terminado con fallos o datos ausentes", retroDone: "Informes históricos terminados", retroBackup: "Copia de seguridad creada antes de gen..." },
+    "pt-BR": { navOverview: "Visão geral", navChronology: "Linha do tempo", navManual: "Dados históricos", navMatches: "Central de partidas", navSchedule: "Calendário", navResults: "Resultados", navCompetitions: "Competições", navSquad: "Elenco", navContracts: "Contratos", navTransfers: "Transferências", navLoans: "Empréstimos", navYouth: "Base FC26", navCommission: "Comissão técnica", navAnalysis: "Análises", navRecords: "Recordes", navSeasonReport: "Relatórios", navCompare: "Comparar snapshots", navSnapshots: "Snapshots", navImports: "Importações", navMedia: "Biblioteca de mídia", navSetup: "Configurações", crumbOverview: "Visão geral", crumbCommission: "Comissão técnica", crumbAnalysis: "Análises", crumbMatches: "Partidas", crumbMatch: "Partida", crumbSquad: "Elenco", crumbPlayer: "Perfil do jogador", crumbSetup: "Configurações", setupLanguage: "Idioma do Atlas", setupLanguageHelp: "Define o idioma da interface principal e das análises da Comissão Técnica.", saveLanguage: "Salvar idioma", languageSaved: "Idioma do Atlas atualizado.", commissionNote: "Nota da comissão", claimFact: "Fato observado", claimInference: "Inferência baseada em evidências", claimHypothesis: "Hipótese esportiva", claimLimit: "Limite da evidência", claimsFiltered: "Afirmações filtradas", interpretationNotScored: "Qualidade interpretativa não avaliada independentemente", reportOnDemand: "Análises sob demanda", generateReport: "Gerar análise", retroTitle: "Analisar histórico da carreira", retroHelp: "Gera relatórios da temporada selecionada em ordem cronológica. Atualiza partidas, jogadores e avaliações acumuladas; retoma após interrupções e sinaliza dados ausentes.", retroStart: "Gerar análises históricas", retroResume: "Retomar análises históricas", retroWorking: "Processando análises históricas", retroPaused: "Pausado: Ollama indisponível. O progresso foi salvo; clique em retomar.", retroFailed: "Concluído com falhas ou dados ausentes", retroDone: "Análises históricas concluídas", retroBackup: "Backup criado antes da geração" },
+    "en-GB": { navOverview: "Overview", navChronology: "Career timeline", navManual: "Historical data", navMatches: "Match Centre", navSchedule: "Schedule", navResults: "Results", navCompetitions: "Competitions", navSquad: "Squad", navContracts: "Contracts", navTransfers: "Transfer history", navLoans: "Loans", navYouth: "FC26 youth", navCommission: "Technical commission", navAnalysis: "Analysis", navRecords: "Records", navSeasonReport: "Reports", navCompare: "Snapshot comparison", navSnapshots: "Snapshots", navImports: "Imports", navMedia: "Media library", navSetup: "Settings", crumbOverview: "Overview", crumbCommission: "Technical commission", crumbAnalysis: "Analysis", crumbMatches: "Matches", crumbMatch: "Match", crumbSquad: "Squad", crumbPlayer: "Player profile", crumbSetup: "Settings", setupLanguage: "Atlas language", setupLanguageHelp: "Sets the main interface and Technical Commission analysis language.", saveLanguage: "Save language", languageSaved: "Atlas language updated.", commissionNote: "Commission note", claimFact: "Observed fact", claimInference: "Evidence-based inference", claimHypothesis: "Sports hypothesis", claimLimit: "Evidence limitation", claimsFiltered: "Claims filtered", interpretationNotScored: "Interpretation quality not independently scored", reportOnDemand: "On-demand analysis", generateReport: "Generate analysis", retroTitle: "Analyse career history", retroHelp: "Generate reports for the selected season in chronological order. Update match, player and accumulated assessments; resume after interruptions and flag missing data.", retroStart: "Generate historical reports", retroResume: "Resume historical reports", retroWorking: "Processing historical reports", retroPaused: "Paused: Ollama is unavailable. Progress is saved; select resume to continue.", retroFailed: "Completed with failures or missing data", retroDone: "Historical reports complete", retroBackup: "Backup created before generation" },
+    "es-ES": { navOverview: "Resumen", navChronology: "Cronología", navManual: "Datos históricos", navMatches: "Centro de partidos", navSchedule: "Calendário", navResults: "Resultados", navCompetitions: "Competiciones", navSquad: "Plantilla", navContracts: "Contratos", navTransfers: "Historial de traspasos", navLoans: "Cesiones", navYouth: "Cantera FC26", navCommission: "Comisión técnica", navAnalysis: "Análisis", navRecords: "Récords", navSeasonReport: "Informes", navCompare: "Comparar snapshots", navSnapshots: "Snapshots", navImports: "Importaciones", navMedia: "Biblioteca multimedia", navSetup: "Ajustes", crumbOverview: "Resumen", crumbCommission: "Comisión técnica", crumbAnalysis: "Análise", crumbMatches: "Partidos", crumbMatch: "Partido", crumbSquad: "Plantilla", crumbPlayer: "Perfil del jugador", crumbSetup: "Ajustes", setupLanguage: "Idioma de Atlas", setupLanguageHelp: "Define el idioma de la interfaz principal y de los análisis de la Comisión Técnica.", saveLanguage: "Guardar idioma", languageSaved: "Idioma de Atlas actualizado.", commissionNote: "Nota de la comisión", claimFact: "Hecho observado", claimInference: "Inferencia basada en evidencias", claimHypothesis: "Hipótesis deportiva", claimLimit: "Límite de la evidencia", claimsFiltered: "Afirmaciones filtradas", interpretationNotScored: "Calidad interpretativa no evaluada de forma independiente", reportOnDemand: "Análisis bajo demanda", generateReport: "Generar análisis", retroTitle: "Analizar el historial de la carrera", retroHelp: "Genera informes para la temporada seleccionada em ordem cronológica. Actualiza partidos, jugadores y valoraciones acumuladas; reanuda después de interrupciones y señala datos ausentes.", retroStart: "Generar informes históricos", retroResume: "Reanudar informes históricos", retroWorking: "Procesando informes históricos", retroPaused: "Pausado: Ollama no está disponible. El progreso está guardado; pulse reanudar.", retroFailed: "Terminado con fallos o datos ausentes", retroDone: "Informes históricos terminados", retroBackup: "Copia de seguridad creada antes de gen..." },
 };
 Object.assign(ATLAS_TEXT["pt-BR"], { moreContextTitle: "A comissão pediu mais contexto", moreContextHelp: "Responda apenas o que souber. Sua resposta será enviada separada das estatísticas importadas.", yourContext: "Sua resposta", sendContext: "Enviar contexto à comissão", contextSent: "Contexto enviado ao Ollama; atualizando a análise…" });
 Object.assign(ATLAS_TEXT["en-GB"], { moreContextTitle: "The commission needs more context", moreContextHelp: "Answer only what you know. Your response is sent separately from imported statistics.", yourContext: "Your answer", sendContext: "Send context to the commission", contextSent: "Context sent to Ollama; refreshing the analysis…" });
@@ -962,11 +962,17 @@ function analysisSeasons(d) {
       <p class="data-note">NPK-xG/xA comes only from clearly linked detailed FC26 match exports. Manually entered player statistics are summed across all competitions in the season; snapshot and manual values are not double-counted.</p>`;
 }
 let currentSeasonReportData = null;
+let seasonReportRenderToken = 0;
 function seasonReportPicker(options, selected) {
     return `<label class="page-filter"><span>Season</span><select data-season-report-season>${options.map((option) => `<option value="${option.season_index}" ${Number(option.season_index) === Number(selected) ? "selected" : ""}>${esc(option.label)}${option.is_current ? " · current" : ""}</option>`).join("")}</select></label>`;
 }
 function seasonReportTabs(active) {
-    const tabs = [["overview", "Overview"], ["semester", "Semester"], ["competitions", "Competitions"], ["squad", "Squad & performance"], ["transfers", "Transfers"], ["awards", "Awards"], ["quality", "Data quality"]];
+    const tabs = [
+        ["temporal", temporalText("tab")], ["overview", temporalText("overview")],
+        ["competitions", temporalText("competitions")], ["squad", temporalText("squadTab")],
+        ["transfers", temporalText("transfers")], ["awards", temporalText("awards")],
+        ["quality", temporalText("quality")],
+    ];
     return `<div class="page-tabs season-report-tabs">${tabs.map(([key, label]) => `<button class="${active === key ? "active" : ""}" data-season-report-tab="${key}">${label}</button>`).join("")}</div>`;
 }
 function awardPortrait(award) {
@@ -1037,12 +1043,6 @@ function seasonReportAwards(d) {
 function seasonReportQuality(d) {
     return `<div class="grid two-col">${qualityPanel(d.quality)}<section class="card pad"><h3 class="card-title">Report rules</h3><p class="chart-note">${esc(d.seasonReport?.method_note || "The report uses available data only.")}</p><p class="chart-note">Manual awards remain separate from automatically calculated Tracker awards. Missing competitions, fees or historical statistics are not filled in.</p></section></div>`;
 }
-function seasonReportSemester(semester) {
-    const metrics = semester?.metrics || {}, coverage = semester?.coverage || {}, players = semester?.players || [];
-    const periodSelect = `<label class="page-filter"><span>Calendar semester</span><select data-season-report-semester><option value="1" ${Number(semester?.semester) === 1 ? "selected" : ""}>Jan–Jun</option><option value="2" ${Number(semester?.semester) === 2 ? "selected" : ""}>Jul–Dec</option></select></label>`;
-    const playerRows = players.slice(0, 20).map((p) => `<tr><td>${p.playerEaId ? playerLink(p.playerEaId, p.name) : esc(p.name || "–")}</td><td class="center">${positionBadge(p.position)}</td><td class="num">${num(p.minutes)}</td><td class="num">${num(p.matchesWithRating)}</td><td class="num">${ratingValue(p.averageRating, true)}</td><td class="num">${num(p.detailedMatches)}</td><td>${(p.months || []).map((month) => esc(month)).join(", ")}</td></tr>`).join("");
-    return `<div class="page-filter-bar">${periodSelect}<span class="filter-hint">Calendar cut-off; only imported months up to the selected snapshot are used.</span></div><section class="card pad"><div class="card-title-row"><div><h2>${esc(semester?.periodLabel || "Semester")} sporting report</h2><span>Deterministic aggregation of monthly reports</span></div>${statusBadge(`${num(metrics.resultCoverage)} / ${num(metrics.fixtures)} results`, Number(metrics.resultCoverage) === Number(metrics.fixtures) ? "good" : "amber")}</div><div class="grid metrics analysis-metrics">${metric("Matches", num(metrics.fixtures), `${num(metrics.wins)} W · ${num(metrics.draws)} D · ${num(metrics.losses)} L`, "green")}${metric("Goals", `${num(metrics.goalsFor)}:${num(metrics.goalsAgainst)}`, "all selected months must be complete")}${metric("League points", num(metrics.pointsLeague), "league fixtures only", "blue")}${metric("Detailed exports", num(metrics.detailedExports), `${num(coverage.fixturesWithDetailedExport)} fixtures with linked exports`)}</div><p class="chart-note">Included months: ${esc((semester?.includedMonths || []).join(", ") || "none")}. Excluded months: ${esc((semester?.excludedMonths || []).join(", ") || "none")}. ${coverage.partialMonths?.length ? `Partial: ${esc(coverage.partialMonths.join(", "))}.` : ""}</p></section><section class="card"><header class="card-header"><h2>Player evidence</h2><span>ratings weighted by rated appearances</span></header>${players.length ? table([{ label: "Player" }, { label: "Pos.", cls: "center" }, { label: "Min", cls: "num" }, { label: "Rated apps", cls: "num" }, { label: "Avg. rating", cls: "num" }, { label: "Detailed", cls: "num" }, { label: "Months" }], playerRows) : '<div class="card-body muted">No completed managed matches in this calendar semester.</div>'}</section><section class="card pad"><h3 class="card-title">Limits</h3><p class="chart-note">${(semester?.limitations || []).map((item) => esc(item)).join(" ")}</p></section>`;
-}
 function downloadText(filename, text, type) { const blob = new Blob([text], { type }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = filename; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
 function exportSeasonReportCsv() { const d = currentSeasonReportData; if (!d)
     return; const m = d.metrics || {}, rows = [["Season", d.selectedSeasonLabel], ["League", d.seasonOverview?.leagueFinish?.league_name || ""], ["Position", d.seasonOverview?.leagueFinish?.position_display || ""], ["Matches", m.matches], ["Wins", m.wins], ["Draws", m.draws], ["Losses", m.losses], ["Goals", m.goals_for], ["Goals against", m.goals_against], ["Players", m.players_used]]; const awards = (d.seasonReport?.manual?.awards || []).map((a) => [a.award_label, a.display_name, a.reason || ""]); const csv = ["Section;Value;Note", ...rows.map((r) => r.map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`).join(";")), ...awards.map((r) => `"Award: ${String(r[0]).replaceAll('"', '""')}";"${String(r[1]).replaceAll('"', '""')}";"${String(r[2]).replaceAll('"', '""')}"`)].join("\r\n"); downloadText(`Atlas_Season_Report_${d.selectedSeasonLabel.replace('/', '-')}.csv`, `\ufeff${csv}`, "text/csv;charset=utf-8"); }
@@ -1088,18 +1088,32 @@ async function exportSeasonInfographic(format = "portrait") {
     link.click();
 }
 async function renderSeasonReport() {
+    const token = ++seasonReportRenderToken;
+    const careerId = state.careerId, snapshotId = state.snapshotId;
+    const isCurrent = () => token === seasonReportRenderToken && state.route === "season-report"
+        && state.careerId === careerId && state.snapshotId === snapshotId;
     const fallback = Number(currentSnapshot()?.season_index ?? 0);
     const selected = state.seasonReportSeasonIndex ?? fallback;
-    const semester = state.seasonReportSemester ?? (Number(String(currentSnapshot()?.career_date || "").slice(5, 7)) <= 6 ? 1 : 2);
-    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}&view=season-report`);
+    const active = state.seasonReportTab || "temporal";
+    if (active === "temporal") {
+        await renderTemporalSeasonReport(selected, isCurrent);
+        return;
+    }
+    let d;
+    try {
+        d = await api(`/api/careers/${careerId}/analysis?snapshot_id=${snapshotId}&season_index=${selected}&view=season-report`);
+    }
+    catch (error) {
+        if (isCurrent())
+            content.innerHTML = errorState(temporalText("error"), error.message);
+        return;
+    }
+    if (!isCurrent())
+        return;
     currentSeasonReportData = d;
     state.seasonReportSeasonIndex = Number(d.selectedSeasonIndex);
     const report = d.seasonReport || {}, reportStatus = report.season_complete ? statusBadge("Complete", "good") : statusBadge("In progress", "blue");
-    const active = state.seasonReportTab || "overview";
-    const semesterReport = active === "semester" ? await api(`/api/careers/${state.careerId}/sporting-reports/semester?season_index=${state.seasonReportSeasonIndex}&snapshot_id=${d.selectedSnapshotId}&semester=${semester}`) : null;
-    if (semesterReport)
-        state.seasonReportSemester = Number(semesterReport.semester);
-    const body = active === "semester" ? seasonReportSemester(semesterReport) : active === "competitions" ? seasonReportCompetitions(d) : active === "squad" ? seasonReportSquad(d) : active === "transfers" ? seasonReportTransfers(d) : active === "awards" ? seasonReportAwards(d) : active === "quality" ? seasonReportQuality(d) : seasonReportOverview(d);
+    const body = active === "competitions" ? seasonReportCompetitions(d) : active === "squad" ? seasonReportSquad(d) : active === "transfers" ? seasonReportTransfers(d) : active === "awards" ? seasonReportAwards(d) : active === "quality" ? seasonReportQuality(d) : seasonReportOverview(d);
     content.innerHTML = `<div class="content-inner wide season-report-page">${pageHead("Season report", `${esc(d.selectedSeasonLabel)} · structured career report`, `<button class="button" data-season-report-print>Print / PDF</button><button class="button" data-season-report-csv>CSV</button><button class="button" data-season-report-image="square">Square PNG</button><button class="button primary" data-season-report-image="portrait">Portrait PNG</button>`)}<div class="page-filter-bar">${seasonReportPicker(d.seasonOptions || [], Number(d.selectedSeasonIndex))}<span class="filter-hint">${reportStatus} Automatic and custom awards remain separate.</span></div>${seasonReportTabs(active)}${body}${active === "squad" ? `<div class="grid">${defenseContextView(d.defenseContext)}</div>` : ""}</div>`;
 }
 async function renderAnalysis() {
@@ -1181,6 +1195,410 @@ async function renderRecords() {
       ${recordCatalog(d.records || {})}
       <div class="grid two-col analysis-grid"><section class="card pad"><h3 class="card-title">Calculation rule</h3><p class="chart-note">All of a player’s competitions are summed within the selected period. Manual legacy seasons and snapshot seasons are joined by calendar year.</p></section>${qualityPanel(d.quality)}</div>
     </div>`;
+}
+const temporalLabels = {
+    title: ["Relatórios", "Reports", "Informes"],
+    tab: ["Evolução temporal", "Timeline", "Evolución temporal"],
+    overview: ["Visão da temporada", "Season overview", "Resumen de temporada"],
+    competitions: ["Competições", "Competitions", "Competiciones"],
+    squadTab: ["Elenco da temporada", "Season squad", "Plantilla de temporada"],
+    transfers: ["Transferências", "Transfers", "Traspasos"],
+    awards: ["Prêmios", "Awards", "Premios"],
+    quality: ["Qualidade dos dados", "Data quality", "Calidad de datos"],
+    scope: ["Time e elenco", "Team and squad", "Equipo y plantilla"],
+    season: ["Temporada", "Season", "Temporada"],
+    snapshot: ["Snapshot de corte", "Snapshot cut-off", "Snapshot de corte"],
+    period: ["Recorte", "Period", "Período"],
+    semester: ["Semestre", "Semester", "Semestre"],
+    month: ["Mês", "Month", "Mes"],
+    range: ["Período personalizado", "Custom period", "Período personalizado"],
+    full: ["Toda a temporada", "Full season", "Toda la temporada"],
+    start: ["De (mês inicial)", "From (first month)", "Desde (mes inicial)"],
+    end: ["Até (mês final)", "To (last month)", "Hasta (mes final)"],
+    apply: ["Aplicar", "Apply", "Aplicar"],
+    invalid: ["O mês inicial deve ser anterior ou igual ao final.", "The first month must be on or before the last month.", "El mes inicial debe ser anterior o igual al final."],
+    download: ["Baixar Markdown", "Download Markdown", "Descargar Markdown"],
+    downloadError: ["Falha ao baixar Markdown", "Markdown download failed", "Error al descargar Markdown"],
+    loading: ["Carregando relatório…", "Loading report…", "Cargando informe…"],
+    error: ["Não foi possível carregar o relatório", "The report could not be loaded", "No se pudo cargar el informe"],
+    retry: ["Tentar novamente", "Try again", "Reintentar"],
+    empty: ["Nenhuma partida concluída neste recorte", "No completed matches in this period", "Sin partidos finalizados en este período"],
+    emptyHelp: ["Escolha outro recorte ou snapshot de corte.", "Choose another period or snapshot.", "Elige otro período o snapshot."],
+    partial: ["Período parcial até o snapshot", "Partial period as of the snapshot", "Período parcial hasta el snapshot"],
+    monthPartial: ["Parcial", "Partial", "Parcial"],
+    games: ["Partidas", "Matches", "Partidos"],
+    results: ["Placares disponíveis", "Available results", "Marcadores disponibles"],
+    record: ["V–E–D", "W–D–L", "V–E–D"],
+    goals: ["Gols pró / contra", "Goals for / against", "Goles a favor / en contra"],
+    league: ["Pontos na liga", "League points", "Puntos de liga"],
+    rate: ["Aproveitamento", "Points won", "Aprovechamiento"],
+    exports: ["Exports vinculados", "Linked exports", "Exports vinculados"],
+    timeline: ["Trajetória do time", "Team timeline", "Trayectoria del equipo"],
+    timelineNote: ["Meses com partidas concluídas", "Months with completed matches", "Meses con partidos finalizados"],
+    coverage: ["Cobertura por partida", "Match coverage", "Cobertura por partido"],
+    fixtures: ["Partidas do recorte", "Matches in this period", "Partidos del período"],
+    date: ["Data", "Date", "Fecha"],
+    opponent: ["Adversário", "Opponent", "Rival"],
+    competition: ["Competição", "Competition", "Competición"],
+    venue: ["Mando", "Venue", "Localía"],
+    home: ["Casa", "Home", "Local"],
+    away: ["Fora", "Away", "Visitante"],
+    score: ["Placar", "Score", "Marcador"],
+    shots: ["Finalizações", "Shots", "Remates"],
+    passes: ["Passes", "Passes", "Pases"],
+    squad: ["Evolução do elenco", "Squad development", "Evolución de la plantilla"],
+    search: ["Buscar atleta", "Find a player", "Buscar jugador"],
+    noPlayers: ["Nenhum atleta encontrado.", "No players found.", "No se encontraron jugadores."],
+    players: ["atletas", "players", "jugadores"],
+    squadNote: ["Minutos e notas cobrem as atuações registradas. O GER e o potencial vêm do último snapshot disponível de cada mês.", "Minutes and ratings cover recorded appearances. OVR and potential use the last available snapshot for each month.", "Los minutos y notas cubren actuaciones registradas. La media y el potencial usan el último snapshot disponible de cada mes."],
+    playerCoverage: ["Gols e assistências indicam jogos com a métrica disponível sobre exports vinculados.", "Goals and assists show matches with the metric available out of linked exports.", "Goles y asistencias muestran partidos con la métrica disponible sobre exports vinculados."],
+    minutes: ["Minutos (jogos)", "Minutes (matches)", "Minutos (partidos)"],
+    rating: ["Nota média (jogos)", "Avg. rating (matches)", "Nota media (partidos)"],
+    overall: ["GER", "OVR", "Media"],
+    potential: ["Potencial", "Potential", "Potencial"],
+    position: ["Posição natural", "Natural position", "Posición natural"],
+    category: ["Vínculo", "Squad status", "Vínculo"],
+    playerGoals: ["Gols s/ pênalti", "Non-penalty goals", "Goles sin penalti"],
+    assists: ["Assistências", "Assists", "Asistencias"],
+    available: ["Disponível", "Available", "Disponible"],
+    noData: ["n/d", "n/a", "n/d"],
+};
+function temporalText(key) {
+    const language = atlasLanguage();
+    return temporalLabels[key][language === "en-GB" ? 1 : language === "es-ES" ? 2 : 0];
+}
+function temporalNumber(value, digits = 0) {
+    return value == null ? temporalText("noData") : num(value, digits);
+}
+function temporalMonthLabel(month) {
+    return new Intl.DateTimeFormat(atlasLanguage(), {
+        month: "short", year: "numeric", timeZone: "UTC",
+    }).format(new Date(`${month}-01T00:00:00Z`));
+}
+function temporalSemester(month) {
+    const year = month.slice(0, 4);
+    const firstHalf = month.slice(5, 7) <= "06";
+    return {
+        mode: "semester",
+        startMonth: `${year}-${firstHalf ? "01" : "07"}`,
+        endMonth: `${year}-${firstHalf ? "06" : "12"}`,
+    };
+}
+function temporalPeriodLabel(start, end) {
+    return start === end ? temporalMonthLabel(start) : `${temporalMonthLabel(start)} – ${temporalMonthLabel(end)}`;
+}
+function temporalOption(value, label, selected) {
+    return `<option value="${esc(value)}"${value === selected ? " selected" : ""}>${esc(label)}</option>`;
+}
+let temporalContext = null;
+async function renderTemporalSeasonReport(selected, isCurrent) {
+    const snapshots = state.snapshots;
+    const seasonSnapshots = snapshots.filter(snapshot => Number(snapshot.season_index) === selected);
+    const key = `${state.careerId}:${state.snapshotId}:${selected}`;
+    const context = temporalContext?.key === key ? temporalContext : null;
+    const snapshot = seasonSnapshots.find(item => Number(item.id) === (context?.snapshotId ?? state.snapshotId))
+        || seasonSnapshots[0] || currentSnapshot();
+    if (!snapshot)
+        return;
+    const cutMonth = snapshot.career_date.slice(0, 7);
+    const selection = context?.selection ?? temporalSemester(cutMonth);
+    const params = new URLSearchParams({
+        season_index: String(snapshot.season_index), snapshot_id: String(snapshot.id),
+    });
+    if (selection.mode === "month")
+        params.set("month", selection.month);
+    if (selection.mode === "semester" || selection.mode === "range") {
+        params.set("start_month", selection.startMonth);
+        params.set("end_month", selection.endMonth);
+    }
+    const url = `/api/careers/${state.careerId}/sporting-reports?${params}`;
+    const setSelection = (next, snapshotId = Number(snapshot.id)) => {
+        temporalContext = { key, snapshotId, selection: next };
+        void render();
+    };
+    const shell = (subtitle, body, actions = "", periodControls = "") => {
+        const seasons = [...new Map(snapshots.map(item => [Number(item.season_index), item.season_label || String(item.season_index)])).entries()];
+        content.innerHTML = `<div class="content-inner wide season-report-page temporal-report">
+            ${pageHead(temporalText("title"), subtitle, actions)}
+            ${seasonReportTabs("temporal")}
+            <form class="page-filter-bar temporal-period" data-temporal-period>
+                <label class="page-filter"><span>${temporalText("season")}</span><select data-season-report-season>
+                    ${seasons.map(([id, label]) => temporalOption(id, label, Number(snapshot.season_index))).join("")}
+                </select></label>
+                <label class="page-filter"><span>${temporalText("snapshot")}</span><select data-temporal-snapshot>
+                    ${seasonSnapshots.map(item => temporalOption(Number(item.id), `${dateText(item.career_date)} · #${item.id}`, Number(snapshot.id))).join("")}
+                </select></label>
+                ${periodControls}
+            </form>
+            ${body}
+        </div>`;
+        const picker = content.querySelector("[data-temporal-snapshot]");
+        if (picker)
+            picker.onchange = () => {
+                const next = seasonSnapshots.find(item => Number(item.id) === Number(picker.value));
+                if (next)
+                    setSelection(temporalSemester(next.career_date.slice(0, 7)), Number(next.id));
+            };
+    };
+    shell(temporalText("scope"), `<p role="status" class="muted">${temporalText("loading")}</p><div class="card skeleton temporal-report-loading"></div>`);
+    bindContent();
+    let report;
+    try {
+        report = await api(url);
+    }
+    catch (error) {
+        if (!isCurrent())
+            return;
+        shell(temporalText("scope"), emptyState(temporalText("error"), String(error.message), `<button class="button" data-temporal-retry>${temporalText("retry")}</button>`));
+        const retry = content.querySelector("[data-temporal-retry]");
+        if (retry)
+            retry.onclick = () => { void render(); };
+        return;
+    }
+    if (!isCurrent())
+        return;
+    const available = report.availableMonths ?? report.months.map(month => month.month);
+    const controls = temporalControls(selection, available, cutMonth);
+    const body = report.months.length ? temporalBody(report, Number(snapshot.id) === state.snapshotId)
+        : emptyState(temporalText("empty"), temporalText("emptyHelp"));
+    const cutNotice = report.period?.partial || report.months.some(month => month.partial)
+        ? ` · ${temporalText("partial")}` : "";
+    const actions = `<button class="button primary" data-temporal-export>${temporalText("download")}</button>`;
+    shell(`${report.teamName} · ${dateText(report.snapshotCareerDate)}${cutNotice}`, body, actions, controls);
+    bindTemporalReport(selection, available, cutMonth, setSelection, url);
+}
+function temporalControls(selection, months, cutMonth) {
+    const semesters = [...new Map([...months, cutMonth].map(month => {
+            const semester = temporalSemester(month);
+            return [semester.startMonth, semester];
+        })).values()].sort((a, b) => b.startMonth.localeCompare(a.startMonth));
+    const optional = selection.mode === "semester"
+        ? `<label class="page-filter"><span>${temporalText("semester")}</span><select data-temporal-semester>
+            ${semesters.map(period => temporalOption(period.startMonth, temporalPeriodLabel(period.startMonth, period.endMonth), selection.startMonth)).join("")}
+        </select></label>`
+        : selection.mode === "month"
+            ? `<label class="page-filter"><span>${temporalText("month")}</span><select data-temporal-month-picker>
+                ${months.slice().reverse().map(month => temporalOption(month, temporalMonthLabel(month), selection.month)).join("")}
+            </select></label>`
+            : selection.mode === "range" ? `
+            <label class="page-filter"><span>${temporalText("start")}</span><input name="startMonth" type="month" value="${esc(selection.startMonth)}" required></label>
+            <label class="page-filter"><span>${temporalText("end")}</span><input name="endMonth" type="month" value="${esc(selection.endMonth)}" required></label>
+            <button class="button" type="submit">${temporalText("apply")}</button>
+            <span class="temporal-filter-error" role="alert"></span>` : "";
+    return `<label class="page-filter"><span>${temporalText("period")}</span><select data-temporal-mode>
+            ${temporalOption("semester", temporalText("semester"), selection.mode)}
+            ${months.length ? temporalOption("month", temporalText("month"), selection.mode) : ""}
+            ${temporalOption("range", temporalText("range"), selection.mode)}
+            ${temporalOption("season", temporalText("full"), selection.mode)}
+        </select></label>${optional}`;
+}
+function bindTemporalReport(selection, months, cutMonth, setSelection, url) {
+    const mode = content.querySelector("[data-temporal-mode]");
+    if (mode)
+        mode.onchange = () => {
+            const latest = months.at(-1) ?? cutMonth;
+            if (mode.value === "season")
+                setSelection({ mode: "season" });
+            else if (mode.value === "month")
+                setSelection({ mode: "month", month: latest });
+            else if (mode.value === "semester")
+                setSelection(temporalSemester(latest));
+            else {
+                const startMonth = selection.mode === "semester" ? selection.startMonth : months[0] ?? latest;
+                const endMonth = selection.mode === "semester" ? selection.endMonth : latest;
+                setSelection({ mode: "range", startMonth, endMonth });
+            }
+        };
+    const semester = content.querySelector("[data-temporal-semester]");
+    if (semester)
+        semester.onchange = () => setSelection(temporalSemester(semester.value));
+    const month = content.querySelector("[data-temporal-month-picker]");
+    if (month)
+        month.onchange = () => setSelection({ mode: "month", month: month.value });
+    $$("[data-temporal-open-month]", content).forEach(button => {
+        button.onclick = () => setSelection({ mode: "month", month: button.dataset.temporalOpenMonth });
+    });
+    const form = content.querySelector("[data-temporal-period]");
+    if (form)
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (selection.mode !== "range")
+                return;
+            const data = new FormData(form);
+            const startMonth = String(data.get("startMonth"));
+            const endMonth = String(data.get("endMonth"));
+            if (startMonth > endMonth) {
+                const error = form.querySelector(".temporal-filter-error");
+                if (error)
+                    error.textContent = temporalText("invalid");
+            }
+            else
+                setSelection({ mode: "range", startMonth, endMonth });
+        };
+    const download = content.querySelector("[data-temporal-export]");
+    if (download)
+        download.onclick = async () => {
+            download.disabled = true;
+            try {
+                const markdown = await api(`${url}&format=markdown`);
+                if (download.isConnected)
+                    downloadText(markdown.fileName, markdown.content, "text/markdown;charset=utf-8");
+            }
+            catch (error) {
+                if (download.isConnected)
+                    toast(`${temporalText("downloadError")}. ${error.message}`);
+            }
+            finally {
+                download.disabled = false;
+            }
+        };
+    const search = content.querySelector("[data-temporal-search]");
+    if (search)
+        search.oninput = () => {
+            const normalized = (text) => text.toLocaleLowerCase(atlasLanguage()).normalize("NFD").replace(/\p{M}/gu, "");
+            const query = normalized(search.value.trim());
+            const cards = $$("[data-temporal-player]", content);
+            let found = 0;
+            for (const card of cards) {
+                card.hidden = !normalized(card.dataset.temporalPlayer || "").includes(query);
+                if (!card.hidden)
+                    found++;
+            }
+            const count = content.querySelector("[data-temporal-player-count]");
+            if (count)
+                count.textContent = found ? `${num(found)} / ${num(cards.length)} ${temporalText("players")}` : temporalText("noPlayers");
+        };
+}
+function temporalRecord(matches) {
+    return ["V", "E", "D"].map(result => num(matches.filter(match => match.result === result).length)).join("–");
+}
+function temporalBody(report, links) {
+    const months = report.months;
+    const games = months.flatMap(month => month.matches);
+    const sum = (key) => months.reduce((total, month) => total + month[key], 0);
+    const completeTotal = (key) => months.some(month => month[key] == null) ? null : months.reduce((total, month) => total + (month[key] ?? 0), 0);
+    const score = (goalsFor, goalsAgainst) => `${temporalNumber(goalsFor)} / ${temporalNumber(goalsAgainst)}`;
+    const period = report.period;
+    const label = period ? temporalPeriodLabel(period.startMonth, period.endMonth)
+        : temporalPeriodLabel(months[0].month, months.at(-1).month);
+    const summary = `<div class="grid metrics temporal-metrics">
+        ${metric(temporalText("games"), num(games.length), `${temporalRecord(games)} ${temporalText("record")}`, "green")}
+        ${metric(temporalText("goals"), score(completeTotal("goalsFor"), completeTotal("goalsAgainst")), `${num(sum("resultCoverage"))}/${num(games.length)} ${temporalText("results").toLocaleLowerCase(atlasLanguage())}`)}
+        ${metric(temporalText("league"), temporalNumber(completeTotal("pointsLeague")), "", "blue")}
+        ${metric(temporalText("exports"), `${num(sum("exports"))} / ${num(games.length)}`)}
+    </div>`;
+    const monthlyRows = months.map(month => `<tr>
+        <td><button class="entity-link" data-temporal-open-month="${esc(month.month)}">${esc(temporalMonthLabel(month.month))}</button>
+            ${month.partial ? `<small class="table-subline">${temporalText("monthPartial")}</small>` : ""}</td>
+        <td class="num">${num(month.matches.length)}</td><td class="num">${temporalRecord(month.matches)}</td>
+        <td class="num">${score(month.goalsFor, month.goalsAgainst)}</td><td class="num">${temporalNumber(month.pointsLeague)}</td>
+        <td class="num">${month.pointsPct == null ? temporalText("noData") :
+        `<div class="temporal-rate"><progress max="100" value="${month.pointsPct}" aria-label="${temporalText("rate")}"></progress>${num(month.pointsPct, 1)}%</div>`}</td>
+        <td class="num">${num(month.exports)} / ${num(month.matches.length)}</td>
+    </tr>`);
+    const monthlyTable = table([
+        { label: temporalText("month"), sortable: false }, { label: temporalText("games"), cls: "num", sortable: false },
+        { label: temporalText("record"), cls: "num", sortable: false }, { label: temporalText("goals"), cls: "num", sortable: false },
+        { label: temporalText("league"), cls: "num", sortable: false }, { label: temporalText("rate"), cls: "num", sortable: false },
+        { label: temporalText("exports"), cls: "num", sortable: false },
+    ], monthlyRows);
+    const coverage = ["expected_goals_derived", "shots", "passes"].map((key, index) => {
+        const label = ["xG / xGA", temporalText("shots"), temporalText("passes")][index];
+        const covered = months.reduce((total, month) => total + (month.metricCoverage[key] ?? 0), 0);
+        return `<span>${label} <b>${num(covered)}/${num(games.length)}</b></span>`;
+    }).join("");
+    return `<div class="grid">
+        <section class="card pad temporal-summary">
+            <div class="card-title-row"><h2>${esc(label)}</h2></div>
+            ${summary}
+        </section>
+        <section class="card">
+            <header class="card-header"><div><h2>${temporalText("timeline")}</h2><p>${temporalText("timelineNote")}</p></div></header>
+            ${monthlyTable}
+            <div class="data-note temporal-coverage"><strong>${temporalText("coverage")}</strong>${coverage}</div>
+        </section>
+        <details class="card temporal-fixtures"${months.length === 1 ? " open" : ""}>
+            <summary class="card-header"><h2>${temporalText("fixtures")}</h2><span>${num(games.length)}</span></summary>
+            ${temporalFixtures(games, links)}
+        </details>
+        ${temporalSquad(months, links)}
+    </div>`;
+}
+function temporalFixtures(games, links) {
+    return table([
+        { label: temporalText("date") }, { label: temporalText("opponent") }, { label: temporalText("competition") },
+        { label: temporalText("venue") }, { label: temporalText("score"), sortable: false },
+        { label: "xG / xGA", sortable: false }, { label: temporalText("shots"), cls: "num" },
+        { label: temporalText("passes"), cls: "num" }, { label: "MatchStats" },
+    ], games.map(game => `<tr><td>${dateText(game.date)}</td>
+        <td>${links ? matchLink(game.fixtureId, game.opponent || temporalText("noData")) : esc(game.opponent || temporalText("noData"))}</td>
+        <td>${esc(game.competition || temporalText("noData"))}</td><td>${temporalText(game.venue === "Casa" ? "home" : "away")}</td>
+        <td><b>${temporalNumber(game.goalsFor)}–${temporalNumber(game.goalsAgainst)}</b></td>
+        <td>${temporalNumber(game.teamStats.expected_goals_derived, 2)} / ${temporalNumber(game.opponentStats.expected_goals_derived, 2)}</td>
+        <td class="num">${temporalNumber(game.teamStats.shots)}</td><td class="num">${temporalNumber(game.teamStats.passes)}</td>
+        <td>${game.exportId == null ? temporalText("noData") : statusBadge(temporalText("available"), "good")}</td></tr>`));
+}
+function temporalCategory(category) {
+    const labels = {
+        profissional: ["Profissional", "Professional", "Profesional"],
+        academia: ["Base", "Academy", "Cantera"],
+        emprestado: ["Emprestado", "On loan", "Cedido"],
+        "academia histórica": ["Base histórica", "Former academy", "Cantera histórica"],
+        "histórico/saída": ["Histórico / saída", "Former squad", "Histórico / salida"],
+    };
+    return labels[category]?.[atlasLanguage() === "en-GB" ? 1 : atlasLanguage() === "es-ES" ? 2 : 0]
+        || category || temporalText("noData");
+}
+function temporalSquad(months, links) {
+    const series = new Map();
+    for (const month of months) {
+        for (const player of month.players) {
+            const history = series.get(player.playerEaId) ?? [];
+            history.push({ month: month.month, player });
+            series.set(player.playerEaId, history);
+        }
+    }
+    const roster = [...series.values()].map(history => {
+        const last = history.at(-1).player;
+        const tracked = history.filter(row => row.player.minutes != null);
+        const minutes = tracked.length ? tracked.reduce((total, row) => total + (row.player.minutes ?? 0), 0) : null;
+        const rated = history.filter(row => row.player.averageRating != null);
+        const ratedMatches = rated.reduce((total, row) => total + row.player.matchesWithRating, 0);
+        const rating = ratedMatches ? rated.reduce((total, row) => total + (row.player.averageRating ?? 0) * row.player.matchesWithRating, 0) / ratedMatches : null;
+        return { history, last, minutes, rating, ratedMatches };
+    }).sort((a, b) => (b.minutes ?? -1) - (a.minutes ?? -1) || a.last.name.localeCompare(b.last.name, atlasLanguage()));
+    const metrics = (player, key) => {
+        const value = player.detailedStats[key];
+        return value == null ? temporalText("noData") : `${num(value)} <small>(${num(player.detailedCoverage[key])}/${num(player.detailedMatches)})</small>`;
+    };
+    const players = roster.map(({ history, last, minutes, rating, ratedMatches }) => {
+        const rows = history.map(({ month, player }) => `<tr>
+            <td>${esc(temporalMonthLabel(month))}</td><td>${esc(temporalCategory(player.category))}</td>
+            <td>${esc(player.position || temporalText("noData"))}</td><td class="num">${temporalNumber(player.overall)}</td>
+            <td class="num">${temporalNumber(player.potential)}</td>
+            <td class="num">${temporalNumber(player.minutes)} <small>(${num(player.matchesWithMinutes)})</small></td>
+            <td class="num">${temporalNumber(player.averageRating, 2)} <small>(${num(player.matchesWithRating)})</small></td>
+            <td class="num">${metrics(player, "npk_goals")}</td><td class="num">${metrics(player, "assists")}</td>
+        </tr>`);
+        return `<details class="story-player" data-temporal-player="${esc(`${last.name} ${last.playerEaId} ${temporalCategory(last.category)} ${last.position || ""}`)}">
+            <summary><span><strong>${esc(last.name)}</strong><small>${esc(temporalCategory(last.category))} · ${esc(last.position || temporalText("noData"))}</small></span>
+                <span>${temporalNumber(minutes)} min · ${temporalNumber(rating, 2)} (${num(ratedMatches)})</span></summary>
+            <div class="story-player-body">${links ? `<div>${playerLink(last.playerEaId, last.name)}</div>` : ""}
+                ${table([
+            { label: temporalText("month") }, { label: temporalText("category") }, { label: temporalText("position") },
+            { label: temporalText("overall"), cls: "num" }, { label: temporalText("potential"), cls: "num" },
+            { label: temporalText("minutes"), cls: "num" }, { label: temporalText("rating"), cls: "num" },
+            { label: temporalText("playerGoals"), cls: "num" }, { label: temporalText("assists"), cls: "num" },
+        ].map(header => ({ ...header, sortable: false })), rows)}
+            </div>
+        </details>`;
+    }).join("");
+    return `<section class="card pad">
+        <div class="card-title-row"><h2>${temporalText("squad")}</h2><span data-temporal-player-count aria-live="polite">${num(roster.length)} ${temporalText("players")}</span></div>
+        <p class="chart-note">${temporalText("squadNote")} ${temporalText("playerCoverage")}</p>
+        <div class="story-report-controls"><input type="search" data-temporal-search placeholder="${temporalText("search")}" aria-label="${temporalText("search")}"></div>
+        <div class="story-player-list">${players || `<p class="muted">${temporalText("noPlayers")}</p>`}</div>
+    </section>`;
 }
 async function renderMatchCenter() { const d = await api(`/api/snapshots/${state.snapshotId}/matches`), recent = d.completed.slice(-5).reverse(), upcoming = d.upcoming.slice(0, 5), form = d.completed.slice(-10).map((m) => resultCode(m.managed_team_result)); const next = upcoming[0]; content.innerHTML = `<div class="content-inner">${pageHead("Match Center", "Schedule, results and available match data", `<button class="button" data-route="schedule">Schedule</button><button class="button" data-route="results">Results</button>`)}<div class="grid metrics">${metric("Played", num(d.completed.length), "completed matches")}${metric("Open", num(d.upcoming.length), "upcoming matches", "blue")}${metric("Last 5", form.slice(-5).map(resultPill).join(" "), "across all competitions")}${metric("Last 10", form.map((c) => c).join(" · "), "Form sequence")}${metric("Competitions", num(d.competitions.length), "featuring your club", "green")}</div>${next ? `<section class="card fixture-hero"><div class="fixture-meta">NEXT MATCH · ${competitionLink(next.competition_object_id, next.competition_name)} · ${dateText(next.date)} ${esc(timeText(next.time))}</div><div class="fixture-scoreboard"><div class="fixture-club">${identityLogo(next.homeIdentity, next.home_team_name, "fixture-club-logo")}<h2>${clubLink(next.home_team_ea_id, next.home_team_name)}</h2></div><div class="fixture-score">VS<small>${matchLink(next.fixture_id, "Open match")}</small></div><div class="fixture-club">${identityLogo(next.awayIdentity, next.away_team_name, "fixture-club-logo")}<h2>${clubLink(next.away_team_ea_id, next.away_team_name)}</h2></div></div></section>` : ""}<div class="grid two-col" style="margin-top:14px"><section class="card"><header class="card-header"><h2>Recent results</h2><button class="entity-link" data-route="results">All</button></header>${renderMatchRows(recent)}</section><section class="card"><header class="card-header"><h2>Upcoming matches</h2><button class="entity-link" data-route="schedule">All</button></header>${renderMatchRows(upcoming)}</section></div><section class="card" style="margin-top:14px"><header class="card-header"><h2>Competition status</h2></header><div class="card-body grid competition-grid">${d.competitions.map((c) => `<button class="competition-card card" data-competition="${c.competition_object_id}"><div class="competition-top">${identityLogo(c.identity, c.competition_name, "competition-logo-card")}<div><h3>${esc(c.competition_name)}</h3><p>${num(c.completed)} of ${num(c.total)} completed</p></div></div></button>`).join("")}</div></section></div>`; }
 async function renderMatchList(mode) {
@@ -3318,9 +3736,14 @@ function bindContent() {
         await renderTransfers(); applyIcons(content); bindContent(); });
     $$('[data-analysis-season]', content).forEach(select => select.onchange = () => { state.analysisSeasonIndex = Number(select.value); clearApiCache(); void render(); });
     $$('[data-records-season]', content).forEach(select => select.onchange = async () => { state.recordsSeasonIndex = Number(select.value); clearApiCache(); await renderRecords(); applyIcons(content); bindContent(); });
-    $$('[data-season-report-season]', content).forEach(select => select.onchange = async () => { state.seasonReportSeasonIndex = Number(select.value); clearApiCache(); await renderSeasonReport(); applyIcons(content); bindContent(); });
-    $$('[data-season-report-semester]', content).forEach(select => select.onchange = async () => { state.seasonReportSemester = Number(select.value); await renderSeasonReport(); applyIcons(content); bindContent(); });
-    $$('[data-season-report-tab]', content).forEach((n) => n.onclick = async (e) => { e.stopPropagation(); state.seasonReportTab = n.dataset.seasonReportTab || 'overview'; await renderSeasonReport(); applyIcons(content); bindContent(); });
+    $$('[data-season-report-season]', content).forEach(select => select.onchange = () => {
+        state.seasonReportSeasonIndex = Number(select.value);
+        void render();
+    });
+    $$('[data-season-report-tab]', content).forEach(button => button.onclick = () => {
+        state.seasonReportTab = button.dataset.seasonReportTab || "temporal";
+        void render();
+    });
     const awardPlayerSelect = $('[data-season-award-player]', content);
     if (awardPlayerSelect)
         awardPlayerSelect.onchange = () => { const option = awardPlayerSelect.selectedOptions[0], name = $('[data-season-award-name]', content); if (name && option?.dataset.name)
@@ -3545,7 +3968,7 @@ function bindContent() {
     $$('[data-save-competition-media]', content).forEach((n) => n.onclick = async () => { const objectId = Number(n.dataset.saveCompetitionMedia), input = $(`[data-competition-media-id="${objectId}"]`, content), raw = String(input?.value || '').trim(); await api('/api/media/competition-mappings', { method: 'POST', body: JSON.stringify({ snapshotId: state.snapshotId, competitionObjectId: objectId, mediaCompetitionId: raw ? Number(raw) : null }) }); clearApiCache(); toast(raw ? 'Competition logo assigned' : 'Assignment removed'); await renderMedia(); applyIcons(content); bindContent(); });
 }
 function bindShell() {
-    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.seasonReportSemester = null; state.clubTab = "overview"; state.competitionListTab = "deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
+    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.clubTab = "overview"; state.competitionListTab = "deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
     snapshotSelect.onchange = () => { clearApiCache(); state.snapshotId = Number(snapshotSelect.value); state.compareTo = state.snapshotId; updateSystemUi(); navigate(state.route, state.routeData, false); };
     $("#backButton").onclick = () => goHistory(-1);
     $("#forwardButton").onclick = () => goHistory(1);

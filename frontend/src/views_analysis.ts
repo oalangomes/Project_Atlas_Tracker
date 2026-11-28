@@ -290,13 +290,19 @@ function analysisSeasons(d: any): string {
 
 
 let currentSeasonReportData: any = null;
+let seasonReportRenderToken = 0;
 
 function seasonReportPicker(options: any[], selected: number): string {
     return `<label class="page-filter"><span>Season</span><select data-season-report-season>${options.map((option:any)=>`<option value="${option.season_index}" ${Number(option.season_index)===Number(selected)?"selected":""}>${esc(option.label)}${option.is_current ? " · current" : ""}</option>`).join("")}</select></label>`;
 }
 
 function seasonReportTabs(active: string): string {
-    const tabs = [["overview","Overview"],["semester","Semester"],["competitions","Competitions"],["squad","Squad & performance"],["transfers","Transfers"],["awards","Awards"],["quality","Data quality"]];
+    const tabs = [
+        ["temporal", temporalText("tab")], ["overview", temporalText("overview")],
+        ["competitions", temporalText("competitions")], ["squad", temporalText("squadTab")],
+        ["transfers", temporalText("transfers")], ["awards", temporalText("awards")],
+        ["quality", temporalText("quality")],
+    ];
     return `<div class="page-tabs season-report-tabs">${tabs.map(([key,label])=>`<button class="${active===key?"active":""}" data-season-report-tab="${key}">${label}</button>`).join("")}</div>`;
 }
 
@@ -373,13 +379,6 @@ function seasonReportQuality(d:any): string {
     return `<div class="grid two-col">${qualityPanel(d.quality)}<section class="card pad"><h3 class="card-title">Report rules</h3><p class="chart-note">${esc(d.seasonReport?.method_note || "The report uses available data only.")}</p><p class="chart-note">Manual awards remain separate from automatically calculated Tracker awards. Missing competitions, fees or historical statistics are not filled in.</p></section></div>`;
 }
 
-function seasonReportSemester(semester:any): string {
-    const metrics=semester?.metrics||{}, coverage=semester?.coverage||{}, players=semester?.players||[];
-    const periodSelect=`<label class="page-filter"><span>Calendar semester</span><select data-season-report-semester><option value="1" ${Number(semester?.semester)===1?"selected":""}>Jan–Jun</option><option value="2" ${Number(semester?.semester)===2?"selected":""}>Jul–Dec</option></select></label>`;
-    const playerRows=players.slice(0,20).map((p:any)=>`<tr><td>${p.playerEaId?playerLink(p.playerEaId,p.name):esc(p.name||"–")}</td><td class="center">${positionBadge(p.position)}</td><td class="num">${num(p.minutes)}</td><td class="num">${num(p.matchesWithRating)}</td><td class="num">${ratingValue(p.averageRating,true)}</td><td class="num">${num(p.detailedMatches)}</td><td>${(p.months||[]).map((month:string)=>esc(month)).join(", ")}</td></tr>`).join("");
-    return `<div class="page-filter-bar">${periodSelect}<span class="filter-hint">Calendar cut-off; only imported months up to the selected snapshot are used.</span></div><section class="card pad"><div class="card-title-row"><div><h2>${esc(semester?.periodLabel||"Semester")} sporting report</h2><span>Deterministic aggregation of monthly reports</span></div>${statusBadge(`${num(metrics.resultCoverage)} / ${num(metrics.fixtures)} results`,Number(metrics.resultCoverage)===Number(metrics.fixtures)?"good":"amber")}</div><div class="grid metrics analysis-metrics">${metric("Matches",num(metrics.fixtures),`${num(metrics.wins)} W · ${num(metrics.draws)} D · ${num(metrics.losses)} L`,"green")}${metric("Goals",`${num(metrics.goalsFor)}:${num(metrics.goalsAgainst)}`,"all selected months must be complete")}${metric("League points",num(metrics.pointsLeague),"league fixtures only","blue")}${metric("Detailed exports",num(metrics.detailedExports),`${num(coverage.fixturesWithDetailedExport)} fixtures with linked exports`)}</div><p class="chart-note">Included months: ${esc((semester?.includedMonths||[]).join(", ") || "none")}. Excluded months: ${esc((semester?.excludedMonths||[]).join(", ") || "none")}. ${coverage.partialMonths?.length?`Partial: ${esc(coverage.partialMonths.join(", "))}.`:""}</p></section><section class="card"><header class="card-header"><h2>Player evidence</h2><span>ratings weighted by rated appearances</span></header>${players.length?table([{label:"Player"},{label:"Pos.",cls:"center"},{label:"Min",cls:"num"},{label:"Rated apps",cls:"num"},{label:"Avg. rating",cls:"num"},{label:"Detailed",cls:"num"},{label:"Months"}],playerRows):'<div class="card-body muted">No completed managed matches in this calendar semester.</div>'}</section><section class="card pad"><h3 class="card-title">Limits</h3><p class="chart-note">${(semester?.limitations||[]).map((item:string)=>esc(item)).join(" ")}</p></section>`;
-}
-
 function downloadText(filename:string, text:string, type:string):void { const blob=new Blob([text],{type}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=filename; a.click(); setTimeout(()=>URL.revokeObjectURL(url),1000); }
 function exportSeasonReportCsv():void { const d=currentSeasonReportData; if(!d)return; const m=d.metrics||{}, rows=[["Season",d.selectedSeasonLabel],["League",d.seasonOverview?.leagueFinish?.league_name||""],["Position",d.seasonOverview?.leagueFinish?.position_display||""],["Matches",m.matches],["Wins",m.wins],["Draws",m.draws],["Losses",m.losses],["Goals",m.goals_for],["Goals against",m.goals_against],["Players",m.players_used]]; const awards=(d.seasonReport?.manual?.awards||[]).map((a:any)=>[a.award_label,a.display_name,a.reason||""]); const csv=["Section;Value;Note",...rows.map((r:any)=>r.map((v:any)=>`"${String(v??"").replaceAll('"','""')}"`).join(";")),...awards.map((r:any)=>`"Award: ${String(r[0]).replaceAll('"','""')}";"${String(r[1]).replaceAll('"','""')}";"${String(r[2]).replaceAll('"','""')}"`)].join("\r\n"); downloadText(`Atlas_Season_Report_${d.selectedSeasonLabel.replace('/','-')}.csv`,`\ufeff${csv}`,"text/csv;charset=utf-8"); }
 async function exportSeasonInfographic(format: "square" | "portrait" = "portrait"):Promise<void> {
@@ -397,17 +396,29 @@ async function exportSeasonInfographic(format: "square" | "portrait" = "portrait
 }
 
 async function renderSeasonReport(): Promise<void> {
+    const token = ++seasonReportRenderToken;
+    const careerId = state.careerId, snapshotId = state.snapshotId;
+    const isCurrent = () => token === seasonReportRenderToken && state.route === "season-report"
+        && state.careerId === careerId && state.snapshotId === snapshotId;
     const fallback = Number(currentSnapshot()?.season_index ?? 0);
     const selected = state.seasonReportSeasonIndex ?? fallback;
-    const semester=state.seasonReportSemester ?? (Number(String(currentSnapshot()?.career_date||"").slice(5,7))<=6?1:2);
-    const d = await api(`/api/careers/${state.careerId}/analysis?snapshot_id=${state.snapshotId}&season_index=${selected}&view=season-report`);
+    const active = state.seasonReportTab || "temporal";
+    if (active === "temporal") {
+        await renderTemporalSeasonReport(selected, isCurrent);
+        return;
+    }
+    let d;
+    try {
+        d = await api(`/api/careers/${careerId}/analysis?snapshot_id=${snapshotId}&season_index=${selected}&view=season-report`);
+    } catch (error) {
+        if (isCurrent()) content.innerHTML = errorState(temporalText("error"), error.message);
+        return;
+    }
+    if (!isCurrent()) return;
     currentSeasonReportData=d;
     state.seasonReportSeasonIndex = Number(d.selectedSeasonIndex);
     const report=d.seasonReport||{}, reportStatus=report.season_complete?statusBadge("Complete","good"):statusBadge("In progress","blue");
-    const active=state.seasonReportTab||"overview";
-    const semesterReport=active==="semester" ? await api(`/api/careers/${state.careerId}/sporting-reports/semester?season_index=${state.seasonReportSeasonIndex}&snapshot_id=${d.selectedSnapshotId}&semester=${semester}`) : null;
-    if(semesterReport) state.seasonReportSemester = Number(semesterReport.semester);
-    const body=active==="semester"?seasonReportSemester(semesterReport):active==="competitions"?seasonReportCompetitions(d):active==="squad"?seasonReportSquad(d):active==="transfers"?seasonReportTransfers(d):active==="awards"?seasonReportAwards(d):active==="quality"?seasonReportQuality(d):seasonReportOverview(d);
+    const body=active==="competitions"?seasonReportCompetitions(d):active==="squad"?seasonReportSquad(d):active==="transfers"?seasonReportTransfers(d):active==="awards"?seasonReportAwards(d):active==="quality"?seasonReportQuality(d):seasonReportOverview(d);
     content.innerHTML = `<div class="content-inner wide season-report-page">${pageHead("Season report", `${esc(d.selectedSeasonLabel)} · structured career report`, `<button class="button" data-season-report-print>Print / PDF</button><button class="button" data-season-report-csv>CSV</button><button class="button" data-season-report-image="square">Square PNG</button><button class="button primary" data-season-report-image="portrait">Portrait PNG</button>`)}<div class="page-filter-bar">${seasonReportPicker(d.seasonOptions||[],Number(d.selectedSeasonIndex))}<span class="filter-hint">${reportStatus} Automatic and custom awards remain separate.</span></div>${seasonReportTabs(active)}${body}${active==="squad"?`<div class="grid">${defenseContextView(d.defenseContext)}</div>`:""}</div>`;
 }
 

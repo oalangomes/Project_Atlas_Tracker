@@ -314,24 +314,32 @@ class ApiHandler(QueryApiMixin, BaseHTTPRequestHandler):
             month = (query.get("month") or [None])[0]
             if month is not None and not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
                 raise ValueError("Month must be YYYY-MM.")
+            start_month = (query.get("start_month") or [None])[0]
+            end_month = (query.get("end_month") or [None])[0]
+            from .monthly_reports import build_season_report
+            from .monthly_report_api import compact_report, markdown_download, report_period, validate_report_period
+
+            if start_month is not None or end_month is not None:
+                if month is not None or start_month is None or end_month is None:
+                    raise ValueError("Use month or both start_month and end_month.")
+                validate_report_period(start_month, end_month)
             output_format = (query.get("format") or ["json"])[0]
             if output_format not in {"json", "markdown"}:
                 raise ValueError("Unsupported sporting report format.")
-            from .monthly_reports import build_season_report
-            from .monthly_report_api import compact_report, markdown_download
-
             database_uri = Path(self.state.database.path).resolve(strict=True).as_uri() + "?mode=ro"
             with closing(sqlite3.connect(database_uri, uri=True)) as conn:
+                conn.execute("BEGIN")
                 report = build_season_report(conn, int(match.group(1)), season_index, snapshot_id)
+            if start_month is not None and end_month is not None:
+                report = report_period(report, start_month, end_month)
             if output_format == "markdown":
                 self._json(markdown_download(report, month))
             else:
-                payload = compact_report(report)
                 if month is not None:
-                    payload["months"] = [item for item in payload["months"] if item["month"] == month]
-                    if not payload["months"]:
+                    report = report_period(report, month, month, compare_previous_month=True)
+                    if not report["months"]:
                         raise ValueError(f"No completed managed matches in {month}")
-                self._json(payload)
+                self._json(compact_report(report))
             return
 
         match = re.fullmatch(r"/api/careers/(\d+)/analysis/rotation", path)

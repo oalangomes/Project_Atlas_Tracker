@@ -3,6 +3,7 @@ import sqlite3
 import unittest
 from unittest.mock import patch
 
+from atlas.monthly_report_api import markdown_download, report_period
 from atlas.monthly_report_markdown import render_month, render_season
 from atlas.monthly_reports import _monthly_player, build_month_report, build_season_report
 
@@ -82,6 +83,10 @@ class MonthlyReportTests(unittest.TestCase):
         self.assertEqual(july["players"][0]["overall"], 70)
         self.assertEqual(report["months"][1]["players"][0]["comparison"]["overallDelta"], 1)
         self.assertIn("2 partidas únicas", render_season(report))
+        august_download = markdown_download(report_period(report, "2025-08", "2025-08"))
+        self.assertIn("Relatório de 2025-08 a 2025-08", august_download["content"])
+        self.assertIn("1 partidas únicas", august_download["content"])
+        self.assertNotIn("2025-07", august_download["content"])
         self.assertNotIn("[Índice](README.md)", render_season(report, navigation=False))
         self.assertNotIn("[2025-07](2025-07.md)", render_season(report, navigation=False))
         self.assertIn("0/1 partidas com MatchStats", render_month(report, july))

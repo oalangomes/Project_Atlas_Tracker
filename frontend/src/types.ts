@@ -122,7 +122,6 @@ interface AtlasState {
   recordsSeasonIndex: number | null;
   seasonReportSeasonIndex: number | null;
   seasonReportTab: string;
-  seasonReportSemester: number | null;
   analysisTab: string;
   clubTab: string;
   competitionListTab: string;

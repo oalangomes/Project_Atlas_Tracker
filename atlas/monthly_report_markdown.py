@@ -282,10 +282,16 @@ def render_season(report: dict[str, Any], *, navigation: bool = True) -> str:
     months = report["months"]
     def total(key: str) -> str:
         return _fmt(sum(m[key] for m in months)) if all(m[key] is not None for m in months) else "n/d"
-    lines = [f"# Temporada — {report['teamName']}", "",
+    period = report.get("period")
+    title = (f"Relatório de {period['startMonth']} a {period['endMonth']}" if period else "Temporada")
+    lines = [f"# {title} — {report['teamName']}", "",
              f"**Carreira:** `{report['careerFingerprint']}` (ID {report['careerId']}) · "
              f"**temporada:** {report['seasonIndex']} · **snapshot:** {report['snapshotId']} "
              f"({report['snapshotCareerDate']}).", ""]
+    if period and period["partial"]:
+        lines += ["Período parcial no corte selecionado.", ""]
+    if not months:
+        return "\n".join([*lines, "Nenhuma partida concluída neste recorte.", ""])
     if navigation:
         lines += ["[Índice](README.md)", ""]
     lines += [

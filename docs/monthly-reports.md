@@ -3,29 +3,51 @@
 O serviço `atlas.monthly_reports.build_season_report(conn, career_id, season_index, snapshot_id)`
 produz um dicionário estruturado, sem escrever no banco. `build_month_report(..., month)`
 seleciona um mês `AAAA-MM` com partida concluída. A renderização Markdown fica em
-`atlas.monthly_report_markdown`. No Atlas, **Season report → Evolução mensal**
-mostra o consolidado e os meses da carreira, temporada e snapshot escolhidos,
-incluindo partidas, jogadores, cobertura e evolução por setor.
+`atlas.monthly_report_markdown`. O painel **Relatórios → Evolução temporal**
+usa essa mesma estrutura para mostrar a trajetória do time, as partidas, a
+cobertura e o histórico mensal de cada atleta.
 
 Arquivos da implementação: `atlas/monthly_reports.py` (consulta e agregação),
 `atlas/monthly_report_markdown.py` (apresentação),
 `atlas/monthly_report_api.py` (projeção para a tela e download),
-`atlas/server_http.py` (endpoint de leitura), `atlas/static/app.js` (interface),
+`atlas/server_http.py` (endpoint de leitura), `frontend/src/views_temporal_report.ts` (painel),
 `scripts/generate_monthly_reports.py` (CLI), `tests/test_monthly_reports.py`
 (contratos de cálculo), este documento, a ligação no `README.md` e os Markdown
 gerados em `docs/reports/plymouth-season-1-snapshot-94/`.
 
 ## Execução
 
-Na interface, selecione a carreira e abra **Season report → Evolução mensal**.
-Escolha a temporada, o snapshot de corte e o mês; **Toda a temporada** mostra
-o consolidado. **Baixar Markdown** exporta exatamente o recorte visível.
-**Atualizar dados** refaz a consulta, sem persistir o relatório. O endpoint
+Na interface, selecione a carreira e abra **Relatórios → Evolução temporal**.
+O painel abre no semestre do snapshot de corte. O seletor **Recorte** permite
+trocar entre semestre civil com ano explícito, mês, toda a temporada e
+período personalizado com mês inicial e final inclusivos. Um intervalo pode
+atravessar dezembro e janeiro dentro da mesma temporada do jogo.
+O seletor de snapshot do painel é local. Para outra temporada, o Atlas
+seleciona seu snapshot mais recente como ponto de partida.
+
+A trajetória mostra os meses com partidas concluídas. Clique em um mês para
+abrir o recorte mensal. Expanda um atleta para ver vínculo, posição, GER,
+potencial, minutos, notas e cobertura de gols sem pênalti e assistências por mês.
+A nota do período pondera as médias mensais por jogos avaliados. Minutos somam
+as atuações rastreadas. Meses sem partidas concluídas ficam fora da trajetória.
+O período é sinalizado como parcial quando alcança o mês do snapshot de corte
+ou avança além dele.
+
+**Baixar Markdown** usa a carreira, a temporada, o snapshot e o recorte exibidos.
+O mês usa o relatório individual já existente. Semestre, intervalo personalizado
+e temporada usam a síntese com trajetória, evolução individual e cobertura.
+As comparações cadastrais do período começam no primeiro mês incluído. O
+relatório individual de um mês mantém a comparação com o mês anterior disponível.
+
 `GET /api/careers/{id}/sporting-reports?season_index={n}&snapshot_id={n}`
-devolve JSON compacto; `month=AAAA-MM` limita o JSON a um mês e
-`format=markdown` devolve `fileName` e `content` para download. O endpoint
-abre o banco ativo em `mode=ro` e valida o vínculo carreira/temporada/snapshot
-no serviço. O snapshot global do Atlas não muda ao examinar outro corte nessa aba.
+devolve JSON compacto com os meses da temporada. Use `month=AAAA-MM` ou o par
+`start_month=AAAA-MM&end_month=AAAA-MM` para limitar o recorte. Nas respostas
+com recorte, `availableMonths` lista os meses disponíveis no snapshot e
+`period` informa os limites e se o período é parcial. Um intervalo vazio
+tem zero partidas e uma mensagem correspondente no Markdown.
+`format=markdown` devolve `fileName` e `content` para download. A consulta
+usa uma transação de leitura em `mode=ro` e valida o vínculo entre
+carreira, temporada e snapshot.
 
 ### Geração por linha de comando
 
@@ -109,7 +131,7 @@ do Atlas; o serviço mensal não mantém um motor paralelo para essas métricas.
 ## Verificação
 
 ```powershell
-py -3 -m unittest tests.test_monthly_reports -v
+py -3 -m unittest tests.test_monthly_reports tests.test_monthly_report_api -v
 ```
 
 Os testes exercitam recorte por snapshot, deduplicação de fixture, soma de liga,

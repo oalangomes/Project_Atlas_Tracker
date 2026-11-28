@@ -7,7 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from atlas.monthly_report_api import compact_report, markdown_download
+from atlas.monthly_report_api import compact_report, markdown_download, report_period
 from atlas.server_http import ApiHandler
 
 
@@ -74,12 +74,47 @@ class MonthlyReportApiTests(unittest.TestCase):
                     "season_index": ["1"], "snapshot_id": ["2"], "month": ["2025-08"]})
                 payload = handler._json.call_args.args[0]
                 self.assertEqual(len(payload["months"]), 1)
+                self.assertEqual(payload["fixtureCount"], 1)
+                handler._api_get("/api/careers/1/sporting-reports", {
+                    "season_index": ["1"], "snapshot_id": ["2"],
+                    "start_month": ["2025-09"], "end_month": ["2025-10"], "format": ["markdown"]})
+                download = handler._json.call_args.args[0]
+                self.assertEqual(download["fileName"], "atlas-2025-09_a_2025-10-snapshot-2.md")
+                self.assertIn("Nenhuma partida concluída", download["content"])
                 with self.assertRaises(ValueError):
                     handler._api_get("/api/careers/1/sporting-reports", {
                         "season_index": ["1"], "snapshot_id": ["2"], "month": ["2025-13"]})
                 with self.assertRaises(ValueError):
                     handler._api_get("/api/careers/1/sporting-reports", {
                         "season_index": ["1"], "snapshot_id": ["2"], "month": ["2025-09"]})
+
+    def test_cross_year_period_keeps_only_selected_months_and_resets_baseline(self):
+        source = sample_report()
+        source["snapshotCareerDate"] = "2026-02-12"
+        august = source["months"][0]
+        source["months"] += [
+            {**august, "month": "2025-12", "rosterChanges": {"added": [7], "removed": []}},
+            {**august, "month": "2026-02", "players": [*august["players"], {"playerEaId": 8}]},
+        ]
+        period = compact_report(report_period(source, "2025-12", "2026-02"))
+        self.assertEqual(period["availableMonths"], ["2025-08", "2025-12", "2026-02"])
+        self.assertEqual([month["month"] for month in period["months"]], ["2025-12", "2026-02"])
+        self.assertEqual((period["fixtureCount"], period["playerCount"]), (2, 2))
+        self.assertIsNone(period["months"][0]["rosterChanges"])
+        self.assertEqual(source["months"][1]["rosterChanges"]["added"], [7])
+        self.assertTrue(period["period"]["partial"])
+
+    def test_invalid_or_conflicting_period_parameters_are_rejected_before_building(self):
+        handler = ApiHandler.__new__(ApiHandler)
+        base = {"season_index": ["1"], "snapshot_id": ["2"]}
+        for filters in (
+            {"start_month": ["2026-01"]},
+            {"start_month": ["2026-03"], "end_month": ["2026-01"]},
+            {"start_month": ["2026-13"], "end_month": ["2027-01"]},
+            {"start_month": ["2026-01"], "end_month": ["2026-03"], "month": ["2026-02"]},
+        ):
+            with self.subTest(filters=filters), self.assertRaises(ValueError):
+                handler._api_get("/api/careers/1/sporting-reports", base | filters)
 
 
 if __name__ == "__main__":

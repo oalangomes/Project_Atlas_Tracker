@@ -138,9 +138,14 @@ function bindContent() {
 
     $$<HTMLSelectElement>('[data-analysis-season]',content).forEach(select=>select.onchange=()=>{state.analysisSeasonIndex=Number(select.value);clearApiCache();void render();});
     $$<HTMLSelectElement>('[data-records-season]',content).forEach(select=>select.onchange=async()=>{state.recordsSeasonIndex=Number(select.value);clearApiCache();await renderRecords();applyIcons(content);bindContent();});
-    $$<HTMLSelectElement>('[data-season-report-season]',content).forEach(select=>select.onchange=async()=>{state.seasonReportSeasonIndex=Number(select.value);clearApiCache();await renderSeasonReport();applyIcons(content);bindContent();});
-    $$<HTMLSelectElement>('[data-season-report-semester]',content).forEach(select=>select.onchange=async()=>{state.seasonReportSemester=Number(select.value);await renderSeasonReport();applyIcons(content);bindContent();});
-    $$('[data-season-report-tab]',content).forEach((n:any)=>n.onclick=async(e:any)=>{e.stopPropagation();state.seasonReportTab=n.dataset.seasonReportTab||'overview';await renderSeasonReport();applyIcons(content);bindContent();});
+    $$<HTMLSelectElement>('[data-season-report-season]', content).forEach(select => select.onchange = () => {
+        state.seasonReportSeasonIndex = Number(select.value);
+        void render();
+    });
+    $$<HTMLButtonElement>('[data-season-report-tab]', content).forEach(button => button.onclick = () => {
+        state.seasonReportTab = button.dataset.seasonReportTab || "temporal";
+        void render();
+    });
     const awardPlayerSelect=$<HTMLSelectElement>('[data-season-award-player]',content);
     if(awardPlayerSelect)awardPlayerSelect.onchange=()=>{const option=awardPlayerSelect.selectedOptions[0],name=$<HTMLInputElement>('[data-season-award-name]',content);if(name&&option?.dataset.name)name.value=option.dataset.name;};
     const awardForm=$<HTMLFormElement>('[data-season-award-form]',content);
@@ -291,7 +296,7 @@ function bindContent() {
 }
 
 function bindShell() {
-    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.seasonReportSemester = null; state.clubTab="overview"; state.competitionListTab="deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
+    careerSelect.onchange = async () => { clearApiCache(); state.careerId = Number(careerSelect.value); state.movementSeasonIndex = null; state.movementEditKind = null; state.movementEditId = null; state.analysisSeasonIndex = null; state.seasonReportSeasonIndex = null; state.clubTab="overview"; state.competitionListTab="deeper"; await loadSnapshots(); fillSelectors(); updateSystemUi(); navigate("overview"); };
     snapshotSelect.onchange = () => { clearApiCache(); state.snapshotId = Number(snapshotSelect.value); state.compareTo = state.snapshotId; updateSystemUi(); navigate(state.route, state.routeData, false); };
     $("#backButton").onclick = () => goHistory(-1);
     $("#forwardButton").onclick = () => goHistory(1);

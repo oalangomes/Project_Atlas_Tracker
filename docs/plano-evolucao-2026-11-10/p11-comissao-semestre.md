@@ -4,9 +4,9 @@ Implementação do primeiro corte verificável de AT-021–023 e H33–H34. A en
 
 ## Semestre auditável
 
-Na aba **Semester** de *Season report*, o treinador escolhe janeiro–junho ou julho–dezembro. A consulta `GET /api/careers/{career_id}/sporting-reports/semester` parte do snapshot mais recente da temporada selecionada e agrega apenas os meses já presentes no relatório mensal/sazonal.
+Em **Relatórios → Evolução temporal**, o treinador escolhe janeiro a junho ou julho a dezembro com ano explícito e pode trocar o snapshot de corte. O painel usa o mesmo relatório mensal e aceita também um mês ou intervalo personalizado. O contrato `GET /api/careers/{career_id}/sporting-reports/semester` continua disponível. [Painel e export Markdown](../monthly-reports.md).
 
-O resultado informa, de forma explícita:
+O contrato semestral original informa:
 
 - meses incluídos e excluídos, além de mês parcial;
 - partidas com resultado e partidas com MatchStats detalhado;

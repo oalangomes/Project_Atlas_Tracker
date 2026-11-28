@@ -19,6 +19,7 @@
     "src/shell.ts",
     "src/views_overview.ts",
     "src/views_analysis.ts",
+    "src/views_temporal_report.ts",
     "src/views_matches.ts",
     "src/views_people.ts",
     "src/views_history.ts",
