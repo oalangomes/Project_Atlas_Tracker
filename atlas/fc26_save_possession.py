@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from .db import Database
+from .fc26_save_career_setup import SavedCareerSetup, persist_save_career_setup, read_saved_career_setup
 from .fc26_save_feed import SavedCareerFeed, persist_save_career_feed, read_saved_career_feed
 from .fc26_save_match import READER_REVISION, read_saved_match
 from .fc26_save_participation import SavedParticipation, persist_save_participation, read_saved_participation
@@ -77,6 +78,7 @@ class SavedMatchPossession:
     comparison_json: str | None = None
     participation: SavedParticipation | None = None
     career_feed: SavedCareerFeed | None = None
+    career_setup: SavedCareerSetup | None = None
 
 
 def decode_save_possession(data: bytes, *, compare_passing: bool = False,
@@ -113,7 +115,8 @@ def decode_save_possession(data: bytes, *, compare_passing: bool = False,
                                 home_pct, away_pct, home_players, away_players,
                                 fixture.facts_sha256, home_passes, away_passes,
                                 home_individual + away_individual, json.dumps(comparisons, sort_keys=True) if comparisons else None,
-                                read_saved_participation(data, fixture), read_saved_career_feed(data))
+                                read_saved_participation(data, fixture), read_saved_career_feed(data),
+                                read_saved_career_setup(data, (home.team_id, away.team_id)))
 
 
 def _passing(fields: Mapping[str, Any], players: list[dict[str, Any]], team_id: int
@@ -194,15 +197,15 @@ class SavePossessionImporter:
                     continue
         self._files = files
         matches = frozenset(match for _, match in files.values() if match is not None)
-        feed_times: dict[SavedMatchPossession, int] = {}
+        career_times: dict[SavedMatchPossession, int] = {}
         for signature, match in files.values():
-            if match and match.career_feed:
-                feed_times[match] = max(signature[1], feed_times.get(match, 0))
+            if match and (match.career_feed or match.career_setup):
+                career_times[match] = max(signature[1], career_times.get(match, 0))
         if not matches:
             return 0
         with self.database.connect() as conn:
             snapshot_revision = tuple(conn.execute("SELECT COUNT(*),COALESCE(MAX(id),0) FROM snapshots").fetchone())
-        scan = (snapshot_revision, matches, frozenset(feed_times.items()))
+        scan = (snapshot_revision, matches, frozenset(career_times.items()))
         if scan == self._last_scan:
             return 0
 
@@ -210,6 +213,7 @@ class SavePossessionImporter:
         with self.database.transaction() as conn:
             candidates: dict[int, list[tuple[int, SavedMatchPossession]]] = {}
             feeds: dict[int, list[tuple[str, int, int, SavedCareerFeed]]] = {}
+            setups: dict[int, list[tuple[int, int, SavedCareerSetup]]] = {}
             for match in sorted(matches, key=lambda match: match.mxif_sha256):
                 candidate = self._linked_observation(conn, match)
                 if candidate:
@@ -286,7 +290,9 @@ class SavePossessionImporter:
                 for source in anchored_sources:
                     if source.career_feed:
                         feeds.setdefault(anchor["career_id"], []).append(
-                            (source.match_date, feed_times[source], fixture_id, source.career_feed))
+                            (source.match_date, career_times[source], fixture_id, source.career_feed))
+                    if source.career_setup:
+                        setups.setdefault(snapshot_id, []).append((career_times[source], fixture_id, source.career_setup))
             for career_id, candidates_for_career in feeds.items():
                 newest = max(item[:2] for item in candidates_for_career)
                 at_newest = [item for item in candidates_for_career if item[:2] == newest]
@@ -295,6 +301,15 @@ class SavePossessionImporter:
                     continue
                 day, mtime, fixture_id, feed = min(at_newest, key=lambda item: item[2])
                 if persist_save_career_feed(conn, career_id, fixture_id, day, mtime, feed):
+                    saved.add(fixture_id)
+            for snapshot_id, options in setups.items():
+                newest = max(item[0] for item in options)
+                latest = {(fixture_id, setup) for mtime, fixture_id, setup in options if mtime == newest}
+                if len(latest) != 1:
+                    LOGGER.info("FC26 saves disagree on career setup for Atlas snapshot %s", snapshot_id)
+                    continue
+                fixture_id, setup = latest.pop()
+                if persist_save_career_setup(conn, snapshot_id, fixture_id, newest, setup):
                     saved.add(fixture_id)
         self._last_scan = scan
         return len(saved)

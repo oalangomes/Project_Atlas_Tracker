@@ -442,3 +442,36 @@ completas e 100% de acerto para o Sheffield United contra o Crystal Palace e
 conversas). Uma taxa de 66,7% com quatro acertos em seis tentativas foi
 verificada por teste automatizado. Os saves da amostra tinham 100% de acerto
 sempre que havia tentativas de tabela.
+
+#### Tática gravada e limite da leitura de torneios da base
+
+O [leitor da carreira](../../atlas/fc26_save_career_setup.py) usa o diretório
+e os campos das tabelas embutidas no save. Ele adapta o mecanismo de leitura
+do Hub em `325481c596e05cca5cee15049012a216af16618d`. Uma partida concluída
+vinculada pelo importador identifica a carreira e o snapshot. O clube
+gerenciado gravado em `mPrV` precisa coincidir com o clube do snapshot.
+Uma linha em `fc26_save_career_setup` registra a tática. A leitura do
+painel exige o snapshot exato, sem carregar o estado
+gravado para outros cortes. Dois arquivos empatados por modificação e com
+conteúdo divergente ficam fora da importação daquele corte.
+
+- **Elenco → Tática gravada** mostra as escalações personalizadas (`zdMM`)
+  e os presets (`emmj`) associados por clube e identificador interno. Abre
+  o XI e as posições gravadas quando todos os jogadores são identificados
+  no elenco do corte. A posição de cada vaga usa a correspondência dos
+  campos das formações, conferida com os 11 pares jogador/posição do XI do
+  Plymouth no snapshot 119. As posições são da configuração do treinador.
+  Os códigos de nome da formação, funções e instruções ainda precisam de
+  calibração. Um nome livre, como `3421`, permanece o nome do preset.
+
+No save vinculado ao Bradford City–Plymouth em 28/03/2026, o leitor retornou
+duas escalações e dez presets.
+
+O Atlas não usa `TcEm` como fonte de resultados da base. No corte de
+29/03/2026, os números de `TcEm` coincidem com o bloco `mflp` profissional
+do mesmo save e com os totais da EFL League One e da Vertu Trophy no Atlas.
+Alisson Bueno soma 9 jogos e 6 gols, Flávio Brandao 7 jogos e 1 gol, e
+Miloš Stepanović 1 jogo e 0 gols. O teste controlado do Hub em um torneio
+5x5 também observou que `TcEm` permaneceu igual antes e depois da partida.
+O leitor de tática ignora contadores que versões anteriores possam ter
+gravado no mesmo registro. [Teste do torneio no Hub](https://github.com/oalangomes/ea-fc-sheffield-hub/blob/325481c596e05cca5cee15049012a216af16618d/docs/fc26-youth-5x5-reverse-checkpoint-2026-08-22.md#embedded-db-changes)

@@ -45,6 +45,33 @@ async function renderSquad() {
     mountSquad(result.data, "ready");
 }
 
+function savedTacticsMarkup(tactics: any, roster: Array<{ea_player_id: number; display_name: string}>): string {
+    if (!tactics?.sheets?.length) return "";
+    const lexicon = {
+        "pt-BR": {title:"Tática gravada", source:"Arquivo da carreira", players:"XI gravado"},
+        "en-GB": {title:"Saved tactics", source:"Career file", players:"Saved XI"},
+        "es-ES": {title:"Táctica guardada", source:"Archivo de la carrera", players:"Once guardado"},
+    };
+    const language = atlasLanguage();
+    const labels = language === "en-GB" || language === "es-ES" ? lexicon[language] : lexicon["pt-BR"];
+    const byId = new Map(roster.map(player => [player.ea_player_id, player]));
+    const sheets = tactics.sheets.map((sheet: any) => `<section>
+        <h3 class="card-title">${esc(sheet.name)}</h3>
+        ${sheet.presets.map((preset: any) => {
+            const lineup = preset.players.filter((slot: any) => byId.has(slot.playerId));
+            const name = esc(preset.name);
+            if (lineup.length !== 11) return `<p>${name}</p>`;
+            return `<details class="youth-development-report"><summary>${name} <span class="muted">· ${labels.players}</span></summary>
+              <ul>${lineup.map((slot: any) => `<li>${slot.position ? `${positionBadge(slot.position)} ` : ""}${playerLink(slot.playerId, byId.get(slot.playerId)!.display_name)}</li>`).join("")}</ul>
+            </details>`;
+        }).join("")}
+    </section>`).join("");
+    return `<details class="card pad"><summary>${labels.title}</summary>
+      <p class="muted">${labels.source} · ${dateText(tactics.source.observedCareerDate)}</p>
+      <div class="grid two-col">${sheets}</div>
+    </details>`;
+}
+
 function mountSquad(d: JsonRecord, financeState: SquadFinanceState) {
     const positions = [...new Set(d.players.map((p: any) => pos(p.primary_position)))].sort((a: any, b: any) => positionOrder(a) - positionOrder(b));
     const sorters: Record<string, (a: any, b: any) => number> = {
@@ -56,6 +83,7 @@ function mountSquad(d: JsonRecord, financeState: SquadFinanceState) {
         name: (a: any, b: any) => a.display_name.localeCompare(b.display_name, "en"),
     };
     content.innerHTML = `<div class="content-inner wide">${pageHead("Squad", "", `<button class="button" data-route="contracts">Contracts</button><button class="button" data-route="loans">Loans</button><button class="button primary" data-route="youth">FC26 youth</button>`)}
+      ${savedTacticsMarkup(d.saveTactics, d.players)}
       <div class="filter-row"><input class="filter-input" id="squadQuery" value="${esc(state.squadQuery)}" placeholder="Search players…"><select class="filter-select" id="squadPosition"><option value="all">All positions</option>${positions.map((p: any) => `<option ${p === state.squadPosition ? "selected" : ""}>${esc(p)}</option>`).join("")}</select><select class="filter-select" id="squadSort"><option value="number" ${state.squadSort === "number" ? "selected" : ""}>By shirt number</option><option value="position" ${state.squadSort === "position" ? "selected" : ""}>By position</option><option value="overall" ${state.squadSort === "overall" ? "selected" : ""}>By OVR</option><option value="potential" ${state.squadSort === "potential" ? "selected" : ""}>By POT</option><option value="age" ${state.squadSort === "age" ? "selected" : ""}>By age</option><option value="name" ${state.squadSort === "name" ? "selected" : ""}>By name</option></select></div>
       <div data-squad-finance-status class="data-note" aria-live="polite" hidden></div>
       <section class="card" data-squad-results></section>

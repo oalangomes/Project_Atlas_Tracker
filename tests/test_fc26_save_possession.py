@@ -7,6 +7,7 @@ from struct import pack_into
 from unittest.mock import patch
 
 from atlas.db import Database
+from atlas.fc26_save_career_setup import snapshot_save_career_setup
 from atlas.fc26_save_feed import snapshot_save_career_feed
 from atlas.fc26_save_match import read_saved_match
 from atlas.fc26_save_participation import fixture_save_participation
@@ -265,6 +266,66 @@ class SavePossessionTests(unittest.TestCase):
             self.assertIn("CM_Chat_Training", [item["key"] for item in after["records"]])
             self.assertEqual(snapshot_save_career_feed(conn, before_snapshot), before)
             self.assertIsNone(snapshot_save_career_feed(conn, {**after_snapshot, "career_id": 2}))
+
+    def test_career_setup_links_only_to_the_observed_snapshot_and_managed_club(self):
+        def table(fields, values):
+            stride = sum(16 if isinstance(value, str) else 4 for value in values[0])
+            data = bytearray(36 + 16 * len(fields) + len(values) * stride)
+            pack_into("<I", data, 4, stride)
+            pack_into("<H", data, 18, len(values))
+            data[24] = len(fields)
+            bit = 0
+            for index, (name, value) in enumerate(zip(fields, values[0])):
+                kind, width = (0, 128) if isinstance(value, str) else (3, 32)
+                pack_into("<II4sI", data, 36 + index * 16, kind, bit, name.encode(), width)
+                bit += width
+            for index, row in enumerate(values):
+                packed = b"".join(value.encode().ljust(16, b"\0") if isinstance(value, str)
+                                  else value.to_bytes(4, "little") for value in row)
+                offset = 36 + len(fields) * 16 + index * stride
+                data[offset:offset + stride] = packed
+            return data
+
+        tables = {
+            b"mPrV": table(("NTyS",), [(1930,)]),
+            b"TcEm": table(("ykFq", "nVWT", "MERA"), [(1000, 9, 6), (1001, 127, 255), (1002, 0, 0)]),
+            b"zdMM": table(("jfDM", "mCXg", "TrVp"), [(0, 1930, "Valid sheet"), (0, 362, "Other club")]),
+            b"emmj": table(("jfDM", "mCXg", "AwZu", "KAOA", "MVLC", "zWHI", "SfCW", "Ncmk", "Povf", "wjrR", "RaOP",
+                            "OhyJ", "WCfU", "FJbC", "qhEx", "ZzVx", "CEZz", "nNch", "cGsr", "aCho", "BBlW", "ksMI",
+                            "fvcy", "TMpL", "sPtx", "FuLD"),
+                           [(0, 1930, 0, "Preset", *range(1001, 1012), 1, 4, 5, 7, 8, 10, 12, 13, 17, 19, 26)]),
+        }
+        header = bytearray(28 + 8 * len(tables))
+        header[:8] = b"DB\x00\x08\x00\x00\x00\x00"
+        pack_into("<I", header, 8, len(header) + sum(map(len, tables.values())))
+        pack_into("<I", header, 16, len(tables))
+        relative = 0
+        for index, (key, contents) in enumerate(tables.items()):
+            pack_into("<4sI", header, 24 + 8 * index, key, relative)
+            relative += len(contents)
+
+        source = self.root / "CmMgrSetup"
+        source.write_bytes(make_save() + header + b"".join(tables.values()))
+        os.utime(source, (1, 1))
+        self.add_observation()
+        self.add_observation(snapshot=3)
+        self.assertEqual(self.importer.scan_once(), 1)
+        self.assertEqual(self.importer.scan_once(), 0)
+        with self.db.connect() as conn:
+            setup = snapshot_save_career_setup(conn, 2)
+            self.assertEqual(setup["source"]["sourceFixtureId"], 9)
+            self.assertNotIn("academy", setup)
+            payload, = conn.execute("SELECT payload_json FROM fc26_save_career_setup WHERE snapshot_id=2").fetchone()
+            self.assertNotIn('"academy"', payload)
+            self.assertEqual([sheet["name"] for sheet in setup["tactics"]], ["Valid sheet"])
+            slots = setup["tactics"][0]["presets"][0]["players"]
+            self.assertEqual(slots[0], {"playerId": 1000, "position": "GK"})
+            self.assertEqual(slots[-1], {"playerId": 1010, "position": "ST"})
+            self.assertIsNone(snapshot_save_career_setup(conn, 3))
+            conn.execute("""UPDATE fc26_save_career_setup
+                            SET payload_json=json_set(payload_json,'$.academy',json('[{"playerId":1000,"appearances":9,"goals":6}]'))
+                            WHERE snapshot_id=2""")
+            self.assertEqual(snapshot_save_career_setup(conn, 2), setup)
     def test_refuses_wrong_scores_players_ambiguous_careers_and_conflicting_saves(self):
         self.add_observation(players=range(1000, 1010))
         self.write_save()

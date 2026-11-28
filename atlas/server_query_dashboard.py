@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .media_utils import competition_name_key, season_start_from_date
+from .fc26_save_career_setup import snapshot_save_career_setup
 from .metric_evidence import snapshot_fixture_evidence
 from .team_strength import live_squad_strength
 from .server_utils import (
@@ -175,6 +176,7 @@ class DashboardQueryMixin:
     def _squad(self, snapshot_id: int, *, include_finance: bool = True) -> dict[str, Any]:
         with self.state.database.connect() as conn:
             snap = self._snapshot(conn, snapshot_id)
+            save_setup = snapshot_save_career_setup(conn, snapshot_id)
             rows = conn.execute(
                 """SELECT r.jersey_number,r.teamsheet_slot_label,r.form,r.injury,r.raw_json roster_raw_json,
                           p.ea_player_id,p.display_name,p.team_ea_id,p.team_name,p.overall,p.potential,p.primary_position,
@@ -253,9 +255,11 @@ class DashboardQueryMixin:
         snapshot_item["season_start_year"] = season_start
         snapshot_item["season_label"] = f"{season_start}/{str(season_start + 1)[-2:]}" if season_start is not None else "Unknown season"
         snapshot_item["career_season_number"] = season_numbers.get(season_start) if season_start is not None else None
+        tactics = {"source": save_setup["source"], "sheets": save_setup["tactics"]} if save_setup and save_setup["tactics"] else None
         return {
             "snapshot": snapshot_item,
             "team": clean_raw(team),
             "teamIdentity": self.state.media.team_identity(int(snap["managed_team_ea_id"]), season_start=season_start),
             "players": self._enrich_players(players),
+            **({"saveTactics": tactics} if tactics else {}),
         }

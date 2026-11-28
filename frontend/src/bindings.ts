@@ -398,7 +398,7 @@ async function handleAction(action: any) {
 
 const matchStatsRoutes = new Set([
     "overview", "match-center", "schedule", "results", "match", "analysis", "commission",
-    "player", "snapshots", "imports", "chronology",
+    "player", "snapshots", "imports", "chronology", "squad",
 ]);
 let statusPollInProgress = false;
 

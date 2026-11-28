@@ -305,6 +305,14 @@ CREATE TABLE IF NOT EXISTS fc26_save_career_feed (
     records_json TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS fc26_save_career_setup (
+    snapshot_id INTEGER PRIMARY KEY REFERENCES snapshots(id) ON DELETE CASCADE,
+    source_fixture_id INTEGER NOT NULL REFERENCES fixtures(id) ON DELETE CASCADE,
+    source_mtime_ns INTEGER NOT NULL,
+    payload_sha256 TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS player_match_performances (
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
     artificial_key TEXT NOT NULL,

@@ -688,11 +688,15 @@ class MatchStatsImporter:
             career_feeds = conn.execute(
                 "SELECT snapshot_id,feed_sha256 FROM fc26_save_career_feed ORDER BY snapshot_id"
             ).fetchall()
+            career_setups = conn.execute(
+                "SELECT snapshot_id,payload_sha256 FROM fc26_save_career_setup ORDER BY snapshot_id"
+            ).fetchall()
         # Relinks and save-backed evidence can change match details without a new MatchStats export.
         revision = hashlib.sha256(json.dumps({
             "matchstats": [tuple(row) for row in rows],
             "savePossession": [tuple(row) for row in save_possession],
             "saveCareerFeed": [tuple(row) for row in career_feeds],
+            "saveCareerSetup": [tuple(row) for row in career_setups],
         }).encode("utf-8")).hexdigest()
         linked = sum(row["fixture_id"] is not None for row in rows)
         return {
